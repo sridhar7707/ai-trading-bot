@@ -61,7 +61,8 @@ class RegimeClassifier:
         return self._rule_based(row)
 
     def _rule_based(self, row: pd.Series) -> int:
-        atr_ratio = row.get("atr", 0) / row.get("close", 1)
+        close = row.get("close", 1) or 1  # guard against 0
+        atr_ratio = row.get("atr", 0) / close
         if atr_ratio > 0.03:
             return 3
         rsi = row.get("rsi", 50)

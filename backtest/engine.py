@@ -17,6 +17,7 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
 
     balance = initial_balance
     shares = 0.0
+    entry_price = 0.0  # tracks the actual position entry price
     portfolio_values = []
     trades = []
 
@@ -25,13 +26,13 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
         regime_code = regime_clf.predict(row)
 
         # Stop-loss check
-        if shares > 0:
-            entry_price = trades[-1]["price"] if trades else price
+        if shares > 0 and entry_price > 0:
             pnl_pct = (price - entry_price) / entry_price
             if pnl_pct <= -STOP_LOSS_PCT:
                 balance += shares * price
                 trades.append({"step": i, "action": "SELL_STOP", "price": price, "pnl_pct": pnl_pct})
                 shares = 0.0
+                entry_price = 0.0
 
         obs = np.concatenate([
             row[FEATURE_COLS].values.astype(np.float32),
@@ -43,14 +44,15 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
             spend = balance * MAX_POSITION_PCT
             shares += spend / price
             balance -= spend
+            entry_price = price  # record position entry price
             trades.append({"step": i, "action": "BUY", "price": price, "pnl_pct": 0.0})
         elif action == 2 and shares > 0:
             proceeds = shares * price
-            entry_price = trades[-1]["price"] if trades else price
-            pnl_pct = (price - entry_price) / entry_price
+            pnl_pct = (price - entry_price) / entry_price if entry_price > 0 else 0.0
             balance += proceeds
             trades.append({"step": i, "action": "SELL", "price": price, "pnl_pct": pnl_pct})
             shares = 0.0
+            entry_price = 0.0
 
         portfolio_values.append(balance + shares * price)
 

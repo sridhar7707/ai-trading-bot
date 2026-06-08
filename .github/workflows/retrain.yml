@@ -29,6 +29,14 @@ jobs:
       - name: Train model
         run: python scripts/train_model.py
 
+      - name: Backtest quality gate
+        env:
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
+        run: |
+          python scripts/backtest_gate.py
+          echo "Gate passed — proceeding with model push."
+
       - name: Push model to HuggingFace
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

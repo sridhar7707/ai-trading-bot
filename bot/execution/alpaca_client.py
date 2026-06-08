@@ -24,6 +24,8 @@ class AlpacaClient:
 
     def get_latest_price(self, symbol: str) -> float:
         bar = self.api.get_latest_bar(symbol)
+        if bar is None:
+            raise ValueError(f"No bar data returned for {symbol}")
         return bar.c
 
     def get_bars(self, symbol: str, timeframe: str = "5Min", limit: int = 100) -> pd.DataFrame:
@@ -32,6 +34,9 @@ class AlpacaClient:
         return bars
 
     def buy(self, symbol: str, notional: float) -> dict | None:
+        if notional < 1.0:
+            logger.warning(f"BUY skipped {symbol} — notional ${notional:.2f} below $1 minimum")
+            return None
         try:
             order = self.api.submit_order(
                 symbol=symbol,

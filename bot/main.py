@@ -20,6 +20,16 @@ import bot.monitor.telegram_bot as tg
 import numpy as np
 
 
+def _opened_today(con, symbol: str) -> bool:
+    """Return True if there is a BUY for this symbol recorded today (UTC)."""
+    today = datetime.utcnow().date().isoformat()
+    row = con.execute(
+        "SELECT 1 FROM trades WHERE symbol=? AND action='BUY' AND timestamp LIKE ? LIMIT 1",
+        (symbol, today + "%"),
+    ).fetchone()
+    return row is not None
+
+
 def init_db():
     con = sqlite3.connect(TRADE_DB_PATH)
     con.execute("""
@@ -116,7 +126,8 @@ def run(mode: str = "paper"):
             notional = portfolio_value * pos_fraction
 
             if action == 1:  # Buy
-                if risk.approve_buy(symbol, notional, portfolio_value, portfolio_value, len(positions)):
+                current_value = client.get_portfolio_value()
+                if risk.approve_buy(symbol, notional, portfolio_value, current_value, len(positions)):
                     result = client.buy(symbol, notional)
                     if result:
                         spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
@@ -125,12 +136,16 @@ def run(mode: str = "paper"):
                         log_trade(con, symbol, "BUY", notional / price, price, notional, regime_name, portfolio_value, 0)
             elif action == 2:  # Sell
                 if symbol in positions:
-                    pnl_pct = client.get_position_pnl_pct(symbol)
-                    client.sell(symbol)
-                    tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
-                    log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
-            else:
-                tg.alert_hold(symbol, regime_name)
+                    is_day_trade = _opened_today(con, symbol)
+                    if is_day_trade and not risk.check_pdt(is_day_trade=True):
+                        logger.warning(f"PDT limit reached — skipping sell of {symbol}")
+                    else:
+                        pnl_pct = client.get_position_pnl_pct(symbol)
+                        client.sell(symbol)
+                        if is_day_trade:
+                            risk.record_day_trade()
+                        tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
+                        log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
