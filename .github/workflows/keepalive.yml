@@ -1,0 +1,18 @@
+name: HuggingFace Space Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # Every day at noon UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping HuggingFace Space
+        env:
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+        run: |
+          SPACE_URL="https://huggingface.co/spaces/${HF_REPO_ID}"
+          curl -s -o /dev/null -w "%{http_code}" "$SPACE_URL"
+          echo "Pinged $SPACE_URL"
