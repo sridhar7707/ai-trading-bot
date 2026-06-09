@@ -2,8 +2,8 @@ name: Trading Bot
 
 on:
   schedule:
-    # Every 5 minutes Mon-Fri 9:30am-4pm EST (14:30-21:00 UTC)
-    - cron: '*/5 14-21 * * 1-5'
+    # Fire once at market open Mon-Fri (9:30am ET = 13:30 UTC)
+    - cron: '30 13 * * 1-5'
   workflow_dispatch:
 
 env:
@@ -16,6 +16,7 @@ concurrency:
 jobs:
   trade:
     runs-on: ubuntu-latest
+    timeout-minutes: 420
     permissions:
       contents: read
       actions: write
@@ -52,7 +53,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python scripts/load_model_hf.py
 
-      - name: Run trading cycle
+      - name: Run trading loop (market open to close)
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
           ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
@@ -63,34 +64,52 @@ jobs:
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
           TRADING_MODE: paper
           PYTHONUNBUFFERED: "1"
-        run: python bot/main.py --mode paper
-
-      - name: Push trade database to HuggingFace
-        if: always()
-        continue-on-error: true
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: |
-          python -c "
-          import os, sys
-          if not os.path.exists('trades.db'):
-              print('trades.db not found — skipping push')
-              sys.exit(0)
-          token = os.environ.get('HF_TOKEN', '')
-          repo = os.environ.get('HF_REPO_ID', '')
-          if not token or not repo:
-              print('HF secrets not set — skipping push')
-              sys.exit(0)
-          from huggingface_hub import HfApi, CommitOperationAdd
-          api = HfApi(token=token)
-          api.create_commit(
-              repo_id=repo, repo_type='model',
-              operations=[CommitOperationAdd(path_in_repo='trades.db', path_or_fileobj='trades.db')],
-              commit_message='update trades.db'
-          )
-          print('trades.db pushed to HuggingFace')
-          "
+          python - <<'PYEOF'
+          import subprocess, time, datetime, os, sys
+          from zoneinfo import ZoneInfo
+
+          def market_open():
+              et = datetime.datetime.now(ZoneInfo("America/New_York"))
+              if et.weekday() >= 5:
+                  return False
+              open_t = et.replace(hour=9, minute=30, second=0, microsecond=0)
+              close_t = et.replace(hour=16, minute=0, second=0, microsecond=0)
+              return open_t <= et < close_t
+
+          def push_hf():
+              token = os.environ.get("HF_TOKEN", "")
+              repo = os.environ.get("HF_REPO_ID", "")
+              if not token or not repo or not os.path.exists("trades.db"):
+                  return
+              try:
+                  from huggingface_hub import HfApi, CommitOperationAdd
+                  HfApi(token=token).create_commit(
+                      repo_id=repo, repo_type="model",
+                      operations=[CommitOperationAdd(path_in_repo="trades.db", path_or_fileobj="trades.db")],
+                      commit_message="update trades.db",
+                  )
+                  print("trades.db pushed to HuggingFace", flush=True)
+              except Exception as e:
+                  print(f"HF push skipped: {e}", flush=True)
+
+          cycle = 0
+          while market_open():
+              cycle += 1
+              et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
+              print(f"\n=== Cycle {cycle} | {et_str} ===", flush=True)
+              r = subprocess.run([sys.executable, "bot/main.py", "--mode", "paper"])
+              if r.returncode != 0:
+                  print(f"::warning::Cycle {cycle} exited with code {r.returncode}", flush=True)
+              push_hf()
+              # Sleep in 30s chunks so market-close is detected promptly
+              for _ in range(10):
+                  time.sleep(30)
+                  if not market_open():
+                      break
+
+          print("\nMarket closed — trading loop complete.", flush=True)
+          PYEOF
 
       - name: Save trade database
         if: always()
