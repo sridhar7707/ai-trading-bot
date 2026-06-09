@@ -59,6 +59,33 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python bot/main.py --mode paper
 
+      - name: Push trade database to HuggingFace
+        if: always()
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+        run: |
+          python -c "
+          import os, sys
+          if not os.path.exists('trades.db'):
+              print('trades.db not found — skipping push')
+              sys.exit(0)
+          token = os.environ.get('HF_TOKEN', '')
+          repo = os.environ.get('HF_REPO_ID', '')
+          if not token or not repo:
+              print('HF secrets not set — skipping push')
+              sys.exit(0)
+          from huggingface_hub import HfApi, CommitOperationAdd
+          api = HfApi(token=token)
+          api.create_commit(
+              repo_id=repo, repo_type='model',
+              operations=[CommitOperationAdd(path_in_repo='trades.db', path_or_fileobj='trades.db')],
+              commit_message='update trades.db'
+          )
+          print('trades.db pushed to HuggingFace')
+          "
+
       - name: Save trade database
         if: always()
         uses: actions/cache/save@v4
