@@ -9,19 +9,24 @@ from bot.strategy.regime_classifier import RegimeClassifier, label_regime
 from bot.strategy.rl_agent import RLAgent
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
-from config import SYMBOLS, INITIAL_CAPITAL
+from config import TRAINING_SYMBOLS, INITIAL_CAPITAL
 
 DATA_DIR = "data/raw"
 
+# Walk-forward split: train on 2015-2022, validate/test on 2023-present
+TRAIN_CUTOFF = "2023-01-01"
 
-def load_combined() -> pd.DataFrame:
+
+def load_combined(cutoff: str | None = None) -> pd.DataFrame:
     frames = []
-    for sym in SYMBOLS:
+    for sym in TRAINING_SYMBOLS:
         path = f"{DATA_DIR}/{sym}.csv"
         if not os.path.exists(path):
             logger.warning(f"Missing data for {sym} — skipping.")
             continue
         df = pd.read_csv(path, index_col=0, parse_dates=True)
+        if cutoff:
+            df = df[df.index < cutoff]
         df = compute_features(df)
         df["regime"] = label_regime(df)
         df["symbol"] = sym
@@ -32,8 +37,9 @@ def load_combined() -> pd.DataFrame:
 
 
 def main():
-    logger.info("Loading training data...")
-    df = load_combined()
+    logger.info(f"Loading training data (cutoff={TRAIN_CUTOFF}) — {len(TRAINING_SYMBOLS)} symbols...")
+    df = load_combined(cutoff=TRAIN_CUTOFF)
+    logger.info(f"Training rows: {len(df):,} | date range: {df.index.min().date()} → {df.index.max().date()}")
 
     logger.info("Training regime classifier...")
     regime_clf = RegimeClassifier()

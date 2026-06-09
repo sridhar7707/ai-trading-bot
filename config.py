@@ -16,11 +16,20 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 HF_REPO_ID = os.getenv("HF_REPO_ID", "")
 
-# --- Trading universe ---
+# --- Trading universe (live bot trades these) ---
 STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
 ETFS = ["VOO", "QQQ", "SPY", "VTI", "ARKK"]
 SYMBOLS = STOCKS + ETFS
 BENCHMARK = "SPY"
+
+# --- Training universe (superset — more symbols = better regime/XGB generalisation) ---
+# Sector ETFs teach the model different correlation regimes without adding live trades
+TRAINING_EXTRA = [
+    "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLC",  # GICS sectors
+    "GLD", "TLT",                                                # gold + bonds
+    "JPM", "JNJ", "XOM", "WMT", "BRK-B",                       # sector anchors
+]
+TRAINING_SYMBOLS = SYMBOLS + TRAINING_EXTRA
 
 # --- Trading parameters ---
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
@@ -44,7 +53,7 @@ def get_trading_budget() -> float:
     return TRADING_BUDGET_INITIAL + TRADING_BUDGET_WEEKLY_ADD * weeks
 
 # --- RL agent ---
-RL_TIMESTEPS = 500_000
+RL_TIMESTEPS = 1_000_000
 RL_LEARNING_RATE = 3e-4
 RL_N_STEPS = 2048
 RL_BATCH_SIZE = 64

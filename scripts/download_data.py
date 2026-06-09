@@ -4,20 +4,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import yfinance as yf
 import pandas as pd  # noqa: E402 — needed after sys.path fix
 from loguru import logger
-from config import SYMBOLS, BENCHMARK
+from config import TRAINING_SYMBOLS, BENCHMARK
 
 OUTPUT_DIR = "data/raw"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 import datetime
-START_DATE = "2021-01-01"
+# 2015 captures: 2015-16 correction, 2018 rate-hike volatility,
+# 2020 COVID crash+recovery, 2022 bear market — diverse regimes improve all models
+START_DATE = "2015-01-01"
 END_DATE = datetime.date.today().isoformat()
 
 
 def download(symbol: str):
     logger.info(f"Downloading {symbol}...")
     df = yf.download(symbol, start=START_DATE, end=END_DATE, interval="1d", auto_adjust=True, progress=False)
-    # yfinance 0.2+ returns MultiIndex columns — flatten to single level
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [col[0].lower() for col in df.columns]
     else:
@@ -27,9 +28,10 @@ def download(symbol: str):
 
 
 if __name__ == "__main__":
-    for sym in SYMBOLS + [BENCHMARK]:
+    all_symbols = list(dict.fromkeys(TRAINING_SYMBOLS + [BENCHMARK]))
+    for sym in all_symbols:
         try:
             download(sym)
         except Exception as e:
             logger.error(f"Failed {sym}: {e}")
-    logger.info("Download complete.")
+    logger.info(f"Download complete — {len(all_symbols)} symbols, {START_DATE} to {END_DATE}.")
