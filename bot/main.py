@@ -1,5 +1,6 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
 import argparse
+import math
 import os
 import sqlite3
 import sys
@@ -69,7 +70,7 @@ def init_db():
             pnl_pct REAL
         )
     """)
-    # Tracks per-position state across cycles for trailing stops
+    # Tracks per-position state across cycles for trailing stops and take-profit
     con.execute("""
         CREATE TABLE IF NOT EXISTS position_state (
             symbol           TEXT PRIMARY KEY,
@@ -101,7 +102,7 @@ def _opened_today(con, symbol: str) -> bool:
     return row is not None
 
 
-# ── Position state helpers (for trailing stop across cycles) ──────────────────
+# ── Position state helpers (for trailing stop and take-profit across cycles) ──
 
 def _load_position_state(con, symbol: str) -> dict | None:
     row = con.execute(
@@ -144,11 +145,15 @@ def run(mode: str = "paper"):
     lstm   = LSTMPredictor()
     risk   = RiskManager()
 
-    portfolio_value = client.get_portfolio_value()
-    positions       = client.get_positions()          # {symbol: position_obj}
+    # Single API call for both portfolio value and available cash
+    portfolio_value, available_cash = client.get_account_summary()
+    positions = client.get_positions()   # {symbol: position_obj}
     risk.reset_daily(portfolio_value)
 
-    logger.info(f"Portfolio: ${portfolio_value:.2f} | Open positions: {list(positions.keys())}")
+    logger.info(
+        f"Portfolio: ${portfolio_value:.2f} | Cash: ${available_cash:.2f} | "
+        f"Open positions: {list(positions.keys())}"
+    )
     macro_cap = get_macro_position_cap()
     logger.info(f"Macro position cap: {macro_cap:.1f}x")
 
@@ -169,7 +174,7 @@ def run(mode: str = "paper"):
     with ThreadPoolExecutor(max_workers=min(len(SYMBOLS), 10)) as pool:
         fetched = list(pool.map(_fetch_symbol, SYMBOLS))
 
-    bars_map       = {sym: bars for sym, bars, _    in fetched}
+    bars_map         = {sym: bars for sym, bars, _   in fetched}
     symbol_headlines = {sym: hdl  for sym, _,    hdl in fetched}
 
     # Phase 2 — single batch FinBERT pass
@@ -185,15 +190,21 @@ def run(mode: str = "paper"):
     with ThreadPoolExecutor(max_workers=6) as pool:
         wsb_map = dict(pool.map(_wsb, SYMBOLS))
 
+    # Confidence-weighted blend: WSB weight scales with log(mentions) up to 50%
     sentiments: dict[str, float] = {}
     for symbol in SYMBOLS:
         wsb   = wsb_map[symbol]
         score = finbert_scores.get(symbol, 0.0)
-        sentiments[symbol] = (score + wsb["sentiment"]) / 2 if wsb["mentions"] > 0 else score
+        if wsb["mentions"] > 0:
+            wsb_weight = min(0.50, math.log1p(wsb["mentions"]) / 10)
+            blended = score * (1 - wsb_weight) + wsb["sentiment"] * wsb_weight
+        else:
+            blended = score
+        sentiments[symbol] = blended
 
     # SPY benchmark for buy alert context
     try:
-        spy_bars    = client.get_bars("SPY", timeframe="1Day", limit=2)
+        spy_bars     = client.get_bars("SPY", timeframe="1Day", limit=2)
         vs_spy_today = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
     except Exception:
         vs_spy_today = 0.0
@@ -205,7 +216,7 @@ def run(mode: str = "paper"):
             if bars is None or bars.empty:
                 continue
 
-            latest      = bars.iloc[-1]
+            latest        = bars.iloc[-1]
             current_price = float(latest["close"])
             current_atr   = float(latest.get("atr", 0) or 0)
             regime_code   = regime_clf.predict(latest)
@@ -215,6 +226,7 @@ def run(mode: str = "paper"):
             if symbol in positions:
                 pos_state   = _load_position_state(con, symbol)
                 entry_price = float(getattr(positions[symbol], "avg_entry_price", 0) or 0)
+                pos_qty     = float(positions[symbol].qty)
                 pnl_pct     = client.get_position_pnl_pct(symbol)
 
                 # Update high-water-mark in DB
@@ -224,26 +236,40 @@ def run(mode: str = "paper"):
                         _upsert_position_state(con, symbol, entry_price, new_hwm, current_atr)
                     hwm = new_hwm
                 else:
-                    # First time seeing this position — seed the state
                     _upsert_position_state(con, symbol, entry_price, current_price, current_atr)
                     hwm = current_price
+
+                # Take-profit: 3×ATR or 6%, capped at 8%
+                if entry_price > 0 and current_atr > 0:
+                    tp_pct = max(0.06, min(0.08, (3 * current_atr) / entry_price))
+                    if pnl_pct >= tp_pct:
+                        tp_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
+                        if tp_result:
+                            tg.alert_sell(symbol, pos_qty, current_price, pnl_pct,
+                                          reason="take-profit")
+                            log_trade(con, symbol, "SELL_TP", pos_qty, current_price, 0,
+                                      regime_name, portfolio_value, pnl_pct)
+                            _delete_position_state(con, symbol)
+                        else:
+                            logger.error(f"SELL_TP failed for {symbol} — will retry")
+                        continue
 
                 # ATR stop-loss check
                 stop_triggered = risk.check_stop_loss(
                     symbol, current_price, entry_price,
                     atr=current_atr, pnl_pct=pnl_pct,
                 )
-                # Trailing stop check (only if we're above entry)
+                # Trailing stop (only once position is meaningfully in profit)
                 trail_triggered = risk.check_trailing_stop(
                     symbol, current_price, hwm, current_atr
                 ) if hwm > entry_price * 1.005 else False
 
                 if stop_triggered or trail_triggered:
                     reason = "stop-loss" if stop_triggered else "trailing-stop"
-                    sell_result = client.sell(symbol)
+                    sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
                     if sell_result:
                         tg.alert_stop_loss(symbol, pnl_pct)
-                        log_trade(con, symbol, "SELL_STOP", 0, current_price, 0,
+                        log_trade(con, symbol, "SELL_STOP", pos_qty, current_price, 0,
                                   regime_name, portfolio_value, pnl_pct)
                         _delete_position_state(con, symbol)
                     else:
@@ -259,46 +285,45 @@ def run(mode: str = "paper"):
             action_str, pos_fraction = ensemble_signal(xgb_prob, lstm_prob, sentiment, regime_name)
             action = action_to_int(action_str)
 
-            # Apply macro cap and ATR-based position sizing
             pos_fraction = pos_fraction * macro_cap
-
-            # Portfolio-relative sizing: use actual equity, not fixed DCA schedule
-            # pos_fraction (0.12–0.20) × portfolio_value gives correct scale regardless
-            # of how much the account has grown or shrunk.
-            notional = portfolio_value * pos_fraction
+            notional     = portfolio_value * pos_fraction
 
             if action == 1:  # Buy
-                if risk.approve_buy(symbol, notional, portfolio_value,
-                                    portfolio_value, positions):
-                    result = client.buy(symbol, notional)
+                # Cash gate: never commit more than 95% of settled cash
+                if notional > available_cash * 0.95:
+                    logger.warning(
+                        f"BUY {symbol} skipped — need ${notional:.2f}, "
+                        f"available cash ${available_cash:.2f}"
+                    )
+                elif risk.approve_buy(symbol, notional, portfolio_value,
+                                      portfolio_value, positions):
+                    result = client.buy(symbol, notional, limit_price=current_price)
                     if result:
                         tg.alert_buy(symbol, notional / current_price, current_price,
                                      regime_name, portfolio_value, vs_spy_today * 100)
                         log_trade(con, symbol, "BUY", notional / current_price,
                                   current_price, notional, regime_name, portfolio_value, 0)
-                        # Seed trailing-stop state for this new position
                         _upsert_position_state(con, symbol, current_price,
                                                current_price, current_atr)
 
-            elif action == 2:  # Sell signal on a held position (checked above; handle missed case)
-                if symbol in positions:
-                    is_day_trade = _opened_today(con, symbol)
-                    if is_day_trade and not risk.check_pdt(is_day_trade=True):
-                        logger.warning(f"PDT limit reached — skipping sell of {symbol}")
+            elif action == 2 and symbol in positions:  # Sell signal
+                is_day_trade = _opened_today(con, symbol)
+                if is_day_trade and not risk.check_pdt(is_day_trade=True):
+                    logger.warning(f"PDT limit reached — skipping sell of {symbol}")
+                else:
+                    pos_qty  = float(positions[symbol].qty)
+                    pnl_pct  = client.get_position_pnl_pct(symbol)
+                    sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
+                    if sell_result:
+                        if is_day_trade:
+                            risk.record_day_trade()
+                        tg.alert_sell(symbol, pos_qty, current_price, pnl_pct,
+                                      reason="signal")
+                        log_trade(con, symbol, "SELL", pos_qty, current_price,
+                                  0, regime_name, portfolio_value, pnl_pct)
+                        _delete_position_state(con, symbol)
                     else:
-                        pnl_pct = client.get_position_pnl_pct(symbol)
-                        sell_result = client.sell(symbol)
-                        if sell_result:
-                            if is_day_trade:
-                                risk.record_day_trade()
-                            tg.alert_sell(symbol, float(positions[symbol].qty),
-                                          current_price, pnl_pct)
-                            log_trade(con, symbol, "SELL",
-                                      float(positions[symbol].qty), current_price,
-                                      0, regime_name, portfolio_value, pnl_pct)
-                            _delete_position_state(con, symbol)
-                        else:
-                            logger.error(f"SELL order rejected for {symbol} — NOT logged")
+                        logger.error(f"SELL order rejected for {symbol} — NOT logged")
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

@@ -8,8 +8,9 @@ from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
 LSTM_MODEL_PATH = Path("models/saved/lstm_predictor.pt")
-SEQ_LEN = 60
+SEQ_LEN         = 60
 FORWARD_PERIODS = 5
+PATIENCE        = 3   # early stopping: halt if val loss doesn't improve for this many epochs
 
 
 class _LSTMModel(nn.Module):
@@ -55,7 +56,7 @@ class LSTMPredictor:
             logger.warning("No LSTM model found — will need training.")
 
     def _make_sequences(self, df: pd.DataFrame):
-        data = df[FEATURE_COLS].values.astype(np.float32)
+        data  = df[FEATURE_COLS].values.astype(np.float32)
         future_close = df["close"].shift(-FORWARD_PERIODS)
         labels = (future_close > df["close"]).astype(float).values
 
@@ -65,35 +66,69 @@ class LSTMPredictor:
             y.append(labels[i])
         return np.array(X), np.array(y, dtype=np.float32)
 
-    def train(self, df: pd.DataFrame, epochs: int = 20, batch_size: int = 64):
+    def train(self, df: pd.DataFrame, epochs: int = 50, batch_size: int = 64):
         X, y = self._make_sequences(df)
         if len(X) == 0:
             logger.error("Not enough data to train LSTM (need at least 65 rows).")
             return
 
-        X_t = torch.tensor(X).to(self.device)
-        y_t = torch.tensor(y).unsqueeze(1).to(self.device)
+        # Temporal 80/20 split — no shuffle across the split boundary to prevent lookahead
+        split = int(len(X) * 0.8)
+        X_train, X_val = X[:split], X[split:]
+        y_train, y_val = y[:split], y[split:]
+
+        X_train_t = torch.tensor(X_train).to(self.device)
+        y_train_t = torch.tensor(y_train).unsqueeze(1).to(self.device)
+        X_val_t   = torch.tensor(X_val).to(self.device)
+        y_val_t   = torch.tensor(y_val).unsqueeze(1).to(self.device)
 
         self.model = _LSTMModel(input_size=len(FEATURE_COLS)).to(self.device)
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
-        criterion = nn.BCELoss()
-        dataset = torch.utils.data.TensorDataset(X_t, y_t)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        optimizer  = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        criterion  = nn.BCELoss()
+        dataset    = torch.utils.data.TensorDataset(X_train_t, y_train_t)
+        loader     = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+        best_val_loss = float("inf")
+        wait          = 0
+        LSTM_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         for epoch in range(epochs):
             self.model.train()
-            total_loss = 0.0
+            train_loss = 0.0
             for xb, yb in loader:
                 optimizer.zero_grad()
                 loss = criterion(self.model(xb), yb)
                 loss.backward()
                 optimizer.step()
-                total_loss += loss.item()
-            logger.info(f"LSTM epoch {epoch + 1}/{epochs} — loss={total_loss / len(loader):.4f}")
+                train_loss += loss.item()
+            train_loss /= len(loader)
 
-        LSTM_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.model.state_dict(), LSTM_MODEL_PATH)
-        logger.info(f"LSTM saved to {LSTM_MODEL_PATH}")
+            self.model.eval()
+            with torch.no_grad():
+                val_loss = criterion(self.model(X_val_t), y_val_t).item()
+
+            logger.info(
+                f"LSTM epoch {epoch + 1}/{epochs} — "
+                f"train_loss={train_loss:.4f}, val_loss={val_loss:.4f}"
+            )
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                wait = 0
+                torch.save(self.model.state_dict(), LSTM_MODEL_PATH)
+            else:
+                wait += 1
+                if wait >= PATIENCE:
+                    logger.info(
+                        f"Early stopping at epoch {epoch + 1} "
+                        f"(best val_loss={best_val_loss:.4f})"
+                    )
+                    break
+
+        # Restore best weights (saved when val_loss was lowest)
+        self.model.load_state_dict(torch.load(LSTM_MODEL_PATH, map_location=self.device))
+        self.model.eval()
+        logger.info(f"LSTM training complete — best val_loss={best_val_loss:.4f}")
 
     def predict_proba(self, df: pd.DataFrame) -> float:
         """Return probability (0-1) that price will be higher. Needs full bars DataFrame."""

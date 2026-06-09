@@ -58,6 +58,8 @@ SECTOR_MAP: dict[str, str] = {
     "QQQ":  "Tech_ETF",        "ARKK": "Tech_ETF",
 }
 
+INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", 10_000))
+
 # --- RL agent ---
 RL_TIMESTEPS = 1_000_000
 RL_LEARNING_RATE = 3e-4
