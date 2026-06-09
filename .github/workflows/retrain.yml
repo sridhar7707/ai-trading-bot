@@ -42,13 +42,25 @@ jobs:
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: python scripts/save_model_hf.py
 
-      - name: Restore trade database for weekly report
+      - name: Pull trade database from HuggingFace
         if: always()
-        uses: actions/cache/restore@v4
-        with:
-          path: trades.db
-          key: trades-db-${{ github.run_id }}
-          restore-keys: trades-db-
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+        run: |
+          python -c "
+          import os, shutil
+          token = os.environ.get('HF_TOKEN', '')
+          repo = os.environ.get('HF_REPO_ID', '')
+          if not token or not repo:
+              print('HF secrets not set — skipping pull')
+          else:
+              from huggingface_hub import hf_hub_download
+              cached = hf_hub_download(repo_id=repo, filename='trades.db', token=token, force_download=True)
+              shutil.copy(cached, 'trades.db')
+              print('trades.db pulled from HuggingFace')
+          "
 
       - name: Send weekly report
         if: always()
