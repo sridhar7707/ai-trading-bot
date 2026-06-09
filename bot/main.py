@@ -1,6 +1,8 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
 import argparse
 import sqlite3
+import sys
+import traceback
 from datetime import datetime, timezone
 from loguru import logger
 
@@ -161,4 +163,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", default="paper", choices=["paper", "live"])
     args = parser.parse_args()
-    run(mode=args.mode)
+    try:
+        run(mode=args.mode)
+    except Exception:
+        logger.error("Trading cycle crashed with unhandled exception:\n" + traceback.format_exc())
+        sys.exit(1)
