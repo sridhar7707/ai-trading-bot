@@ -1,3 +1,4 @@
+import math
 import os
 import numpy as np
 import pandas as pd
@@ -100,9 +101,16 @@ class LSTMPredictor:
             return 0.5
         try:
             seq = df[FEATURE_COLS].values[-SEQ_LEN:].astype(np.float32)
+            if np.isnan(seq).any():
+                logger.warning("LSTM predict: NaN in feature sequence — returning 0.5")
+                return 0.5
             x = torch.tensor(seq).unsqueeze(0).to(self.device)
             with torch.no_grad():
-                return float(self.model(x).item())
+                result = float(self.model(x).item())
+            if math.isnan(result):
+                logger.warning("LSTM predict: model output is NaN — returning 0.5")
+                return 0.5
+            return result
         except Exception as e:
             logger.error(f"LSTM predict failed: {e}")
             return 0.5

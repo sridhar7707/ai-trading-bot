@@ -35,9 +35,15 @@ class XGBPredictor:
         df["target"] = (df["close"].shift(-FORWARD_PERIODS) > df["close"]).astype(int)
         df.dropna(inplace=True)
 
-        mask = df[FEATURE_COLS].notna().all(axis=1)
-        X = df.loc[mask, FEATURE_COLS]
-        y = df.loc[mask, "target"]
+        # Temporal split — train only on the first 80% so the model never sees
+        # future prices during training (prevents lookahead bias / overfitting).
+        split_idx = int(len(df) * 0.8)
+        train_df = df.iloc[:split_idx]
+        val_df = df.iloc[split_idx:]
+
+        mask = train_df[FEATURE_COLS].notna().all(axis=1)
+        X = train_df.loc[mask, FEATURE_COLS]
+        y = train_df.loc[mask, "target"]
 
         self.model = XGBClassifier(
             n_estimators=500,
@@ -49,6 +55,20 @@ class XGBPredictor:
             random_state=42,
         )
         self.model.fit(X, y)
+
+        val_mask = val_df[FEATURE_COLS].notna().all(axis=1)
+        X_val = val_df.loc[val_mask, FEATURE_COLS]
+        y_val = val_df.loc[val_mask, "target"]
+        if len(X_val) > 0:
+            val_acc = float((self.model.predict(X_val) == y_val).mean())
+            if val_acc < 0.50:
+                logger.warning(
+                    f"XGBoost val accuracy {val_acc:.3f} is below chance — model may have degraded. "
+                    "Review training data before deploying."
+                )
+            else:
+                logger.info(f"XGBoost val accuracy (holdout 20%): {val_acc:.3f}")
+
         os.makedirs(os.path.dirname(XGB_MODEL_PATH), exist_ok=True)
         joblib.dump(self.model, XGB_MODEL_PATH)
         logger.info(f"XGBoost trained and saved to {XGB_MODEL_PATH}")

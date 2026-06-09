@@ -3,6 +3,8 @@ import pandas as pd
 from loguru import logger
 from config import ALPACA_KEY, ALPACA_SECRET, ALPACA_BASE_URL, MAX_POSITION_PCT
 
+MIN_NOTIONAL = 1.0  # Alpaca minimum notional for fractional orders
+
 
 class AlpacaClient:
     def __init__(self):
@@ -24,6 +26,9 @@ class AlpacaClient:
 
     def get_latest_price(self, symbol: str) -> float:
         bar = self.api.get_latest_bar(symbol)
+        if bar is None:
+            logger.debug(f"No bar data returned for {symbol}")
+            raise ValueError("Price data unavailable")
         return bar.c
 
     def get_bars(self, symbol: str, timeframe: str = "5Min", limit: int = 100) -> pd.DataFrame:
@@ -32,6 +37,9 @@ class AlpacaClient:
         return bars
 
     def buy(self, symbol: str, notional: float) -> dict | None:
+        if notional < MIN_NOTIONAL:
+            logger.warning(f"BUY skipped {symbol} — notional ${notional:.2f} below ${MIN_NOTIONAL} minimum")
+            return None
         try:
             order = self.api.submit_order(
                 symbol=symbol,

@@ -1,3 +1,4 @@
+import math
 from loguru import logger
 
 WEIGHTS = {
@@ -39,6 +40,13 @@ def ensemble_signal(
         WEIGHTS["regime"]    * regime_score
     )
 
+    if math.isnan(score):
+        logger.warning(
+            f"Ensemble score is NaN — inputs: xgb={xgb_prob}, lstm={lstm_prob}, "
+            f"sentiment={sentiment_score}, regime={regime}. Defaulting to HOLD."
+        )
+        return "HOLD", 0.00
+
     logger.debug(
         f"Ensemble score={score:.3f} "
         f"(xgb={xgb_prob:.2f}, lstm={lstm_prob:.2f}, "
@@ -50,9 +58,9 @@ def ensemble_signal(
     elif score > 0.60:
         return "BUY",         0.12
     elif score < 0.30:
-        return "STRONG_SELL", 1.00
+        return "STRONG_SELL", 0.00
     elif score < 0.40:
-        return "SELL",        0.50
+        return "SELL",        0.00
     else:
         return "HOLD",        0.00
 

@@ -51,7 +51,8 @@ def alert_daily_loss_limit(portfolio: float, pnl_pct: float):
 
 
 def alert_daily_summary(day_return: float, vs_spy: float, positions: list, cash: float, trades: int, day_trades: int):
-    today = datetime.now().strftime("%B %-d, %Y") if hasattr(datetime, 'strftime') else datetime.now().strftime("%B %d, %Y")
+    now = datetime.now()
+    today = now.strftime(f"%B {now.day}, %Y")  # platform-safe (no %-d)
     outperf = day_return - vs_spy
     trophy = " 🏆" if outperf > 0 else ""
     _send(

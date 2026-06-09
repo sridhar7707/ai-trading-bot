@@ -35,7 +35,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Volume
     df["obv"] = ta.volume.OnBalanceVolumeIndicator(close, volume).on_balance_volume()
     df["volume_sma"] = volume.rolling(20).mean()
-    df["volume_ratio"] = volume / df["volume_sma"]
+    df["volume_ratio"] = (volume / df["volume_sma"]).replace([np.inf, -np.inf], np.nan)
 
     # Price action
     df["returns"] = close.pct_change()

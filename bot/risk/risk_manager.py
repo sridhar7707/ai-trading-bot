@@ -27,7 +27,7 @@ class RiskManager:
         logger.info(f"Daily risk reset — portfolio=${portfolio_value:.2f}, day_trades_used={len(self.day_trade_log)}/{PDT_MAX_DAY_TRADES}")
 
     def check_daily_loss(self, current_value: float) -> bool:
-        if self.daily_start_value is None:
+        if self.daily_start_value is None or self.daily_start_value == 0.0:
             return True
         pnl_pct = (current_value - self.daily_start_value) / self.daily_start_value
         if pnl_pct <= -DAILY_LOSS_LIMIT_PCT:
