@@ -126,6 +126,15 @@ class AlpacaClient:
             logger.error(f"SELL failed {symbol}: {e}")
             return None
 
+    def get_open_order_symbols(self) -> set[str]:
+        """Return symbols that have a pending open order — avoids duplicate limit submissions."""
+        try:
+            orders = self.api.list_orders(status="open")
+            return {o.symbol for o in orders}
+        except Exception as e:
+            logger.warning(f"Could not fetch open orders: {e}")
+            return set()
+
     def get_position_value(self, symbol: str) -> float:
         positions = self.get_positions()
         if symbol not in positions:

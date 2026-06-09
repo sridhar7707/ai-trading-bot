@@ -58,7 +58,8 @@ SECTOR_MAP: dict[str, str] = {
     "QQQ":  "Tech_ETF",        "ARKK": "Tech_ETF",
 }
 
-INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", 10_000))
+INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))
+EARNINGS_WINDOW_DAYS = int(os.getenv("EARNINGS_WINDOW_DAYS", 2))   # block buys ±N days from earnings
 
 # --- RL agent ---
 RL_TIMESTEPS = 1_000_000

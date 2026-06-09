@@ -5,8 +5,9 @@ import joblib
 from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
-XGB_MODEL_PATH = Path("models/saved/xgb_predictor.pkl")
+XGB_MODEL_PATH  = Path("models/saved/xgb_predictor.pkl")
 FORWARD_PERIODS = 5
+MIN_MOVE_PCT    = 0.003  # require ≥0.3% move to label as "up" — filters 5-min microstructure noise
 
 
 class XGBPredictor:
@@ -32,7 +33,8 @@ class XGBPredictor:
             return
 
         df = df.copy()
-        df["target"] = (df["close"].shift(-FORWARD_PERIODS) > df["close"]).astype(int)
+        future_return = (df["close"].shift(-FORWARD_PERIODS) - df["close"]) / df["close"]
+        df["target"] = (future_return > MIN_MOVE_PCT).astype(int)
         df.dropna(inplace=True)
 
         # Temporal split — train only on the first 80% so the model never sees
