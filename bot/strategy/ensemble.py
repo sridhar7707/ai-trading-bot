@@ -1,11 +1,14 @@
 import math
 from loguru import logger
 
+# Fix #10: macro_score added as a 5th signal.
+# Weights redistributed so they still sum to 1.0.
 WEIGHTS = {
-    "xgb":       0.30,
-    "lstm":      0.30,
-    "sentiment": 0.20,
+    "xgb":       0.25,
+    "lstm":      0.25,
+    "sentiment": 0.15,
     "regime":    0.20,
+    "macro":     0.15,
 }
 
 STRONG_BUY_THRESHOLD  = 0.70
@@ -30,36 +33,42 @@ def ensemble_signal(
     lstm_prob: float,
     sentiment_score: float,
     regime: str,
+    macro_score: float = 0.5,
 ) -> tuple[str, float]:
     """
     Combine model signals into a final action and position fraction.
+
+    Args:
+        macro_score: macro environment score in [0, 1] — 0 bearish, 1 bullish, 0.5 neutral.
+                     Defaults to 0.5 (neutral) for backtest / when FRED is unavailable.
 
     Returns:
         (action, position_fraction)
         action: STRONG_BUY | BUY | HOLD | SELL | STRONG_SELL
         position_fraction: fraction of portfolio to allocate (0.0 for HOLD/SELL)
     """
-    regime_score = REGIME_SCORES.get(regime, 0.5)
+    regime_score   = REGIME_SCORES.get(regime, 0.5)
     sentiment_norm = (sentiment_score + 1.0) / 2.0  # [-1, +1] → [0, 1]
 
     score = (
         WEIGHTS["xgb"]       * xgb_prob +
         WEIGHTS["lstm"]      * lstm_prob +
         WEIGHTS["sentiment"] * sentiment_norm +
-        WEIGHTS["regime"]    * regime_score
+        WEIGHTS["regime"]    * regime_score +
+        WEIGHTS["macro"]     * macro_score
     )
 
     if math.isnan(score):
         logger.warning(
             f"Ensemble score is NaN — inputs: xgb={xgb_prob}, lstm={lstm_prob}, "
-            f"sentiment={sentiment_score}, regime={regime}. Defaulting to HOLD."
+            f"sentiment={sentiment_score}, regime={regime}, macro={macro_score}. Defaulting to HOLD."
         )
         return "HOLD", 0.00
 
     logger.debug(
         f"Ensemble score={score:.3f} "
         f"(xgb={xgb_prob:.2f}, lstm={lstm_prob:.2f}, "
-        f"sentiment={sentiment_score:.2f}, regime={regime})"
+        f"sentiment={sentiment_score:.2f}, regime={regime}, macro={macro_score:.2f})"
     )
 
     if score > STRONG_BUY_THRESHOLD:

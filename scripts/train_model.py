@@ -50,12 +50,11 @@ def main():
     xgb = XGBPredictor()
     xgb.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
 
-    # Use SPY as primary single-asset series for sequence models
-    primary = df[df["symbol"] == "SPY"].drop(columns=["symbol", "regime"], errors="ignore")
-
-    logger.info("Training LSTM predictor...")
+    # Train LSTM on all symbols combined (normalized features remove price-unit cross-symbol bias).
+    # Using full dataset instead of SPY-only exposes the model to different volatility regimes.
+    logger.info("Training LSTM predictor on full multi-symbol dataset...")
     lstm = LSTMPredictor()
-    lstm.train(primary)
+    lstm.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
 
     logger.info("Training PPO RL agent...")
     agent = RLAgent()

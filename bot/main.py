@@ -25,17 +25,29 @@ from bot.strategy.regime_classifier import RegimeClassifier
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from bot.strategy.sentiment import collect_headlines, batch_sentiment_scores
-from bot.strategy.macro import get_macro_position_cap
+from bot.strategy.macro import _fetch_macro_raw, _compute_from_raw
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
 from bot.risk.risk_manager import RiskManager
 import bot.monitor.telegram_bot as tg
 
+# Fix #12 — ensure logs/ exists before loguru tries to create the file
+os.makedirs("logs", exist_ok=True)
 logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
 
-# ETFs have no earnings dates — skip the calendar check for these symbols
-_ETF_SYMBOLS = {"VOO", "QQQ", "SPY", "VTI", "ARKK"}
-_EARNINGS_DB_TTL = 12 * 3600  # seconds
+# Fix #11 — NYSE market holidays checked inside _is_market_hours()
+_US_MARKET_HOLIDAYS = {
+    "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18",
+    "2025-05-26", "2025-06-19", "2025-07-04", "2025-09-01",
+    "2025-11-27", "2025-12-25",
+    "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
+    "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
+    "2026-11-26", "2026-12-25",
+}
+
+_ETF_SYMBOLS      = {"VOO", "QQQ", "SPY", "VTI", "ARKK"}
+_EARNINGS_DB_TTL  = 12 * 3600   # seconds
+_MACRO_DB_TTL     = 4  * 3600   # match macro.py in-process TTL
 
 
 def _is_market_hours() -> bool:
@@ -43,6 +55,9 @@ def _is_market_hours() -> bool:
     from datetime import timedelta
     et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
     if et.weekday() >= 5:
+        return False
+    if et.strftime("%Y-%m-%d") in _US_MARKET_HOLIDAYS:
+        logger.info("NYSE holiday — skipping cycle.")
         return False
     base = et.replace(second=0, microsecond=0)
     tradeable_open  = base.replace(hour=9,  minute=30) + timedelta(minutes=MARKET_OPEN_BUFFER_MINS)
@@ -72,16 +87,20 @@ def init_db():
             high_water_mark REAL, atr_at_entry REAL, opened_at TEXT
         )
     """)
-    # Persists RiskManager state across the 5-minute subprocess restarts
     con.execute("""
         CREATE TABLE IF NOT EXISTS risk_state (
             key TEXT PRIMARY KEY, value TEXT, updated_at TEXT
         )
     """)
-    # Persists earnings calendar lookups across subprocess restarts (12-hour TTL)
     con.execute("""
         CREATE TABLE IF NOT EXISTS earnings_cache (
             symbol TEXT PRIMARY KEY, near_earnings INTEGER, cached_at TEXT
+        )
+    """)
+    # Fix #4 — DB-backed macro cache survives subprocess restarts (4h TTL)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS macro_cache (
+            key TEXT PRIMARY KEY, value REAL, cached_at TEXT
         )
     """)
     con.commit()
@@ -106,10 +125,9 @@ def _opened_today(con, symbol: str) -> bool:
     return row is not None
 
 
-# ── Risk state persistence (survives per-cycle subprocess restarts) ───────────
+# ── Risk state persistence ────────────────────────────────────────────────────
 
 def _load_risk_state(con) -> tuple[float | None, list[str]]:
-    """Returns (daily_start_value, day_trade_date_strings) from DB for today."""
     today = date.today().isoformat()
     rows  = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
     daily_start: float | None = None
@@ -127,7 +145,6 @@ def _load_risk_state(con) -> tuple[float | None, list[str]]:
 
 
 def _save_risk_state(con, risk: RiskManager):
-    """Write RiskManager state to DB so the next cycle can restore it."""
     today  = date.today().isoformat()
     trades = json.dumps([d.isoformat() for d in risk.day_trade_log])
     start  = str(risk.daily_start_value) if risk.daily_start_value is not None else ""
@@ -136,19 +153,47 @@ def _save_risk_state(con, risk: RiskManager):
                      ("day_trade_dates",   trades)]:
         con.execute(
             "INSERT OR REPLACE INTO risk_state (key, value, updated_at) VALUES (?,?,?)",
-            (key, val, today)
+            (key, val, datetime.now(timezone.utc).isoformat())
         )
     con.commit()
 
 
-# ── Earnings calendar (DB-backed cache, persists across subprocess restarts) ──
+# ── Macro cache (DB-backed, fix #4) ──────────────────────────────────────────
+
+def _get_macro_from_db(con) -> tuple[float, float]:
+    """
+    Returns (macro_score, macro_cap) from the DB cache when fresh (<4h old),
+    otherwise fetches from FRED and writes to DB.
+    Survives the 5-minute subprocess restart cycle that killed the in-process cache.
+    """
+    now  = time.time()
+    rows = {r[0]: (float(r[1]), r[2])
+            for r in con.execute("SELECT key, value, cached_at FROM macro_cache")}
+    if "score" in rows and "cap" in rows:
+        try:
+            cached_ts = datetime.fromisoformat(rows["score"][1]).timestamp()
+            if now - cached_ts < _MACRO_DB_TTL:
+                return rows["score"][0], rows["cap"][0]
+        except (ValueError, TypeError):
+            pass
+    try:
+        result = _compute_from_raw(_fetch_macro_raw())
+    except Exception as e:
+        logger.warning(f"Macro fetch failed — using neutral defaults: {e}")
+        result = {"score": 0.5, "cap": 1.0}
+    ts = datetime.now(timezone.utc).isoformat()
+    for key in ("score", "cap"):
+        con.execute(
+            "INSERT OR REPLACE INTO macro_cache (key, value, cached_at) VALUES (?,?,?)",
+            (key, result[key], ts)
+        )
+    con.commit()
+    return result["score"], result["cap"]
+
+
+# ── Earnings calendar ─────────────────────────────────────────────────────────
 
 def _is_near_earnings(con, symbol: str) -> bool:
-    """
-    True if an earnings announcement is within EARNINGS_WINDOW_DAYS.
-    ETFs are always False. Result cached in DB for 12 hours.
-    Fails open (False) if the yfinance fetch fails.
-    """
     if symbol in _ETF_SYMBOLS:
         return False
     now = time.time()
@@ -179,7 +224,8 @@ def _is_near_earnings(con, symbol: str) -> bool:
                 if near:
                     logger.info(f"Earnings guard: {symbol} — {nearest} within {EARNINGS_WINDOW_DAYS}d")
     except Exception as e:
-        logger.debug(f"Earnings check failed for {symbol}: {e}")
+        # Fix #8 — WARNING not DEBUG so failed fetches are visible; fails open (safe = no trade)
+        logger.warning(f"Earnings check failed for {symbol} — assuming safe: {e}")
         near = False
     con.execute(
         "INSERT OR REPLACE INTO earnings_cache (symbol, near_earnings, cached_at) VALUES (?,?,?)",
@@ -216,6 +262,13 @@ def _delete_position_state(con, symbol: str):
     con.commit()
 
 
+def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: bool):
+    """Fix #3 — record PDT day trade for ANY exit (stop, trail, TP, signal) opened today."""
+    if sell_success and _opened_today(con, symbol):
+        risk.record_day_trade()
+        _save_risk_state(con, risk)
+
+
 def _signal_sell(con, client, symbol, pos_qty, current_price,
                  regime_name, portfolio_value, is_from_stop=False,
                  reason="stop-loss", pnl_pct=0.0) -> bool:
@@ -247,10 +300,9 @@ def end_of_day_summary():
     trades_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
     ).fetchone()[0]
-    day_trade_count = con.execute(
-        "SELECT COUNT(*) FROM trades WHERE action='BUY' AND timestamp LIKE ?",
-        (today + "%",)
-    ).fetchone()[0]
+    # Fix #9 — day trades are round-trips (buy+sell same day), not just BUY count
+    _, day_trade_dates = _load_risk_state(con)
+    day_trade_count = day_trade_dates.count(today)
     daily_start, _ = _load_risk_state(con)
     portfolio_value, available_cash = client.get_account_summary()
     positions = client.get_positions()
@@ -269,6 +321,7 @@ def end_of_day_summary():
         day_trades=day_trade_count,
     )
     logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}")
+    con.close()
 
 
 # ── Main trading cycle ────────────────────────────────────────────────────────
@@ -280,7 +333,6 @@ def run(mode: str = "paper"):
 
     con = init_db()
 
-    # Restore RiskManager state from DB (persists across 5-min subprocess restarts)
     daily_start, day_trade_dates = _load_risk_state(con)
     risk = RiskManager(daily_start_value=daily_start, day_trade_dates=day_trade_dates)
 
@@ -294,14 +346,16 @@ def run(mode: str = "paper"):
     open_order_syms = client.get_open_order_symbols()
 
     risk.reset_daily(portfolio_value)
-    _save_risk_state(con, risk)   # persist so daily_start survives next restart
+    _save_risk_state(con, risk)
 
     logger.info(
         f"Portfolio: ${portfolio_value:.2f} | Cash: ${available_cash:.2f} | "
         f"Open positions: {list(positions.keys())} | Pending orders: {open_order_syms}"
     )
-    macro_cap = get_macro_position_cap()
-    logger.info(f"Macro position cap: {macro_cap:.1f}x")
+
+    # Fix #4 — macro now from DB cache (survives subprocess restart)
+    macro_score, macro_cap = _get_macro_from_db(con)
+    logger.info(f"Macro: score={macro_score:.2f}, cap={macro_cap:.1f}x")
 
     # Phase 1 — parallel fetch: bars + headlines
     def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, list[str]]:
@@ -367,7 +421,10 @@ def run(mode: str = "paper"):
             xgb_prob   = xgb.predict_proba(latest)
             lstm_prob  = lstm.predict_proba(bars)
             sentiment  = sentiments.get(symbol, 0.0)
-            action_str, pos_fraction = ensemble_signal(xgb_prob, lstm_prob, sentiment, regime_name)
+            # Fix #10 — macro_score now feeds into the ensemble (not just size cap)
+            action_str, pos_fraction = ensemble_signal(
+                xgb_prob, lstm_prob, sentiment, regime_name, macro_score=macro_score
+            )
             action = action_to_int(action_str)
 
             # ── Exit / management for held positions ──────────────────────────
@@ -375,8 +432,8 @@ def run(mode: str = "paper"):
                 pos_state   = _load_position_state(con, symbol)
                 entry_price = float(getattr(positions[symbol], "avg_entry_price", 0) or 0)
                 pos_qty     = float(positions[symbol].qty)
-                # Read P&L from the already-fetched positions dict — no extra API call
-                pnl_pct     = float(positions[symbol].unrealized_plpc)
+                # Fix #7 — unrealized_plpc can be None on new/partially filled positions
+                pnl_pct     = float(positions[symbol].unrealized_plpc or 0)
 
                 if pos_state:
                     new_hwm = max(pos_state["high_water_mark"], current_price)
@@ -391,25 +448,37 @@ def run(mode: str = "paper"):
                 if entry_price > 0 and current_atr > 0:
                     tp_pct = max(0.06, min(0.08, (3 * current_atr) / entry_price))
                     if pnl_pct >= tp_pct:
-                        _signal_sell(con, client, symbol, pos_qty, current_price,
-                                     regime_name, portfolio_value,
-                                     reason="take-profit", pnl_pct=pnl_pct)
+                        success = _signal_sell(
+                            con, client, symbol, pos_qty, current_price,
+                            regime_name, portfolio_value,
+                            reason="take-profit", pnl_pct=pnl_pct
+                        )
+                        # Fix #3 — TP exit opened today is a PDT day trade
+                        _maybe_record_day_trade(con, risk, symbol, success)
                         continue
 
                 # ② ATR stop-loss
                 if risk.check_stop_loss(symbol, current_price, entry_price,
                                         atr=current_atr, pnl_pct=pnl_pct):
-                    _signal_sell(con, client, symbol, pos_qty, current_price,
-                                 regime_name, portfolio_value,
-                                 is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct)
+                    success = _signal_sell(
+                        con, client, symbol, pos_qty, current_price,
+                        regime_name, portfolio_value,
+                        is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct
+                    )
+                    # Fix #3 — stop exit opened today is a PDT day trade
+                    _maybe_record_day_trade(con, risk, symbol, success)
                     continue
 
                 # ③ Trailing stop (armed once meaningfully in profit)
                 if hwm > entry_price * 1.005 and risk.check_trailing_stop(
                         symbol, current_price, hwm, current_atr):
-                    _signal_sell(con, client, symbol, pos_qty, current_price,
-                                 regime_name, portfolio_value,
-                                 is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct)
+                    success = _signal_sell(
+                        con, client, symbol, pos_qty, current_price,
+                        regime_name, portfolio_value,
+                        is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct
+                    )
+                    # Fix #3 — trailing stop opened today is a PDT day trade
+                    _maybe_record_day_trade(con, risk, symbol, success)
                     continue
 
                 # ④ Ensemble sell — exits when model conviction deteriorates
@@ -418,9 +487,11 @@ def run(mode: str = "paper"):
                     if is_day_trade and not risk.check_pdt(is_day_trade=True):
                         logger.warning(f"PDT limit — skipping signal sell of {symbol}")
                     else:
-                        success = _signal_sell(con, client, symbol, pos_qty, current_price,
-                                               regime_name, portfolio_value,
-                                               reason="signal", pnl_pct=pnl_pct)
+                        success = _signal_sell(
+                            con, client, symbol, pos_qty, current_price,
+                            regime_name, portfolio_value,
+                            reason="signal", pnl_pct=pnl_pct
+                        )
                         if success and is_day_trade:
                             risk.record_day_trade()
                             _save_risk_state(con, risk)
@@ -442,10 +513,11 @@ def run(mode: str = "paper"):
             pos_fraction = pos_fraction * macro_cap
             notional     = portfolio_value * pos_fraction
 
+            # Fix #1 — use running available_cash (decremented after each buy this cycle)
             if notional > available_cash * 0.95:
                 logger.warning(
                     f"BUY {symbol} skipped — need ${notional:.2f}, "
-                    f"available cash ${available_cash:.2f}"
+                    f"running cash ${available_cash:.2f}"
                 )
                 continue
             if not risk.approve_buy(symbol, notional, portfolio_value,
@@ -459,11 +531,14 @@ def run(mode: str = "paper"):
                 log_trade(con, symbol, "BUY", notional / current_price,
                           current_price, notional, regime_name, portfolio_value, 0)
                 _upsert_position_state(con, symbol, current_price, current_price, current_atr)
+                # Fix #1 — decrement running cash so subsequent buys this cycle see correct balance
+                available_cash -= notional
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
 
     logger.info("=== Trading cycle complete ===")
+    con.close()
 
 
 if __name__ == "__main__":

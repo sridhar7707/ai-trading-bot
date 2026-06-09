@@ -28,7 +28,7 @@ def label_regime(df: pd.DataFrame) -> pd.Series:
 
 
 REGIME_FEATURES = [
-    "rsi", "macd_diff", "bb_width", "atr",
+    "rsi", "macd_diff_pct", "bb_width", "atr_pct",
     "volume_ratio", "norm_close", "returns",
 ]
 
