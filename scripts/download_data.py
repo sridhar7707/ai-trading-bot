@@ -9,8 +9,9 @@ from config import SYMBOLS, BENCHMARK
 OUTPUT_DIR = "data/raw"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+import datetime
 START_DATE = "2021-01-01"
-END_DATE = "2024-12-31"
+END_DATE = datetime.date.today().isoformat()
 
 
 def download(symbol: str):
