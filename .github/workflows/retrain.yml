@@ -41,6 +41,13 @@ jobs:
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: python scripts/save_model_hf.py
 
+      - name: Restore trade database for weekly report
+        uses: actions/cache/restore@v4
+        with:
+          path: trades.db
+          key: trades-db-latest
+          restore-keys: trades-db-
+
       - name: Send weekly report
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}

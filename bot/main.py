@@ -13,7 +13,7 @@ from bot.strategy.regime_classifier import RegimeClassifier
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from bot.strategy.sentiment import get_sentiment_score
-from bot.strategy.macro import get_macro_signal, get_macro_position_cap
+from bot.strategy.macro import get_macro_position_cap
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
 from bot.risk.risk_manager import RiskManager
@@ -72,10 +72,8 @@ def run(mode: str = "paper"):
     positions = client.get_positions()
     risk.reset_daily(portfolio_value)
 
-    # Macro signal — computed once per cycle (slow FRED API call)
-    macro_score = get_macro_signal()
     macro_cap = get_macro_position_cap()
-    logger.info(f"Macro: score={macro_score:.2f}, position_cap={macro_cap:.1f}x")
+    logger.info(f"Macro position cap: {macro_cap:.1f}x")
 
     # Pre-fetch sentiment for all symbols (FinBERT + NewsAPI — slow, do once)
     sentiments: dict[str, float] = {}
@@ -106,9 +104,12 @@ def run(mode: str = "paper"):
             if symbol in positions:
                 pnl_pct = client.get_position_pnl_pct(symbol)
                 if risk.check_stop_loss(symbol, pnl_pct):
-                    client.sell(symbol)
-                    tg.alert_stop_loss(symbol, pnl_pct)
-                    log_trade(con, symbol, "SELL_STOP", 0, latest["close"], 0, regime_name, portfolio_value, pnl_pct)
+                    sell_result = client.sell(symbol)
+                    if sell_result:
+                        tg.alert_stop_loss(symbol, pnl_pct)
+                        log_trade(con, symbol, "SELL_STOP", 0, latest["close"], 0, regime_name, portfolio_value, pnl_pct)
+                    else:
+                        logger.error(f"SELL_STOP order rejected for {symbol} — position not closed")
                     continue
 
             # Ensemble signal
@@ -141,11 +142,14 @@ def run(mode: str = "paper"):
                         logger.warning(f"PDT limit reached — skipping sell of {symbol}")
                     else:
                         pnl_pct = client.get_position_pnl_pct(symbol)
-                        client.sell(symbol)
-                        if is_day_trade:
-                            risk.record_day_trade()
-                        tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
-                        log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
+                        sell_result = client.sell(symbol)
+                        if sell_result:
+                            if is_day_trade:
+                                risk.record_day_trade()
+                            tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
+                            log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
+                        else:
+                            logger.error(f"SELL order rejected for {symbol} — trade NOT logged")
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

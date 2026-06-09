@@ -8,7 +8,9 @@ venv/
 dist/
 build/
 .DS_Store
-*.log
+logs/*
+!logs/.gitkeep
+trades.db
 data/raw/
 data/processed/
 data/features/
