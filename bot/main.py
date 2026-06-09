@@ -8,13 +8,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone
 from loguru import logger
 
+from concurrent.futures import ThreadPoolExecutor
+import pandas as pd
+
 from config import SYMBOLS, TRADE_DB_PATH
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features
 from bot.strategy.regime_classifier import RegimeClassifier
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
-from bot.strategy.sentiment import get_sentiment_score
+from bot.strategy.sentiment import collect_headlines, batch_sentiment_scores
 from bot.strategy.macro import get_macro_position_cap
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
@@ -93,25 +96,56 @@ def run(mode: str = "paper"):
     macro_cap = get_macro_position_cap()
     logger.info(f"Macro position cap: {macro_cap:.1f}x")
 
-    # Pre-fetch sentiment for all symbols (FinBERT + NewsAPI — slow, do once)
+    # Phase 1 — parallel: fetch bars + headlines for all symbols simultaneously
+    def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, list[str]]:
+        try:
+            bars = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
+        except Exception as e:
+            logger.warning(f"Bar fetch failed for {symbol}: {e}")
+            bars = pd.DataFrame()
+        try:
+            headlines = collect_headlines(symbol)
+        except Exception as e:
+            logger.warning(f"Headline fetch failed for {symbol}: {e}")
+            headlines = []
+        return symbol, bars, headlines
+
+    with ThreadPoolExecutor(max_workers=min(len(SYMBOLS), 10)) as pool:
+        fetched = list(pool.map(_fetch_symbol, SYMBOLS))
+
+    bars_map = {sym: bars for sym, bars, _ in fetched}
+    symbol_headlines = {sym: headlines for sym, _, headlines in fetched}
+
+    # Phase 2 — single batch FinBERT pass across all symbols
+    finbert_scores = batch_sentiment_scores(symbol_headlines)
+
+    # Phase 3 — parallel WSB sentiment
+    def _wsb(symbol: str) -> tuple[str, dict]:
+        try:
+            return symbol, get_wsb_sentiment(symbol)
+        except Exception:
+            return symbol, {"mentions": 0, "sentiment": 0.0}
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        wsb_map = dict(pool.map(_wsb, SYMBOLS))
+
     sentiments: dict[str, float] = {}
     for symbol in SYMBOLS:
-        try:
-            news_score = get_sentiment_score(symbol)
-            wsb = get_wsb_sentiment(symbol)
-            if wsb["mentions"] > 0:
-                sentiments[symbol] = (news_score + wsb["sentiment"]) / 2
-            else:
-                sentiments[symbol] = news_score
-        except Exception as e:
-            logger.warning(f"Sentiment failed for {symbol}: {e}")
-            sentiments[symbol] = 0.0
+        wsb = wsb_map[symbol]
+        score = finbert_scores.get(symbol, 0.0)
+        sentiments[symbol] = (score + wsb["sentiment"]) / 2 if wsb["mentions"] > 0 else score
+
+    # Pre-fetch SPY daily bar once for vs-SPY comparison on buys
+    try:
+        spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
+        vs_spy_today = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
+    except Exception:
+        vs_spy_today = 0.0
 
     for symbol in SYMBOLS:
         try:
-            bars = client.get_bars(symbol, timeframe="5Min", limit=200)
-            bars = compute_features(bars)
-            if bars.empty:
+            bars = bars_map.get(symbol, pd.DataFrame())
+            if bars is None or bars.empty:
                 continue
 
             latest = bars.iloc[-1]
@@ -149,9 +183,7 @@ def run(mode: str = "paper"):
                 if risk.approve_buy(symbol, notional, portfolio_value, portfolio_value, len(positions)):
                     result = client.buy(symbol, notional)
                     if result:
-                        spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
-                        vs_spy = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
-                        tg.alert_buy(symbol, notional / price, price, regime_name, portfolio_value, vs_spy * 100)
+                        tg.alert_buy(symbol, notional / price, price, regime_name, portfolio_value, vs_spy_today * 100)
                         log_trade(con, symbol, "BUY", notional / price, price, notional, regime_name, portfolio_value, 0)
             elif action == 2:  # Sell
                 if symbol in positions:
