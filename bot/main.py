@@ -1,14 +1,15 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
 import argparse
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from loguru import logger
 
-from config import SYMBOLS, INITIAL_CAPITAL, MAX_POSITION_PCT, TRADE_DB_PATH
+logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
+
+from config import SYMBOLS, TRADE_DB_PATH
 from bot.execution.alpaca_client import AlpacaClient
-from bot.strategy.features import compute_features, FEATURE_COLS
+from bot.strategy.features import compute_features
 from bot.strategy.regime_classifier import RegimeClassifier
-from bot.strategy.rl_agent import RLAgent
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from bot.strategy.sentiment import get_sentiment_score
@@ -17,13 +18,12 @@ from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
 from bot.risk.risk_manager import RiskManager
 import bot.monitor.telegram_bot as tg
-import numpy as np
 
 
 def _opened_today(con, symbol: str) -> bool:
     """Return True if there is a BUY for this symbol recorded today (UTC).
-    log_trade also uses datetime.utcnow(), so both sides are UTC-consistent."""
-    today = datetime.utcnow().date().isoformat()
+    log_trade also uses timezone.utc, so both sides are UTC-consistent."""
+    today = datetime.now(timezone.utc).date().isoformat()
     row = con.execute(
         "SELECT 1 FROM trades WHERE symbol=? AND action='BUY' AND timestamp LIKE ? LIMIT 1",
         (symbol, today + "%"),
@@ -54,7 +54,7 @@ def init_db():
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct):
     con.execute(
         "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
-        (datetime.utcnow().isoformat(), symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct),
+        (datetime.now(timezone.utc).isoformat(), symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct),
     )
     con.commit()
 
@@ -64,7 +64,6 @@ def run(mode: str = "paper"):
     con = init_db()
     client = AlpacaClient()
     regime_clf = RegimeClassifier()
-    rl_agent = RLAgent()
     xgb = XGBPredictor()
     lstm = LSTMPredictor()
     risk = RiskManager()

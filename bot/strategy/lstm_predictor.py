@@ -1,5 +1,5 @@
 import math
-import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
@@ -7,7 +7,7 @@ import torch.nn as nn
 from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
-LSTM_MODEL_PATH = "models/saved/lstm_predictor.pt"
+LSTM_MODEL_PATH = Path("models/saved/lstm_predictor.pt")
 SEQ_LEN = 60
 FORWARD_PERIODS = 5
 
@@ -42,7 +42,7 @@ class LSTMPredictor:
         self._load()
 
     def _load(self):
-        if os.path.exists(LSTM_MODEL_PATH):
+        if LSTM_MODEL_PATH.exists():
             try:
                 self.model = _LSTMModel(input_size=len(FEATURE_COLS)).to(self.device)
                 self.model.load_state_dict(torch.load(LSTM_MODEL_PATH, map_location=self.device))
@@ -91,7 +91,7 @@ class LSTMPredictor:
                 total_loss += loss.item()
             logger.info(f"LSTM epoch {epoch + 1}/{epochs} — loss={total_loss / len(loader):.4f}")
 
-        os.makedirs(os.path.dirname(LSTM_MODEL_PATH), exist_ok=True)
+        LSTM_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.model.state_dict(), LSTM_MODEL_PATH)
         logger.info(f"LSTM saved to {LSTM_MODEL_PATH}")
 

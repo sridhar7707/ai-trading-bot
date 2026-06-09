@@ -1,7 +1,7 @@
 """Quality gate: run backtest on a holdout set and block model push if metrics fail."""
 import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import yfinance as yf
 from loguru import logger

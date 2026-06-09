@@ -7,6 +7,8 @@ from config import REGIME_MODEL_PATH
 
 REGIMES = {0: "TRENDING_UP", 1: "TRENDING_DOWN", 2: "RANGING", 3: "HIGH_VOLATILITY"}
 
+ATR_VOLATILITY_THRESHOLD = 0.03  # atr/close ratio above which market is HIGH_VOLATILITY
+
 
 def label_regime(df: pd.DataFrame) -> pd.Series:
     """Create ground-truth regime labels from price data for training."""
@@ -14,7 +16,7 @@ def label_regime(df: pd.DataFrame) -> pd.Series:
     for i in range(len(df)):
         row = df.iloc[i]
         atr_ratio = row.get("atr", 0) / row["close"] if row["close"] > 0 else 0
-        if atr_ratio > 0.03:
+        if atr_ratio > ATR_VOLATILITY_THRESHOLD:
             labels.append(3)  # HIGH_VOLATILITY
         elif row.get("rsi", 50) > 55 and row.get("macd_diff", 0) > 0:
             labels.append(0)  # TRENDING_UP
@@ -63,7 +65,7 @@ class RegimeClassifier:
     def _rule_based(self, row: pd.Series) -> int:
         close = row.get("close", 1) or 1  # guard against 0
         atr_ratio = row.get("atr", 0) / close
-        if atr_ratio > 0.03:
+        if atr_ratio > ATR_VOLATILITY_THRESHOLD:
             return 3
         rsi = row.get("rsi", 50)
         macd_diff = row.get("macd_diff", 0)
