@@ -13,13 +13,25 @@ from config import (
 class RiskManager:
     """Hard-coded risk rules — the RL agent cannot bypass these."""
 
-    def __init__(self):
+    def __init__(self,
+                 daily_start_value: float | None = None,
+                 day_trade_dates: list[str] | None = None):
         self.day_trade_log: deque[date] = deque()
-        self.daily_start_value: float | None = None
+        if day_trade_dates:
+            for ds in day_trade_dates:
+                try:
+                    self.day_trade_log.append(date.fromisoformat(ds))
+                except ValueError:
+                    pass
+        self.daily_start_value = daily_start_value
         self.halted = False
 
     def reset_daily(self, portfolio_value: float):
-        self.daily_start_value = portfolio_value
+        # Only record the start-of-day value on the FIRST cycle of the day.
+        # Subsequent cycles must NOT overwrite it — otherwise the daily loss
+        # gate compares against "5 minutes ago" instead of true start-of-day.
+        if self.daily_start_value is None:
+            self.daily_start_value = portfolio_value
         self.halted = False
         today = date.today()
         self.day_trade_log = deque(
@@ -27,7 +39,8 @@ class RiskManager:
             if (today - d).days < PDT_WINDOW_DAYS
         )
         logger.info(
-            f"Daily risk reset — portfolio=${portfolio_value:.2f}, "
+            f"Risk state — daily_start=${self.daily_start_value:.2f}, "
+            f"current=${portfolio_value:.2f}, "
             f"day_trades_used={len(self.day_trade_log)}/{PDT_MAX_DAY_TRADES}"
         )
 
