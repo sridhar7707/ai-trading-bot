@@ -34,23 +34,29 @@ TRAINING_SYMBOLS = SYMBOLS + TRAINING_EXTRA
 # --- Trading parameters ---
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", 0.20))
-STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))
+STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))       # fallback flat stop (no ATR data)
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", 0.05))
 MAX_POSITIONS = 5
-MAX_STOCKS_PER_SECTOR = 2
+MAX_SECTOR_POSITIONS = 2                                        # max open positions per sector
 
-# --- DCA budget: start at $1,000, add $100/week ---
-TRADING_BUDGET_INITIAL = float(os.getenv("TRADING_BUDGET_INITIAL", 1000))
-TRADING_BUDGET_WEEKLY_ADD = float(os.getenv("TRADING_BUDGET_WEEKLY_ADD", 100))
-TRADING_START_DATE = os.getenv("TRADING_START_DATE", "2026-06-09")
+# --- ATR-based exit rules ---
+ATR_STOP_MULTIPLIER   = float(os.getenv("ATR_STOP_MULTIPLIER",   2.0))  # stop at entry - 2×ATR
+ATR_TRAIL_MULTIPLIER  = float(os.getenv("ATR_TRAIL_MULTIPLIER",  1.5))  # trail at hwm - 1.5×ATR
+ATR_MIN_STOP_PCT      = 0.015   # floor: never stop tighter than 1.5%
+ATR_MAX_STOP_PCT      = 0.10    # ceiling: never stop wider than 10%
 
+# --- Market timing buffers (skip volatile open/close windows) ---
+MARKET_OPEN_BUFFER_MINS  = int(os.getenv("MARKET_OPEN_BUFFER_MINS",  15))
+MARKET_CLOSE_BUFFER_MINS = int(os.getenv("MARKET_CLOSE_BUFFER_MINS", 10))
 
-def get_trading_budget() -> float:
-    """Returns current budget: $1,000 + $100 × full weeks since start."""
-    from datetime import date
-    start = date.fromisoformat(TRADING_START_DATE)
-    weeks = max(0, (date.today() - start).days // 7)
-    return TRADING_BUDGET_INITIAL + TRADING_BUDGET_WEEKLY_ADD * weeks
+# --- Sector map for concentration limits ---
+SECTOR_MAP: dict[str, str] = {
+    "AAPL": "Technology",      "MSFT": "Technology",       "NVDA": "Technology",
+    "GOOGL": "Comm_Services",  "META": "Comm_Services",
+    "AMZN": "Consumer_Disc",   "TSLA": "Consumer_Disc",
+    "VOO":  "Broad_ETF",       "SPY":  "Broad_ETF",        "VTI": "Broad_ETF",
+    "QQQ":  "Tech_ETF",        "ARKK": "Tech_ETF",
+}
 
 # --- RL agent ---
 RL_TIMESTEPS = 1_000_000

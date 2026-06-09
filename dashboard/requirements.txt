@@ -1,0 +1,6 @@
+gradio>=5.0.0
+pandas>=2.0.0
+loguru>=0.7.0
+huggingface-hub>=0.20.0
+yfinance>=0.2.0
+plotly>=5.0.0

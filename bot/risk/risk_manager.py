@@ -4,6 +4,9 @@ from loguru import logger
 from config import (
     MAX_POSITION_PCT, STOP_LOSS_PCT, DAILY_LOSS_LIMIT_PCT,
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
+    ATR_STOP_MULTIPLIER, ATR_TRAIL_MULTIPLIER,
+    ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT,
+    MAX_SECTOR_POSITIONS, SECTOR_MAP,
 )
 
 
@@ -19,13 +22,16 @@ class RiskManager:
         self.daily_start_value = portfolio_value
         self.halted = False
         today = date.today()
-        # Purge day trades older than PDT_WINDOW_DAYS
         self.day_trade_log = deque(
             d for d in self.day_trade_log
             if (today - d).days < PDT_WINDOW_DAYS
         )
-        logger.info(f"Daily risk reset — portfolio=${portfolio_value:.2f}, day_trades_used={len(self.day_trade_log)}/{PDT_MAX_DAY_TRADES}")
+        logger.info(
+            f"Daily risk reset — portfolio=${portfolio_value:.2f}, "
+            f"day_trades_used={len(self.day_trade_log)}/{PDT_MAX_DAY_TRADES}"
+        )
 
+    # ── Daily loss gate ────────────────────────────────────────────────────────
     def check_daily_loss(self, current_value: float) -> bool:
         if self.daily_start_value is None or self.daily_start_value == 0.0:
             return True
@@ -36,12 +42,67 @@ class RiskManager:
             return False
         return True
 
-    def check_stop_loss(self, symbol: str, pnl_pct: float) -> bool:
-        if pnl_pct <= -STOP_LOSS_PCT:
-            logger.warning(f"Stop-loss triggered for {symbol} ({pnl_pct:.1%})")
+    # ── Stop-loss: ATR-aware with flat fallback ────────────────────────────────
+    def check_stop_loss(
+        self,
+        symbol: str,
+        current_price: float,
+        entry_price: float,
+        atr: float | None = None,
+        pnl_pct: float | None = None,
+    ) -> bool:
+        """
+        Returns True if position should be stopped out.
+        Prefers ATR-based stop (entry - 2×ATR) over flat percentage.
+        Falls back to STOP_LOSS_PCT when ATR is unavailable.
+        """
+        if atr and atr > 0 and entry_price > 0:
+            stop_pct = (ATR_STOP_MULTIPLIER * atr) / entry_price
+            # Clamp to sane range so a tiny ATR doesn't stop a normal move
+            stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT, stop_pct))
+            stop_price = entry_price * (1 - stop_pct)
+            if current_price <= stop_price:
+                logger.warning(
+                    f"ATR stop-loss triggered for {symbol}: "
+                    f"price=${current_price:.2f} ≤ stop=${stop_price:.2f} "
+                    f"(entry=${entry_price:.2f}, ATR=${atr:.2f}, threshold={stop_pct:.1%})"
+                )
+                return True
+        elif pnl_pct is not None and pnl_pct <= -STOP_LOSS_PCT:
+            # Flat-percentage fallback (no ATR available)
+            logger.warning(
+                f"Flat stop-loss triggered for {symbol}: pnl={pnl_pct:.1%} ≤ -{STOP_LOSS_PCT:.1%}"
+            )
             return True
         return False
 
+    # ── Trailing stop: lock in gains ──────────────────────────────────────────
+    def check_trailing_stop(
+        self,
+        symbol: str,
+        current_price: float,
+        high_water_mark: float,
+        atr: float,
+    ) -> bool:
+        """
+        Returns True if price has fallen 1.5×ATR below its high-water-mark.
+        Only activates once price has risen meaningfully above entry.
+        """
+        if atr <= 0 or high_water_mark <= 0:
+            return False
+        trail_distance = ATR_TRAIL_MULTIPLIER * atr
+        trail_price = high_water_mark - trail_distance
+        if current_price <= trail_price:
+            gain_from_hwm = (high_water_mark - current_price) / high_water_mark
+            logger.warning(
+                f"Trailing stop triggered for {symbol}: "
+                f"price=${current_price:.2f} ≤ trail=${trail_price:.2f} "
+                f"(hwm=${high_water_mark:.2f}, ATR=${atr:.2f}, fell {gain_from_hwm:.1%} from peak)"
+            )
+            return True
+        return False
+
+    # ── PDT compliance ────────────────────────────────────────────────────────
     def check_pdt(self, is_day_trade: bool = False) -> bool:
         today = date.today()
         recent = sum(1 for d in self.day_trade_log if (today - d).days < PDT_WINDOW_DAYS)
@@ -53,13 +114,36 @@ class RiskManager:
     def record_day_trade(self):
         self.day_trade_log.append(date.today())
 
+    # ── Sector concentration check ────────────────────────────────────────────
+    def sector_check(self, symbol: str, open_positions: dict) -> bool:
+        """
+        Returns True (buy allowed) if the sector limit is not yet reached.
+        ETFs in 'Broad_ETF' are always allowed (they're already diversified).
+        """
+        sector = SECTOR_MAP.get(symbol, "Unknown")
+        if sector == "Broad_ETF":
+            return True
+        held_in_sector = sum(
+            1 for sym in open_positions
+            if SECTOR_MAP.get(sym, "Unknown") == sector
+        )
+        if held_in_sector >= MAX_SECTOR_POSITIONS:
+            logger.warning(
+                f"Sector limit: {symbol} ({sector}) blocked — "
+                f"already holding {held_in_sector}/{MAX_SECTOR_POSITIONS} in that sector "
+                f"({[s for s in open_positions if SECTOR_MAP.get(s) == sector]})"
+            )
+            return False
+        return True
+
+    # ── Buy approval gate ─────────────────────────────────────────────────────
     def approve_buy(
         self,
         symbol: str,
         notional: float,
         portfolio_value: float,
         current_value: float,
-        open_positions: int,
+        open_positions: dict,        # full dict {symbol: position_obj} for sector check
     ) -> bool:
         if self.halted:
             logger.warning("Trading halted — buy blocked.")
@@ -68,14 +152,16 @@ class RiskManager:
             return False
         max_notional = portfolio_value * MAX_POSITION_PCT
         if notional > max_notional:
-            logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f} — capping.")
+            logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
             return False
-        if open_positions >= 5:
+        if len(open_positions) >= 5:
             logger.warning("Max 5 open positions reached — buy blocked.")
+            return False
+        if not self.sector_check(symbol, open_positions):
             return False
         return True
 
     def approve_sell(self, symbol: str, pnl_pct: float, current_value: float) -> bool:
         if not self.check_daily_loss(current_value):
-            return True  # Force sell when daily limit hit
-        return True  # Sells are generally always allowed
+            return True  # force sell when daily limit hit
+        return True
