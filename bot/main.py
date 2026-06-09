@@ -154,7 +154,7 @@ def run(mode: str = "paper"):
             regime_code = regime_clf.predict(latest)
             regime_name = regime_clf.regime_name(regime_code)
 
-            # Stop-loss check on existing positions
+            # Stop-loss check on existing positions, then skip to next symbol
             if symbol in positions:
                 pnl_pct = client.get_position_pnl_pct(symbol)
                 if risk.check_stop_loss(symbol, pnl_pct):
@@ -165,7 +165,7 @@ def run(mode: str = "paper"):
                     else:
                         logger.error(f"SELL_STOP failed for {symbol} — will retry next cycle")
                         tg.alert_sell_failed(symbol, reason="stop-loss")
-                    continue
+                continue  # already holding this symbol — don't buy more, wait for stop-loss or sell signal
 
             # Ensemble signal
             xgb_prob = xgb.predict_proba(latest)

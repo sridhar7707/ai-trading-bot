@@ -39,6 +39,7 @@ def load_recent_trades(n: int = 10) -> pd.DataFrame:
 
 
 def load_open_positions() -> pd.DataFrame:
+    _sync_db()
     try:
         con = sqlite3.connect(DB_PATH)
         rows = con.execute("SELECT symbol, action FROM trades ORDER BY id").fetchall()
