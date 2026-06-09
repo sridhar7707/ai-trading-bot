@@ -33,3 +33,7 @@ praw>=7.7.0
 
 # Phase 7 — NewsAPI headlines
 newsapi-python>=0.2.7
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.12.0
