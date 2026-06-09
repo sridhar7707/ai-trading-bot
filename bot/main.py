@@ -1,29 +1,29 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
 import argparse
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from loguru import logger
 
-from config import SYMBOLS, INITIAL_CAPITAL, MAX_POSITION_PCT, TRADE_DB_PATH
+from config import SYMBOLS, TRADE_DB_PATH
 from bot.execution.alpaca_client import AlpacaClient
-from bot.strategy.features import compute_features, FEATURE_COLS
+from bot.strategy.features import compute_features
 from bot.strategy.regime_classifier import RegimeClassifier
-from bot.strategy.rl_agent import RLAgent
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from bot.strategy.sentiment import get_sentiment_score
-from bot.strategy.macro import get_macro_signal, get_macro_position_cap
+from bot.strategy.macro import get_macro_position_cap
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
 from bot.risk.risk_manager import RiskManager
 import bot.monitor.telegram_bot as tg
-import numpy as np
+
+logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
 
 
 def _opened_today(con, symbol: str) -> bool:
     """Return True if there is a BUY for this symbol recorded today (UTC).
-    log_trade also uses datetime.utcnow(), so both sides are UTC-consistent."""
-    today = datetime.utcnow().date().isoformat()
+    log_trade also uses timezone.utc, so both sides are UTC-consistent."""
+    today = datetime.now(timezone.utc).date().isoformat()
     row = con.execute(
         "SELECT 1 FROM trades WHERE symbol=? AND action='BUY' AND timestamp LIKE ? LIMIT 1",
         (symbol, today + "%"),
@@ -54,7 +54,7 @@ def init_db():
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct):
     con.execute(
         "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
-        (datetime.utcnow().isoformat(), symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct),
+        (datetime.now(timezone.utc).isoformat(), symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct),
     )
     con.commit()
 
@@ -64,7 +64,6 @@ def run(mode: str = "paper"):
     con = init_db()
     client = AlpacaClient()
     regime_clf = RegimeClassifier()
-    rl_agent = RLAgent()
     xgb = XGBPredictor()
     lstm = LSTMPredictor()
     risk = RiskManager()
@@ -73,10 +72,8 @@ def run(mode: str = "paper"):
     positions = client.get_positions()
     risk.reset_daily(portfolio_value)
 
-    # Macro signal — computed once per cycle (slow FRED API call)
-    macro_score = get_macro_signal()
     macro_cap = get_macro_position_cap()
-    logger.info(f"Macro: score={macro_score:.2f}, position_cap={macro_cap:.1f}x")
+    logger.info(f"Macro position cap: {macro_cap:.1f}x")
 
     # Pre-fetch sentiment for all symbols (FinBERT + NewsAPI — slow, do once)
     sentiments: dict[str, float] = {}
@@ -107,9 +104,13 @@ def run(mode: str = "paper"):
             if symbol in positions:
                 pnl_pct = client.get_position_pnl_pct(symbol)
                 if risk.check_stop_loss(symbol, pnl_pct):
-                    client.sell(symbol)
-                    tg.alert_stop_loss(symbol, pnl_pct)
-                    log_trade(con, symbol, "SELL_STOP", 0, latest["close"], 0, regime_name, portfolio_value, pnl_pct)
+                    sell_result = client.sell(symbol)
+                    if sell_result:
+                        tg.alert_stop_loss(symbol, pnl_pct)
+                        log_trade(con, symbol, "SELL_STOP", 0, latest["close"], 0, regime_name, portfolio_value, pnl_pct)
+                    else:
+                        logger.error(f"SELL_STOP failed for {symbol} — will retry next cycle")
+                        tg.alert_sell_failed(symbol, reason="stop-loss")
                     continue
 
             # Ensemble signal
@@ -127,8 +128,7 @@ def run(mode: str = "paper"):
             notional = portfolio_value * pos_fraction
 
             if action == 1:  # Buy
-                current_value = client.get_portfolio_value()
-                if risk.approve_buy(symbol, notional, portfolio_value, current_value, len(positions)):
+                if risk.approve_buy(symbol, notional, portfolio_value, portfolio_value, len(positions)):
                     result = client.buy(symbol, notional)
                     if result:
                         spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
@@ -142,11 +142,14 @@ def run(mode: str = "paper"):
                         logger.warning(f"PDT limit reached — skipping sell of {symbol}")
                     else:
                         pnl_pct = client.get_position_pnl_pct(symbol)
-                        client.sell(symbol)
-                        if is_day_trade:
-                            risk.record_day_trade()
-                        tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
-                        log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
+                        sell_result = client.sell(symbol)
+                        if sell_result:
+                            if is_day_trade:
+                                risk.record_day_trade()
+                            tg.alert_sell(symbol, float(positions[symbol].qty), price, pnl_pct)
+                            log_trade(con, symbol, "SELL", float(positions[symbol].qty), price, 0, regime_name, portfolio_value, pnl_pct)
+                        else:
+                            logger.error(f"SELL order rejected for {symbol} — trade NOT logged")
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

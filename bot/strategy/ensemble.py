@@ -8,6 +8,15 @@ WEIGHTS = {
     "regime":    0.20,
 }
 
+STRONG_BUY_THRESHOLD  = 0.70
+BUY_THRESHOLD         = 0.60
+SELL_THRESHOLD        = 0.40
+STRONG_SELL_THRESHOLD = 0.30
+STRONG_BUY_FRACTION   = 0.20
+BUY_FRACTION          = 0.12
+SELL_FRACTION         = 0.00
+STRONG_SELL_FRACTION  = 0.00
+
 REGIME_SCORES = {
     "TRENDING_UP":    1.0,
     "RANGING":        0.5,
@@ -53,14 +62,14 @@ def ensemble_signal(
         f"sentiment={sentiment_score:.2f}, regime={regime})"
     )
 
-    if score > 0.70:
-        return "STRONG_BUY",  0.20
-    elif score > 0.60:
-        return "BUY",         0.12
-    elif score < 0.30:
-        return "STRONG_SELL", 0.00
-    elif score < 0.40:
-        return "SELL",        0.00
+    if score > STRONG_BUY_THRESHOLD:
+        return "STRONG_BUY",  STRONG_BUY_FRACTION
+    elif score > BUY_THRESHOLD:
+        return "BUY",         BUY_FRACTION
+    elif score < STRONG_SELL_THRESHOLD:
+        return "STRONG_SELL", STRONG_SELL_FRACTION
+    elif score < SELL_THRESHOLD:
+        return "SELL",        SELL_FRACTION
     else:
         return "HOLD",        0.00
 

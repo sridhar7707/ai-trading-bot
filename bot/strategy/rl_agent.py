@@ -84,8 +84,8 @@ class RLAgent:
         try:
             self.model = PPO.load(MODEL_SAVE_PATH)
             logger.info("PPO model loaded from disk.")
-        except Exception:
-            logger.warning("No PPO model found — agent untrained.")
+        except Exception as e:
+            logger.warning(f"PPO model not loaded: {e}")
 
     def train(self, df: pd.DataFrame, initial_balance: float = 1000.0):
         env = TradingEnv(df, initial_balance)

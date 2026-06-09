@@ -42,8 +42,8 @@ def _finbert_score(texts: list[str]) -> float:
                 scores.append(-s)
             else:
                 scores.append(0.0)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"FinBERT scoring failed on text: {e}")
     return sum(scores) / len(scores) if scores else 0.0
 
 

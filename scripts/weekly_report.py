@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sqlite3
 import numpy as np
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from loguru import logger
 from config import TRADE_DB_PATH
 import bot.monitor.telegram_bot as tg
@@ -13,7 +13,7 @@ import bot.monitor.telegram_bot as tg
 
 def compute_weekly_report():
     con = sqlite3.connect(TRADE_DB_PATH)
-    week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = con.execute(
         "SELECT timestamp, action, pnl_pct, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
         (week_ago,),

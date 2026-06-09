@@ -46,6 +46,10 @@ def alert_stop_loss(symbol: str, pnl_pct: float):
     _send(f"⚠️ <b>STOP-LOSS</b> triggered — {symbol} ({pnl_pct:+.2%})")
 
 
+def alert_sell_failed(symbol: str, reason: str = "stop-loss"):
+    _send(f"🚨 <b>SELL FAILED</b> — {symbol} | Reason: {reason} | Will retry next cycle")
+
+
 def alert_daily_loss_limit(portfolio: float, pnl_pct: float):
     _send(f"🚨 <b>DAILY LOSS LIMIT HIT</b> — Bot halted\n   Portfolio: ${portfolio:.2f}\n   Day P&L: {pnl_pct:+.2%}")
 

@@ -1,11 +1,11 @@
-import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
 from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
-XGB_MODEL_PATH = "models/saved/xgb_predictor.pkl"
+XGB_MODEL_PATH = Path("models/saved/xgb_predictor.pkl")
 FORWARD_PERIODS = 5
 
 
@@ -15,7 +15,7 @@ class XGBPredictor:
         self._load()
 
     def _load(self):
-        if os.path.exists(XGB_MODEL_PATH):
+        if XGB_MODEL_PATH.exists():
             try:
                 self.model = joblib.load(XGB_MODEL_PATH)
                 logger.info("XGBoost model loaded.")
@@ -69,7 +69,7 @@ class XGBPredictor:
             else:
                 logger.info(f"XGBoost val accuracy (holdout 20%): {val_acc:.3f}")
 
-        os.makedirs(os.path.dirname(XGB_MODEL_PATH), exist_ok=True)
+        XGB_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, XGB_MODEL_PATH)
         logger.info(f"XGBoost trained and saved to {XGB_MODEL_PATH}")
 

@@ -67,5 +67,6 @@ def get_macro_position_cap() -> float:
             logger.warning("Macro risk elevated — capping positions at 50%.")
             return 0.5
         return 1.0
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Macro position cap failed: {e}")
         return 1.0

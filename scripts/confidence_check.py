@@ -1,6 +1,7 @@
 """Check if the bot is ready to graduate from paper trading to real money."""
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 import sqlite3
 import numpy as np
 from loguru import logger
@@ -48,7 +49,7 @@ def compute_max_drawdown(values):
 def run_check():
     trades = load_trades()
     if not trades:
-        print("No trades found. Run paper trading first.")
+        logger.warning("No trades found. Run paper trading first.")
         return False
 
     timestamps = [t[0] for t in trades]
@@ -94,18 +95,17 @@ def run_check():
     }
 
     all_pass = True
-    print("\n=== CONFIDENCE CHECK ===")
+    logger.info("=== CONFIDENCE CHECK ===")
     for metric, (value, threshold, passed) in results.items():
         status = "PASS" if passed else "FAIL"
-        print(f"  {status}  {metric}: {value} (min: {threshold})")
+        logger.info(f"  {status}  {metric}: {value} (min: {threshold})")
         if not passed:
             all_pass = False
 
-    print()
     if all_pass:
-        print("ALL CHECKS PASSED — Bot is ready for real money.")
+        logger.info("ALL CHECKS PASSED — Bot is ready for real money.")
     else:
-        print("NOT READY — Keep paper trading.")
+        logger.warning("NOT READY — Keep paper trading.")
     return all_pass
 
 
