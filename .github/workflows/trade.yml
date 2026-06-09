@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +26,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: trades.db
+          key: trades-db-${{ github.run_id }}
           restore-keys: trades-db-
 
       - name: Set up Python
