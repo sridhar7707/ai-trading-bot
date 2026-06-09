@@ -24,12 +24,24 @@ BENCHMARK = "SPY"
 
 # --- Trading parameters ---
 TRADING_MODE = os.getenv("TRADING_MODE", "paper")
-INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", 1000))
 MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", 0.20))
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", 0.05))
 MAX_POSITIONS = 5
 MAX_STOCKS_PER_SECTOR = 2
+
+# --- DCA budget: start at $1,000, add $100/week ---
+TRADING_BUDGET_INITIAL = float(os.getenv("TRADING_BUDGET_INITIAL", 1000))
+TRADING_BUDGET_WEEKLY_ADD = float(os.getenv("TRADING_BUDGET_WEEKLY_ADD", 100))
+TRADING_START_DATE = os.getenv("TRADING_START_DATE", "2026-06-09")
+
+
+def get_trading_budget() -> float:
+    """Returns current budget: $1,000 + $100 × full weeks since start."""
+    from datetime import date
+    start = date.fromisoformat(TRADING_START_DATE)
+    weeks = max(0, (date.today() - start).days // 7)
+    return TRADING_BUDGET_INITIAL + TRADING_BUDGET_WEEKLY_ADD * weeks
 
 # --- RL agent ---
 RL_TIMESTEPS = 500_000

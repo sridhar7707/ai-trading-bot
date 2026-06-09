@@ -11,7 +11,7 @@ from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
-from config import SYMBOLS, TRADE_DB_PATH
+from config import SYMBOLS, TRADE_DB_PATH, get_trading_budget
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features
 from bot.strategy.regime_classifier import RegimeClassifier
@@ -90,9 +90,11 @@ def run(mode: str = "paper"):
     risk = RiskManager()
 
     portfolio_value = client.get_portfolio_value()
+    trading_budget = get_trading_budget()
     positions = client.get_positions()
     risk.reset_daily(portfolio_value)
 
+    logger.info(f"Trading budget: ${trading_budget:.2f} | Portfolio: ${portfolio_value:.2f}")
     macro_cap = get_macro_position_cap()
     logger.info(f"Macro position cap: {macro_cap:.1f}x")
 
@@ -177,10 +179,10 @@ def run(mode: str = "paper"):
             pos_fraction = pos_fraction * macro_cap
 
             price = float(latest["close"])
-            notional = portfolio_value * pos_fraction
+            notional = trading_budget * pos_fraction
 
             if action == 1:  # Buy
-                if risk.approve_buy(symbol, notional, portfolio_value, portfolio_value, len(positions)):
+                if risk.approve_buy(symbol, notional, trading_budget, portfolio_value, len(positions)):
                     result = client.buy(symbol, notional)
                     if result:
                         tg.alert_buy(symbol, notional / price, price, regime_name, portfolio_value, vs_spy_today * 100)
