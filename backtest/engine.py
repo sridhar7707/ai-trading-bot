@@ -17,12 +17,16 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
 
     balance = initial_balance
     shares = 0.0
-    entry_price = 0.0  # tracks the actual position entry price
+    total_cost = 0.0   # cumulative spend for weighted average cost basis
+    entry_price = 0.0
     portfolio_values = []
     trades = []
 
     for i, (idx, row) in enumerate(df.iterrows()):
         price = float(row["close"])
+        if np.isnan(row[FEATURE_COLS].values).any():
+            portfolio_values.append(balance + shares * price)
+            continue
         regime_code = regime_clf.predict(row)
 
         # Stop-loss check
@@ -33,6 +37,7 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
                 trades.append({"step": i, "action": "SELL_STOP", "price": price, "pnl_pct": pnl_pct})
                 shares = 0.0
                 entry_price = 0.0
+                total_cost = 0.0
 
         obs = np.concatenate([
             row[FEATURE_COLS].values.astype(np.float32),
@@ -44,7 +49,8 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
             spend = balance * MAX_POSITION_PCT
             shares += spend / price
             balance -= spend
-            entry_price = price  # record position entry price
+            total_cost += spend
+            entry_price = total_cost / shares  # weighted average cost basis
             trades.append({"step": i, "action": "BUY", "price": price, "pnl_pct": 0.0})
         elif action == 2 and shares > 0:
             proceeds = shares * price
@@ -53,6 +59,7 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
             trades.append({"step": i, "action": "SELL", "price": price, "pnl_pct": pnl_pct})
             shares = 0.0
             entry_price = 0.0
+            total_cost = 0.0
 
         portfolio_values.append(balance + shares * price)
 

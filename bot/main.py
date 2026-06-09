@@ -21,7 +21,8 @@ import numpy as np
 
 
 def _opened_today(con, symbol: str) -> bool:
-    """Return True if there is a BUY for this symbol recorded today (UTC)."""
+    """Return True if there is a BUY for this symbol recorded today (UTC).
+    log_trade also uses datetime.utcnow(), so both sides are UTC-consistent."""
     today = datetime.utcnow().date().isoformat()
     row = con.execute(
         "SELECT 1 FROM trades WHERE symbol=? AND action='BUY' AND timestamp LIKE ? LIMIT 1",

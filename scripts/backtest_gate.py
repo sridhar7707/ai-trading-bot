@@ -11,7 +11,8 @@ from config import SYMBOLS, INITIAL_CAPITAL
 MIN_SHARPE = 0.0        # must be positive
 MIN_RETURN = -0.05      # must not lose more than 5% on holdout
 
-HOLDOUT_DAYS = 60       # evaluate on last 60 calendar days
+HOLDOUT_DAYS = 150      # ~90 trading days — enough headroom for indicator warmup (RSI-14, SMA-20, etc.)
+MIN_VALID_ROWS = 50     # minimum rows required after feature warmup
 
 
 def main():
@@ -28,8 +29,10 @@ def main():
             df.columns = [c.lower() for c in df.columns]
             df = df[["open", "high", "low", "close", "volume"]].dropna()
 
-            # Use only the last HOLDOUT_DAYS as the test set
             holdout = df.iloc[-HOLDOUT_DAYS:]
+            if len(holdout) < MIN_VALID_ROWS:
+                logger.warning(f"{symbol}: only {len(holdout)} rows in holdout (need {MIN_VALID_ROWS}), skipping")
+                continue
             metrics = run_backtest(holdout, initial_balance=INITIAL_CAPITAL)
             sharpe = metrics.get("sharpe", 0.0)
             total_return = metrics.get("total_return", 0.0)
@@ -39,8 +42,8 @@ def main():
             logger.error(f"{symbol} backtest failed: {e}")
 
     if not results:
-        logger.warning("No backtest results — gate passes by default (no data).")
-        sys.exit(0)
+        logger.error("No backtest results collected — possible data/network failure. Blocking model push.")
+        sys.exit(1)
 
     avg_sharpe = sum(r[1] for r in results) / len(results)
     avg_return = sum(r[2] for r in results) / len(results)
