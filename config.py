@@ -61,6 +61,15 @@ SECTOR_MAP: dict[str, str] = {
 INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))
 EARNINGS_WINDOW_DAYS = int(os.getenv("EARNINGS_WINDOW_DAYS", 2))   # block buys ±N days from earnings
 
+# --- Advanced entry/exit parameters ---
+MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 5))          # force exit after N days with <1% gain
+KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades used to estimate Kelly fraction
+KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
+CORRELATION_THRESHOLD = float(os.getenv("CORRELATION_THRESHOLD", 0.85))  # block buy if corr > this with held pos
+RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5-min relative strength vs SPY
+# Only open new positions in these regimes — blocks entries in downtrends and high-vol whipsaws
+ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING").split(","))
+
 # --- RL agent ---
 RL_TIMESTEPS = 1_000_000
 RL_LEARNING_RATE = 3e-4
