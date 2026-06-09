@@ -46,6 +46,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: trades.db
+          key: trades-db-${{ github.run_id }}
           restore-keys: trades-db-
 
       - name: Send weekly report

@@ -1,5 +1,5 @@
 """Pull trained models from HuggingFace Hub."""
-import sys, os
+import sys, os, traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from huggingface_hub import hf_hub_download
 from loguru import logger
@@ -26,4 +26,10 @@ def pull():
 
 
 if __name__ == "__main__":
-    pull()
+    try:
+        pull()
+    except Exception:
+        tb = traceback.format_exc()
+        logger.error("load_model_hf failed:\n" + tb)
+        print(f"::error title=HuggingFace Pull Failed::{tb.splitlines()[-1]} — see step log for full traceback", flush=True)
+        sys.exit(1)
