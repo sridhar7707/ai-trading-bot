@@ -63,6 +63,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           TRADING_MODE: paper
           PYTHONUNBUFFERED: "1"
         run: |
