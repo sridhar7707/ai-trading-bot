@@ -62,6 +62,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
           TRADING_MODE: paper
           PYTHONUNBUFFERED: "1"
         run: |
