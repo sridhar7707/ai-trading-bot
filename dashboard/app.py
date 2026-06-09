@@ -24,15 +24,15 @@ def _sync_db():
 
 
 def _current_prices(symbols: list[str]) -> dict[str, float]:
-    """Fetch latest prices via yfinance fast_info (one request per ticker)."""
+    """Fetch latest prices via yfinance history (most reliable across environments)."""
     if not symbols:
         return {}
     import yfinance as yf
     prices = {}
     for sym in symbols:
         try:
-            info = yf.Ticker(sym).fast_info
-            prices[sym] = float(info.get("last_price") or info.get("regularMarketPrice") or 0.0)
+            hist = yf.Ticker(sym).history(period="1d")
+            prices[sym] = float(hist["Close"].iloc[-1]) if len(hist) > 0 else 0.0
         except Exception as e:
             logger.warning(f"Price fetch failed for {sym}: {e}")
             prices[sym] = 0.0

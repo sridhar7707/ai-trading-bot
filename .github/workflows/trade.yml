@@ -39,6 +39,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Sync trade database from HuggingFace
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+        run: |
+          python -c "
+          import os, shutil
+          token = os.environ.get('HF_TOKEN', '')
+          repo = os.environ.get('HF_REPO_ID', '')
+          if not token or not repo:
+              print('HF secrets not set — keeping cached trades.db')
+          else:
+              from huggingface_hub import hf_hub_download
+              cached = hf_hub_download(repo_id=repo, filename='trades.db', token=token, force_download=True)
+              shutil.copy(cached, 'trades.db')
+              import sqlite3
+              count = sqlite3.connect('trades.db').execute('SELECT COUNT(*) FROM trades').fetchone()[0]
+              print(f'trades.db synced from HuggingFace — {count} records')
+          "
+
       - name: Cache HuggingFace models
         uses: actions/cache@v4
         with:
