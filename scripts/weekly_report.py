@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import sqlite3
 import numpy as np
+import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
 from loguru import logger
@@ -50,6 +51,8 @@ def compute_weekly_report():
     spy_return = 0.0
     try:
         spy = yf.download("SPY", start=start_ts.date(), end=end_ts.date(), progress=False, auto_adjust=True)
+        if isinstance(spy.columns, pd.MultiIndex):
+            spy.columns = [col[0] for col in spy.columns]
         if len(spy) > 1:
             spy_return = float((spy["Close"].iloc[-1] - spy["Close"].iloc[0]) / spy["Close"].iloc[0])
     except Exception as e:

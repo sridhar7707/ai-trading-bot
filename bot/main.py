@@ -63,8 +63,22 @@ def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_va
     con.commit()
 
 
+def _is_market_hours() -> bool:
+    """Return True only during NYSE regular session (9:30am–4:00pm ET, Mon–Fri)."""
+    import zoneinfo
+    et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
+    if et.weekday() >= 5:
+        return False
+    open_time = et.replace(hour=9, minute=30, second=0, microsecond=0)
+    close_time = et.replace(hour=16, minute=0, second=0, microsecond=0)
+    return open_time <= et < close_time
+
+
 def run(mode: str = "paper"):
     logger.info(f"=== Trading cycle start | mode={mode} ===")
+    if not _is_market_hours():
+        logger.info("Outside market hours — skipping cycle.")
+        return
     con = init_db()
     client = AlpacaClient()
     regime_clf = RegimeClassifier()
