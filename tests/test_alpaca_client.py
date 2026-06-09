@@ -82,3 +82,43 @@ def test_sell_submits_order(client):
     client.api.submit_order.return_value = order
     result = client.sell("AAPL")
     assert result["order_id"] == "sell-456"
+    client.api.submit_order.assert_called_once_with(
+        symbol="AAPL",
+        qty="5",
+        side="sell",
+        type="market",
+        time_in_force="day",
+    )
+
+
+def test_sell_returns_none_on_api_error(client):
+    position = MagicMock()
+    position.symbol = "AAPL"
+    position.qty = "5"
+    client.api.list_positions.return_value = [position]
+    client.api.submit_order.side_effect = Exception("API error")
+    assert client.sell("AAPL") is None
+
+
+# --- get_position_pnl_pct ---
+
+def test_get_position_pnl_pct_returns_float(client):
+    pos = MagicMock()
+    pos.symbol = "AAPL"
+    pos.unrealized_plpc = "0.0523"
+    client.api.list_positions.return_value = [pos]
+    assert abs(client.get_position_pnl_pct("AAPL") - 0.0523) < 1e-6
+
+
+def test_get_position_pnl_pct_no_position_returns_zero(client):
+    client.api.list_positions.return_value = []
+    assert client.get_position_pnl_pct("AAPL") == 0.0
+
+
+# --- get_portfolio_value ---
+
+def test_get_portfolio_value_returns_float(client):
+    account = MagicMock()
+    account.portfolio_value = "50000.00"
+    client.api.get_account.return_value = account
+    assert client.get_portfolio_value() == 50000.0

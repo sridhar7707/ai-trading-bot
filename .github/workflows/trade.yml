@@ -16,6 +16,8 @@ concurrency:
 jobs:
   trade:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -23,7 +25,6 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: trades.db
-          key: trades-db-latest
           restore-keys: trades-db-
 
       - name: Set up Python

@@ -14,6 +14,8 @@ SELL_THRESHOLD        = 0.40
 STRONG_SELL_THRESHOLD = 0.30
 STRONG_BUY_FRACTION   = 0.20
 BUY_FRACTION          = 0.12
+SELL_FRACTION         = 0.00
+STRONG_SELL_FRACTION  = 0.00
 
 REGIME_SCORES = {
     "TRENDING_UP":    1.0,
@@ -65,9 +67,9 @@ def ensemble_signal(
     elif score > BUY_THRESHOLD:
         return "BUY",         BUY_FRACTION
     elif score < STRONG_SELL_THRESHOLD:
-        return "STRONG_SELL", 0.00
+        return "STRONG_SELL", STRONG_SELL_FRACTION
     elif score < SELL_THRESHOLD:
-        return "SELL",        0.00
+        return "SELL",        SELL_FRACTION
     else:
         return "HOLD",        0.00
 

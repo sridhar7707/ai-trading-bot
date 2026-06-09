@@ -4,8 +4,6 @@ import sqlite3
 from datetime import datetime, timezone
 from loguru import logger
 
-logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
-
 from config import SYMBOLS, TRADE_DB_PATH
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features
@@ -18,6 +16,8 @@ from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int
 from bot.risk.risk_manager import RiskManager
 import bot.monitor.telegram_bot as tg
+
+logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
 
 
 def _opened_today(con, symbol: str) -> bool:
@@ -109,7 +109,8 @@ def run(mode: str = "paper"):
                         tg.alert_stop_loss(symbol, pnl_pct)
                         log_trade(con, symbol, "SELL_STOP", 0, latest["close"], 0, regime_name, portfolio_value, pnl_pct)
                     else:
-                        logger.error(f"SELL_STOP order rejected for {symbol} — position not closed")
+                        logger.error(f"SELL_STOP failed for {symbol} — will retry next cycle")
+                        tg.alert_sell_failed(symbol, reason="stop-loss")
                     continue
 
             # Ensemble signal
@@ -127,8 +128,7 @@ def run(mode: str = "paper"):
             notional = portfolio_value * pos_fraction
 
             if action == 1:  # Buy
-                current_value = client.get_portfolio_value()
-                if risk.approve_buy(symbol, notional, portfolio_value, current_value, len(positions)):
+                if risk.approve_buy(symbol, notional, portfolio_value, portfolio_value, len(positions)):
                     result = client.buy(symbol, notional)
                     if result:
                         spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)

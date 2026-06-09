@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 import pytest
 from bot.risk.risk_manager import RiskManager
+from config import DAILY_LOSS_LIMIT_PCT
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def test_daily_loss_within_limit(risk):
 
 
 def test_daily_loss_at_limit_halts(risk):
-    current = 10_000 * (1 - 0.05)  # exactly 5% → triggers (<=)
+    current = 10_000 * (1 - DAILY_LOSS_LIMIT_PCT)
     assert risk.check_daily_loss(current) is False
     assert risk.halted is True
 

@@ -49,8 +49,13 @@ def test_strong_sell():
     assert fraction == 0.0
 
 
-def test_nan_input_defaults_to_hold():
-    action, fraction = ensemble_signal(float("nan"), 0.5, 0.0, "RANGING")
+@pytest.mark.parametrize("xgb,lstm,sent", [
+    (float("nan"), 0.5, 0.0),
+    (0.5, float("nan"), 0.0),
+    (0.5, 0.5, float("nan")),
+])
+def test_nan_input_defaults_to_hold(xgb, lstm, sent):
+    action, fraction = ensemble_signal(xgb, lstm, sent, "RANGING")
     assert action == "HOLD"
     assert fraction == 0.0
 

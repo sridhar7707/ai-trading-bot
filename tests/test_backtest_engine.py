@@ -63,12 +63,7 @@ def _run(df):
 
 def test_single_buy_sell_pnl():
     # BUY at 100, SELL at 120 → pnl_pct = (120-100)/100 = 0.20
-    df = _make_df([1, 2], [100.0, 120.0])
-    result = _run(df)
-    # compute_metrics is mocked; verify the trade list passed to it
     from backtest.engine import run_backtest
-    from unittest.mock import call
-    import backtest.engine as eng
     with patch("backtest.engine.compute_metrics") as mock_cm, \
          patch("backtest.engine.RLAgent") as mock_rl_class:
         mock_rl = MagicMock()
@@ -76,7 +71,6 @@ def test_single_buy_sell_pnl():
         mock_rl_class.return_value = mock_rl
         mock_cm.return_value = {"sharpe": 0.0, "total_return": 0.0}
         run_backtest(_make_df([1, 2], [100.0, 120.0]).drop(columns=["_action"]), 1000.0)
-        _, kwargs = mock_cm.call_args
         trades = mock_cm.call_args[0][1]
         sell_trade = next(t for t in trades if t["action"] == "SELL")
         assert abs(sell_trade["pnl_pct"] - 0.20) < 1e-6
