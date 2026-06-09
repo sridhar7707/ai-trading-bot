@@ -1,8 +1,10 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
 import argparse
+import os
 import sqlite3
 import sys
 import traceback
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import datetime, timezone
 from loguru import logger
 
@@ -166,5 +168,8 @@ if __name__ == "__main__":
     try:
         run(mode=args.mode)
     except Exception:
-        logger.error("Trading cycle crashed with unhandled exception:\n" + traceback.format_exc())
+        tb = traceback.format_exc()
+        logger.error("Trading cycle crashed:\n" + tb)
+        # Emit a GitHub Actions annotation so it appears in the Annotations panel
+        print(f"::error title=Trading Bot Crash::{tb.splitlines()[-1]} — see step log for full traceback", flush=True)
         sys.exit(1)

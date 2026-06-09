@@ -29,5 +29,7 @@ if __name__ == "__main__":
     try:
         pull()
     except Exception:
-        logger.error("load_model_hf failed:\n" + traceback.format_exc())
+        tb = traceback.format_exc()
+        logger.error("load_model_hf failed:\n" + tb)
+        print(f"::error title=HuggingFace Pull Failed::{tb.splitlines()[-1]} — see step log for full traceback", flush=True)
         sys.exit(1)
