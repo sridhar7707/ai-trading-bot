@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pandas as pd
 import yfinance as yf
 from loguru import logger
 from backtest.engine import run_backtest
@@ -26,7 +27,10 @@ def main():
                 logger.warning(f"{symbol}: insufficient data, skipping")
                 continue
 
-            df.columns = [c.lower() for c in df.columns]
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [col[0].lower() for col in df.columns]
+            else:
+                df.columns = [c.lower() for c in df.columns]
             df = df[["open", "high", "low", "close", "volume"]].dropna()
 
             holdout = df.iloc[-HOLDOUT_DAYS:]
