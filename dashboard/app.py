@@ -24,27 +24,19 @@ def _sync_db():
 
 
 def _current_prices(symbols: list[str]) -> dict[str, float]:
-    """Fetch latest prices for a list of symbols via yfinance."""
+    """Fetch latest prices via yfinance fast_info (one request per ticker)."""
     if not symbols:
         return {}
-    try:
-        import yfinance as yf
-        tickers = yf.download(" ".join(symbols), period="1d", progress=False, auto_adjust=True)
-        prices = {}
-        if isinstance(tickers.columns, pd.MultiIndex):
-            close = tickers["Close"]
-            for sym in symbols:
-                try:
-                    prices[sym] = float(close[sym].dropna().iloc[-1])
-                except Exception:
-                    prices[sym] = 0.0
-        else:
-            last = float(tickers["Close"].dropna().iloc[-1])
-            prices[symbols[0]] = last
-        return prices
-    except Exception as e:
-        logger.warning(f"Price fetch failed: {e}")
-        return {s: 0.0 for s in symbols}
+    import yfinance as yf
+    prices = {}
+    for sym in symbols:
+        try:
+            info = yf.Ticker(sym).fast_info
+            prices[sym] = float(info.get("last_price") or info.get("regularMarketPrice") or 0.0)
+        except Exception as e:
+            logger.warning(f"Price fetch failed for {sym}: {e}")
+            prices[sym] = 0.0
+    return prices
 
 
 def load_open_positions() -> pd.DataFrame:
