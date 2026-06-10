@@ -13,6 +13,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date, datetime, timezone
 from loguru import logger
 
+_UNIVERSE_PATH = "data/universe_today.json"
+
+
+def _load_today_universe() -> list[str]:
+    """Return today's screened universe if available, else config.SYMBOLS."""
+    from config import SYMBOLS as _fallback
+    if not os.path.exists(_UNIVERSE_PATH):
+        return list(_fallback)
+    try:
+        with open(_UNIVERSE_PATH) as f:
+            payload = json.load(f)
+        if payload.get("date") != date.today().isoformat():
+            logger.info("Universe file is from a prior day — using config.SYMBOLS")
+            return list(_fallback)
+        syms = payload.get("symbols", [])
+        if not syms:
+            return list(_fallback)
+        logger.info(f"Loaded screened universe: {len(syms)} symbols ({syms[:5]}...)")
+        return syms
+    except Exception as exc:
+        logger.warning(f"Failed to load screened universe: {exc} — using config.SYMBOLS")
+        return list(_fallback)
+
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
@@ -396,6 +419,8 @@ def run(mode: str = "paper"):
 
     con = init_db()
 
+    active_symbols = _load_today_universe()
+
     daily_start, day_trade_dates = _load_risk_state(con)
     risk = RiskManager(daily_start_value=daily_start, day_trade_dates=day_trade_dates)
 
@@ -433,8 +458,8 @@ def run(mode: str = "paper"):
             headlines = []
         return symbol, bars, headlines
 
-    with ThreadPoolExecutor(max_workers=min(len(SYMBOLS), 10)) as pool:
-        fetched = list(pool.map(_fetch_symbol, SYMBOLS))
+    with ThreadPoolExecutor(max_workers=min(len(active_symbols), 10)) as pool:
+        fetched = list(pool.map(_fetch_symbol, active_symbols))
 
     bars_map         = {sym: bars for sym, bars, _   in fetched}
     symbol_headlines = {sym: hdl  for sym, _,    hdl in fetched}
@@ -448,10 +473,10 @@ def run(mode: str = "paper"):
             return symbol, {"mentions": 0, "sentiment": 0.0}
 
     with ThreadPoolExecutor(max_workers=6) as pool:
-        wsb_map = dict(pool.map(_wsb, SYMBOLS))
+        wsb_map = dict(pool.map(_wsb, active_symbols))
 
     sentiments: dict[str, float] = {}
-    for symbol in SYMBOLS:
+    for symbol in active_symbols:
         wsb   = wsb_map[symbol]
         score = finbert_scores.get(symbol, 0.0)
         if wsb["mentions"] > 0:
@@ -475,7 +500,7 @@ def run(mode: str = "paper"):
         vs_spy_today = 0.0
 
     # ── Per-symbol decision loop ──────────────────────────────────────────────
-    for symbol in SYMBOLS:
+    for symbol in active_symbols:
         try:
             bars = bars_map.get(symbol, pd.DataFrame())
             if bars is None or bars.empty:

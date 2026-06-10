@@ -74,6 +74,12 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python scripts/load_model_hf.py
 
+      - name: Screen universe (pre-market)
+        continue-on-error: true
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python scripts/screen_universe.py --max 25 --max-per-sector 3
+
       - name: Run trading loop (market open to close)
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
