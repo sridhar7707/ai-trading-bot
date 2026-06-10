@@ -1,13 +1,12 @@
 """
-Trading Bot Dashboard — multi-tier Gradio UI.
+Trading Bot Dashboard — two-screen Gradio UI.
+
+Select tier at the top:
+  Subscriber             — Overview (halt), Positions, Trade Log
+  Institutional / Enterprise — all 8 tabs (superset of Subscriber)
 
 Run:  python scripts/dashboard.py
 Then open http://localhost:7860
-
-Tier access:
-  Subscriber          — Overview (+ halt button), Positions, Trade Log
-  Pro Subscriber      — + Performance, Signal Analysis, Readiness Check
-  Institutional       — + Audit Trail, Compliance (visual gauges)
 """
 import sys
 from pathlib import Path
@@ -24,7 +23,8 @@ from bot.monitor.dashboard_data import (
     halt_status_html, toggle_halt,
 )
 
-# ── Confidence check (Pro+) ───────────────────────────────────────────────────
+
+# ── Readiness check (Institutional) ──────────────────────────────────────────
 
 def run_readiness_check() -> str:
     try:
@@ -93,11 +93,16 @@ def run_readiness_check() -> str:
         return f"⚠️ Check failed: {e}"
 
 
-# ── Layout helper ─────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _section(label: str) -> str:
     return (f"<div style='background:#111;color:#aaa;padding:4px 10px;"
             f"border-left:3px solid #0af;font-size:12px;margin-bottom:6px'>{label}</div>")
+
+
+def _toggle_view(tier: str):
+    is_inst = tier == "Institutional / Enterprise"
+    return gr.update(visible=not is_inst), gr.update(visible=is_inst)
 
 
 # ── Build UI ──────────────────────────────────────────────────────────────────
@@ -108,127 +113,197 @@ with gr.Blocks(title="Trading Bot Dashboard", theme=gr.themes.Base(
 
     gr.Markdown("# 📊 AI Trading Bot Dashboard")
 
-    with gr.Tabs():
+    with gr.Row():
+        tier_radio = gr.Radio(
+            choices=["Subscriber", "Institutional / Enterprise"],
+            value="Subscriber",
+            label="Access Tier",
+            interactive=True,
+        )
 
-        # ── Tab 1: Overview + Emergency Halt (Subscriber+) ────────────────────
-        with gr.TabItem("🏠 Overview  [Subscriber+]"):
-            gr.HTML(_section("Portfolio snapshot · Bot status · Today's activity · Emergency halt"))
-            with gr.Row():
-                with gr.Column(scale=3):
-                    overview_display = gr.Markdown("*Loading...*")
-                with gr.Column(scale=1):
-                    halt_status  = gr.HTML("*Loading...*")
-                    halt_btn     = gr.Button("Loading...", variant="stop", size="sm")
-                    halt_message = gr.Markdown("")
-                    gr.Markdown(
-                        "<span style='color:#666;font-size:11px'>"
-                        "Creates/removes `data/HALT_TRADING`. Bot checks this file at the start of each cycle.</span>"
-                    )
-            refresh_ov = gr.Button("🔄 Refresh", size="sm")
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SCREEN 1 — Subscriber
+    # ═══════════════════════════════════════════════════════════════════════════
+    with gr.Column(visible=True) as sub_screen:
 
-            def _ov():
-                s, b = halt_status_html()
-                return overview_md(get_overview()), s, b
+        with gr.Tabs():
 
-            def _halt():
-                s, b, msg = toggle_halt()
-                return s, b, msg
+            # ── Overview + Emergency Halt ─────────────────────────────────────
+            with gr.TabItem("🏠 Overview"):
+                gr.HTML(_section("Portfolio snapshot · Bot status · Today's activity · Emergency halt"))
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        s_overview = gr.Markdown("*Loading...*")
+                    with gr.Column(scale=1):
+                        s_halt_status  = gr.HTML("*Loading...*")
+                        s_halt_btn     = gr.Button("Loading...", variant="stop", size="sm")
+                        s_halt_msg     = gr.Markdown("")
+                        gr.Markdown(
+                            "<span style='color:#666;font-size:11px'>"
+                            "Creates/removes `data/HALT_TRADING`. Bot checks this file at each cycle.</span>"
+                        )
+                s_refresh_ov = gr.Button("🔄 Refresh", size="sm")
 
-            demo.load(_ov, outputs=[overview_display, halt_status, halt_btn])
-            refresh_ov.click(_ov, outputs=[overview_display, halt_status, halt_btn])
-            halt_btn.click(_halt, outputs=[halt_status, halt_btn, halt_message])
+            # ── Positions ─────────────────────────────────────────────────────
+            with gr.TabItem("📂 Positions"):
+                gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
+                s_positions = gr.DataFrame(value=get_positions_df, interactive=False)
+                s_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
-        # ── Tab 2: Positions (Subscriber+) ────────────────────────────────────
-        with gr.TabItem("📂 Positions  [Subscriber+]"):
-            gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
-            positions_table = gr.DataFrame(value=get_positions_df, interactive=False)
-            refresh_pos = gr.Button("🔄 Refresh", size="sm")
-            refresh_pos.click(get_positions_df, outputs=positions_table)
+            # ── Trade Log ─────────────────────────────────────────────────────
+            with gr.TabItem("📋 Trade Log"):
+                gr.HTML(_section(
+                    "Last 200 trades · "
+                    "<span style='background:#388e3c;color:#fff;padding:1px 5px;border-radius:3px'>BUY</span> &nbsp;"
+                    "<span style='background:#1565c0;color:#fff;padding:1px 5px;border-radius:3px'>SELL signal</span> &nbsp;"
+                    "<span style='background:#00838f;color:#fff;padding:1px 5px;border-radius:3px'>Take-profit</span> &nbsp;"
+                    "<span style='background:#e65100;color:#fff;padding:1px 5px;border-radius:3px'>Trailing stop</span> &nbsp;"
+                    "<span style='background:#b71c1c;color:#fff;padding:1px 5px;border-radius:3px'>Stop-loss</span>"
+                ))
+                s_days_slider  = gr.Slider(7, 90, value=30, step=7, label="Days back")
+                s_trades_table = gr.HTML()
+                s_refresh_tl   = gr.Button("🔄 Refresh", size="sm")
 
-        # ── Tab 3: Trade Log — color-coded (Subscriber+) ──────────────────────
-        with gr.TabItem("📋 Trade Log  [Subscriber+]"):
-            gr.HTML(_section(
-                "Last 200 trades · "
-                "<span style='background:#388e3c;color:#fff;padding:1px 5px;border-radius:3px'>BUY</span> &nbsp;"
-                "<span style='background:#1565c0;color:#fff;padding:1px 5px;border-radius:3px'>SELL signal</span> &nbsp;"
-                "<span style='background:#00838f;color:#fff;padding:1px 5px;border-radius:3px'>Take-profit</span> &nbsp;"
-                "<span style='background:#e65100;color:#fff;padding:1px 5px;border-radius:3px'>Trailing stop</span> &nbsp;"
-                "<span style='background:#b71c1c;color:#fff;padding:1px 5px;border-radius:3px'>Stop-loss</span> &nbsp;"
-                "<span style='background:#7f0000;color:#fff;padding:1px 5px;border-radius:3px'>Gap-down</span>"
-            ))
-            days_slider  = gr.Slider(7, 90, value=30, step=7, label="Days back")
-            trades_table = gr.HTML()
-            refresh_tl   = gr.Button("🔄 Refresh", size="sm")
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SCREEN 2 — Institutional / Enterprise
+    # ═══════════════════════════════════════════════════════════════════════════
+    with gr.Column(visible=False) as inst_screen:
 
-            demo.load(lambda: trades_html_table(30), outputs=trades_table)
-            refresh_tl.click(lambda d: trades_html_table(int(d)), inputs=days_slider, outputs=trades_table)
-            days_slider.change(lambda d: trades_html_table(int(d)), inputs=days_slider, outputs=trades_table)
+        with gr.Tabs():
 
-        # ── Tab 4: Performance (Pro+) ─────────────────────────────────────────
-        with gr.TabItem("📈 Performance  [Pro+]"):
-            gr.HTML(_section("Portfolio chart · Sharpe · Win rate · Drawdown · Monthly returns"))
-            perf_days    = gr.Slider(14, 120, value=60, step=7, label="Analysis window (days)")
-            perf_metrics = gr.Markdown("*Loading...*")
-            perf_chart   = gr.Plot()
-            monthly_plot = gr.Plot()
-            refresh_pf   = gr.Button("🔄 Refresh", size="sm")
+            # ── Overview + Emergency Halt ─────────────────────────────────────
+            with gr.TabItem("🏠 Overview"):
+                gr.HTML(_section("Portfolio snapshot · Bot status · Today's activity · Emergency halt"))
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        i_overview = gr.Markdown("*Loading...*")
+                    with gr.Column(scale=1):
+                        i_halt_status  = gr.HTML("*Loading...*")
+                        i_halt_btn     = gr.Button("Loading...", variant="stop", size="sm")
+                        i_halt_msg     = gr.Markdown("")
+                        gr.Markdown(
+                            "<span style='color:#666;font-size:11px'>"
+                            "Creates/removes `data/HALT_TRADING`. Bot checks this file at each cycle.</span>"
+                        )
+                i_refresh_ov = gr.Button("🔄 Refresh", size="sm")
 
-            def _perf(d):
-                d = int(d)
-                return performance_md(get_performance_metrics(d)), portfolio_chart(d), monthly_chart(d * 3)
+            # ── Positions ─────────────────────────────────────────────────────
+            with gr.TabItem("📂 Positions"):
+                gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
+                i_positions   = gr.DataFrame(value=get_positions_df, interactive=False)
+                i_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
-            demo.load(lambda: _perf(60), outputs=[perf_metrics, perf_chart, monthly_plot])
-            refresh_pf.click(_perf, inputs=perf_days, outputs=[perf_metrics, perf_chart, monthly_plot])
-            perf_days.change(_perf, inputs=perf_days, outputs=[perf_metrics, perf_chart, monthly_plot])
+            # ── Trade Log ─────────────────────────────────────────────────────
+            with gr.TabItem("📋 Trade Log"):
+                gr.HTML(_section(
+                    "Last 200 trades · "
+                    "<span style='background:#388e3c;color:#fff;padding:1px 5px;border-radius:3px'>BUY</span> &nbsp;"
+                    "<span style='background:#1565c0;color:#fff;padding:1px 5px;border-radius:3px'>SELL signal</span> &nbsp;"
+                    "<span style='background:#00838f;color:#fff;padding:1px 5px;border-radius:3px'>Take-profit</span> &nbsp;"
+                    "<span style='background:#e65100;color:#fff;padding:1px 5px;border-radius:3px'>Trailing stop</span> &nbsp;"
+                    "<span style='background:#b71c1c;color:#fff;padding:1px 5px;border-radius:3px'>Stop-loss</span>"
+                ))
+                i_days_slider  = gr.Slider(7, 90, value=30, step=7, label="Days back")
+                i_trades_table = gr.HTML()
+                i_refresh_tl   = gr.Button("🔄 Refresh", size="sm")
 
-        # ── Tab 5: Signal Analysis (Pro+) ─────────────────────────────────────
-        with gr.TabItem("🔬 Signals  [Pro+]"):
-            gr.HTML(_section("XGB · LSTM · Sentiment · Ensemble score distributions for BUY entries"))
-            sig_days  = gr.Slider(7, 90, value=30, step=7, label="Days back")
-            sig_chart = gr.Plot()
-            refresh_sg = gr.Button("🔄 Refresh", size="sm")
+            # ── Performance ───────────────────────────────────────────────────
+            with gr.TabItem("📈 Performance"):
+                gr.HTML(_section("Portfolio chart · Sharpe · Win rate · Drawdown · Monthly returns"))
+                i_perf_days    = gr.Slider(14, 120, value=60, step=7, label="Analysis window (days)")
+                i_perf_metrics = gr.Markdown("*Loading...*")
+                i_perf_chart   = gr.Plot()
+                i_monthly_plot = gr.Plot()
+                i_refresh_pf   = gr.Button("🔄 Refresh", size="sm")
 
-            demo.load(lambda: signals_chart(30), outputs=sig_chart)
-            refresh_sg.click(lambda d: signals_chart(int(d)), inputs=sig_days, outputs=sig_chart)
-            sig_days.change(lambda d: signals_chart(int(d)), inputs=sig_days, outputs=sig_chart)
+            # ── Signal Analysis ───────────────────────────────────────────────
+            with gr.TabItem("🔬 Signals"):
+                gr.HTML(_section("XGB · LSTM · Sentiment · Ensemble score distributions for BUY entries"))
+                i_sig_days  = gr.Slider(7, 90, value=30, step=7, label="Days back")
+                i_sig_chart = gr.Plot()
+                i_refresh_sg = gr.Button("🔄 Refresh", size="sm")
 
-        # ── Tab 6: Readiness Check (Pro+) ─────────────────────────────────────
-        with gr.TabItem("🚀 Go-Live Check  [Pro+]"):
-            gr.HTML(_section("6-gate confidence check — same logic as confidence_check.py"))
-            readiness_md  = gr.Markdown("Click **Run Check** to evaluate readiness.")
-            run_check_btn = gr.Button("▶ Run Check", variant="primary")
-            run_check_btn.click(run_readiness_check, outputs=readiness_md)
+            # ── Go-Live Check ─────────────────────────────────────────────────
+            with gr.TabItem("🚀 Go-Live Check"):
+                gr.HTML(_section("6-gate confidence check — same logic as confidence_check.py"))
+                i_readiness_md  = gr.Markdown("Click **Run Check** to evaluate readiness.")
+                i_run_check_btn = gr.Button("▶ Run Check", variant="primary")
 
-        # ── Tab 7: Audit Trail (Institutional) ────────────────────────────────
-        with gr.TabItem("🗂 Audit Trail  [Institutional]"):
-            gr.HTML(_section("Full signal audit per trade — XGB · LSTM · Sentiment · Macro · Ensemble"))
-            audit_days  = gr.Slider(7, 90, value=60, step=7, label="Days back")
-            audit_table = gr.DataFrame(interactive=False)
-            audit_dl    = gr.DownloadButton("⬇ Export CSV", visible=False)
-            refresh_au  = gr.Button("🔄 Refresh", size="sm")
+            # ── Audit Trail ───────────────────────────────────────────────────
+            with gr.TabItem("🗂 Audit Trail"):
+                gr.HTML(_section("Full signal audit per trade — XGB · LSTM · Sentiment · Macro · Ensemble"))
+                i_audit_days  = gr.Slider(7, 90, value=60, step=7, label="Days back")
+                i_audit_table = gr.DataFrame(interactive=False)
+                i_audit_dl    = gr.DownloadButton("⬇ Export CSV", visible=False)
+                i_refresh_au  = gr.Button("🔄 Refresh", size="sm")
 
-            def _audit(d):
-                df   = get_audit_df(int(d))
-                path = "/tmp/audit_export.csv"
-                if not df.empty:
-                    df.to_csv(path, index=False)
-                return df, gr.DownloadButton(value=path, visible=not df.empty)
+            # ── Compliance gauges ─────────────────────────────────────────────
+            with gr.TabItem("⚖ Compliance"):
+                gr.HTML(_section("Daily · Weekly · PDT limits — live visual gauges with traffic-light colours"))
+                i_compliance  = gr.HTML("*Loading...*")
+                i_refresh_cp  = gr.Button("🔄 Refresh", size="sm")
 
-            demo.load(lambda: _audit(60), outputs=[audit_table, audit_dl])
-            refresh_au.click(_audit, inputs=audit_days, outputs=[audit_table, audit_dl])
-            audit_days.change(_audit, inputs=audit_days, outputs=[audit_table, audit_dl])
+    # ── Tier toggle ───────────────────────────────────────────────────────────
+    tier_radio.change(_toggle_view, inputs=tier_radio, outputs=[sub_screen, inst_screen])
 
-        # ── Tab 8: Compliance — visual gauges (Institutional) ─────────────────
-        with gr.TabItem("⚖ Compliance  [Institutional]"):
-            gr.HTML(_section("Daily · Weekly · PDT limits — live visual gauges with traffic-light colours"))
-            compliance_gauges = gr.HTML("*Loading...*")
-            refresh_cp = gr.Button("🔄 Refresh", size="sm")
+    # ── Subscriber event wiring ───────────────────────────────────────────────
+    def _ov(status_html, btn_lbl, overview): return overview, status_html, btn_lbl
 
-            def _comp():
-                return compliance_gauges_html(get_compliance_state())
+    def _load_ov():
+        s, b = halt_status_html()
+        return overview_md(get_overview()), s, b
 
-            demo.load(_comp, outputs=compliance_gauges)
-            refresh_cp.click(_comp, outputs=compliance_gauges)
+    def _do_halt():
+        s, b, msg = toggle_halt()
+        return s, b, msg
+
+    demo.load(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
+    s_refresh_ov.click(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
+    s_halt_btn.click(_do_halt, outputs=[s_halt_status, s_halt_btn, s_halt_msg])
+    s_refresh_pos.click(get_positions_df, outputs=s_positions)
+    demo.load(lambda: trades_html_table(30), outputs=s_trades_table)
+    s_refresh_tl.click(lambda d: trades_html_table(int(d)), inputs=s_days_slider, outputs=s_trades_table)
+    s_days_slider.change(lambda d: trades_html_table(int(d)), inputs=s_days_slider, outputs=s_trades_table)
+
+    # ── Institutional event wiring ────────────────────────────────────────────
+    demo.load(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
+    i_refresh_ov.click(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
+    i_halt_btn.click(_do_halt, outputs=[i_halt_status, i_halt_btn, i_halt_msg])
+    i_refresh_pos.click(get_positions_df, outputs=i_positions)
+    demo.load(lambda: trades_html_table(30), outputs=i_trades_table)
+    i_refresh_tl.click(lambda d: trades_html_table(int(d)), inputs=i_days_slider, outputs=i_trades_table)
+    i_days_slider.change(lambda d: trades_html_table(int(d)), inputs=i_days_slider, outputs=i_trades_table)
+
+    def _perf(d):
+        d = int(d)
+        return performance_md(get_performance_metrics(d)), portfolio_chart(d), monthly_chart(d * 3)
+
+    demo.load(lambda: _perf(60), outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
+    i_refresh_pf.click(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
+    i_perf_days.change(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
+
+    demo.load(lambda: signals_chart(30), outputs=i_sig_chart)
+    i_refresh_sg.click(lambda d: signals_chart(int(d)), inputs=i_sig_days, outputs=i_sig_chart)
+    i_sig_days.change(lambda d: signals_chart(int(d)), inputs=i_sig_days, outputs=i_sig_chart)
+
+    i_run_check_btn.click(run_readiness_check, outputs=i_readiness_md)
+
+    def _audit(d):
+        df   = get_audit_df(int(d))
+        path = "/tmp/audit_export.csv"
+        if not df.empty:
+            df.to_csv(path, index=False)
+        return df, gr.DownloadButton(value=path, visible=not df.empty)
+
+    demo.load(lambda: _audit(60), outputs=[i_audit_table, i_audit_dl])
+    i_refresh_au.click(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl])
+    i_audit_days.change(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl])
+
+    def _comp():
+        return compliance_gauges_html(get_compliance_state())
+
+    demo.load(_comp, outputs=i_compliance)
+    i_refresh_cp.click(_comp, outputs=i_compliance)
 
 
 if __name__ == "__main__":
