@@ -1,5 +1,4 @@
-# Space-only requirements — HF Spaces installs gradio==<sdk_version> automatically.
-# Do NOT pin gradio here; sdk_version in README.md controls it.
+gradio==5.4.0
 pandas>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0

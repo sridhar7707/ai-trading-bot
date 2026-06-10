@@ -76,4 +76,4 @@ api.upload_folder(
     repo_type="space",
     commit_message="chore: deploy dashboard",
 )
-print(f"Done → https://huggingface.co/spaces/{space_id}")
+print(f"Done: https://huggingface.co/spaces/{space_id}")
