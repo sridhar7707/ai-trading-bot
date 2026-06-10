@@ -82,9 +82,10 @@ def test_sell_submits_order(client):
     client.api.submit_order.return_value = order
     result = client.sell("AAPL")
     assert result["order_id"] == "sell-456"
+    # Code converts position.qty (string from Alpaca API) to float before passing
     client.api.submit_order.assert_called_once_with(
         symbol="AAPL",
-        qty="5",
+        qty=5.0,
         side="sell",
         type="market",
         time_in_force="day",

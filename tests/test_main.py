@@ -6,20 +6,19 @@ from bot.main import _opened_today, log_trade, init_db
 
 @pytest.fixture
 def db():
-    """In-memory SQLite DB with the trades table."""
+    """In-memory SQLite DB matching the schema created by init_db()."""
     con = sqlite3.connect(":memory:")
     con.execute("""
         CREATE TABLE trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            symbol TEXT,
-            action TEXT,
-            shares REAL,
-            price REAL,
-            notional REAL,
-            regime TEXT,
-            portfolio_value REAL,
-            pnl_pct REAL
+            timestamp TEXT, symbol TEXT, action TEXT,
+            shares REAL, price REAL, notional REAL,
+            regime TEXT, portfolio_value REAL, pnl_pct REAL,
+            xgb_prob REAL DEFAULT 0.0,
+            lstm_prob REAL DEFAULT 0.0,
+            sentiment_score REAL DEFAULT 0.0,
+            macro_score REAL DEFAULT 0.0,
+            ensemble_score REAL DEFAULT 0.0
         )
     """)
     con.commit()
@@ -32,7 +31,7 @@ def db():
 def test_opened_today_true_when_buy_today(db):
     today = datetime.now(timezone.utc).isoformat()
     db.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
         (today, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()
@@ -46,7 +45,7 @@ def test_opened_today_false_when_no_buy(db):
 def test_opened_today_false_when_only_sell_today(db):
     today = datetime.now(timezone.utc).isoformat()
     db.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
         (today, "AAPL", "SELL", 1.0, 160.0, 0.0, "RANGING", 10160.0, 0.06),
     )
     db.commit()
@@ -56,7 +55,7 @@ def test_opened_today_false_when_only_sell_today(db):
 def test_opened_today_false_for_yesterday_buy(db):
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     db.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
         (yesterday, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()
@@ -66,7 +65,7 @@ def test_opened_today_false_for_yesterday_buy(db):
 def test_opened_today_symbol_isolation(db):
     today = datetime.now(timezone.utc).isoformat()
     db.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
         (today, "MSFT", "BUY", 1.0, 300.0, 300.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()

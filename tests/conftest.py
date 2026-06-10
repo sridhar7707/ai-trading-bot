@@ -1,10 +1,20 @@
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 import numpy as np
 import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# alpaca_trade_api → aiohttp has a TypedDict bug on Python 3.9.
+# Mock the package early so test_alpaca_client and test_main can be collected
+# on any Python version without a real Alpaca installation.
+if "alpaca_trade_api" not in sys.modules:
+    _alpaca_mock = MagicMock()
+    for _mod in ("alpaca_trade_api", "alpaca_trade_api.rest",
+                 "alpaca_trade_api.rest_async", "alpaca_trade_api.stream"):
+        sys.modules[_mod] = _alpaca_mock
 
 
 def make_ohlcv(n: int = 100, seed: int = 42) -> pd.DataFrame:
