@@ -34,6 +34,7 @@ from bot.monitor.dashboard_data import (
     get_audit_df,
     get_compliance_state, compliance_gauges_html,
     halt_status_html, toggle_halt,
+    refresh_db_from_hf,
 )
 
 
@@ -163,7 +164,7 @@ with gr.Blocks(
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
                 gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
-                s_positions = gr.DataFrame(value=get_positions_df, interactive=False)
+                s_positions = gr.DataFrame(interactive=False)
                 s_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -206,7 +207,7 @@ with gr.Blocks(
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
                 gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
-                i_positions   = gr.DataFrame(value=get_positions_df, interactive=False)
+                i_positions   = gr.DataFrame(interactive=False)
                 i_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -266,6 +267,7 @@ with gr.Blocks(
     def _ov(status_html, btn_lbl, overview): return overview, status_html, btn_lbl
 
     def _load_ov():
+        refresh_db_from_hf()
         s, b = halt_status_html()
         return overview_md(get_overview()), s, b
 
@@ -274,6 +276,7 @@ with gr.Blocks(
         return s, b, msg
 
     demo.load(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
+    demo.load(get_positions_df, outputs=s_positions)
     s_refresh_ov.click(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
     s_halt_btn.click(_do_halt, outputs=[s_halt_status, s_halt_btn, s_halt_msg])
     s_refresh_pos.click(get_positions_df, outputs=s_positions)
@@ -283,6 +286,7 @@ with gr.Blocks(
 
     # ── Institutional event wiring ────────────────────────────────────────────
     demo.load(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
+    demo.load(get_positions_df, outputs=i_positions)
     i_refresh_ov.click(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
     i_halt_btn.click(_do_halt, outputs=[i_halt_status, i_halt_btn, i_halt_msg])
     i_refresh_pos.click(get_positions_df, outputs=i_positions)

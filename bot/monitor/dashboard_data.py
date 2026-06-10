@@ -24,16 +24,20 @@ _CARD = "#1a1a2e"
 
 
 def _con() -> sqlite3.Connection | None:
-    # In HF Space: pull a fresh copy from the dataset if local file is stale/missing
-    if os.environ.get("SPACE_ID"):
-        try:
-            from bot.monitor.sync_db import pull_db
-            pull_db()
-        except Exception:
-            pass
     if not Path(_DB).exists():
         return None
     return sqlite3.connect(_DB, check_same_thread=False)
+
+
+def refresh_db_from_hf() -> None:
+    """Pull a fresh trades.db from HF dataset (Space-only, non-blocking)."""
+    if not os.environ.get("SPACE_ID"):
+        return
+    try:
+        from bot.monitor.sync_db import pull_db
+        pull_db()
+    except Exception:
+        pass
 
 
 def _ax_style(ax):
