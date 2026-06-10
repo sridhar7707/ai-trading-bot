@@ -45,13 +45,22 @@ def get_overview() -> dict:
         return {"_error": "trades.db not found — no trading data yet."}
     today = date.today().isoformat()
     wk    = date.today().strftime("%G-W%V")
-    rs    = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
-    mc    = {r[0]: float(r[1]) for r in con.execute("SELECT key, value FROM macro_cache")}
+    try:
+        rs = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
+    except Exception:
+        rs = {}
+    try:
+        mc = {r[0]: float(r[1]) for r in con.execute("SELECT key, value FROM macro_cache")}
+    except Exception:
+        mc = {}
 
-    row = con.execute(
-        "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
-    ).fetchone()
-    portfolio = float(row[0]) if row else 0.0
+    try:
+        row = con.execute(
+            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        portfolio = float(row[0]) if row else 0.0
+    except Exception:
+        portfolio = 0.0
 
     daily_start  = float(rs.get("daily_start_value",  0) or 0)
     weekly_start = float(rs.get("weekly_start_value", 0) or 0)
@@ -66,10 +75,16 @@ def get_overview() -> dict:
     except Exception:
         day_trade_dates = []
 
-    trades_today   = con.execute(
-        "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
-    ).fetchone()[0]
-    open_positions = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
+    try:
+        trades_today = con.execute(
+            "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
+        ).fetchone()[0]
+    except Exception:
+        trades_today = 0
+    try:
+        open_positions = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
+    except Exception:
+        open_positions = 0
     con.close()
 
     return {
@@ -112,12 +127,17 @@ def overview_md(d: dict) -> str:
 # ── Positions (Subscriber+) ───────────────────────────────────────────────────
 
 def get_positions_df() -> pd.DataFrame:
+    _empty = pd.DataFrame(columns=["Symbol", "Entry $", "HWM $", "ATR", "Opened At", "Days"])
     con = _con()
     if con is None:
-        return pd.DataFrame(columns=["Symbol", "Entry $", "HWM $", "ATR", "Opened At", "Days"])
-    df = pd.read_sql_query(
-        "SELECT symbol, entry_price, high_water_mark, atr_at_entry, opened_at FROM position_state", con
-    )
+        return _empty
+    try:
+        df = pd.read_sql_query(
+            "SELECT symbol, entry_price, high_water_mark, atr_at_entry, opened_at FROM position_state", con
+        )
+    except Exception:
+        con.close()
+        return _empty
     con.close()
     if df.empty:
         return df.rename(columns={"symbol":"Symbol","entry_price":"Entry $",
@@ -306,11 +326,17 @@ def get_compliance_state() -> dict:
         return {}
     today = date.today().isoformat()
     wk    = date.today().strftime("%G-W%V")
-    rs    = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
-    row   = con.execute(
-        "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
-    ).fetchone()
-    portfolio    = float(row[0]) if row else 0.0
+    try:
+        rs = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
+    except Exception:
+        rs = {}
+    try:
+        row = con.execute(
+            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        portfolio = float(row[0]) if row else 0.0
+    except Exception:
+        portfolio = 0.0
     daily_start  = float(rs.get("daily_start_value",  0) or 0)
     weekly_start = float(rs.get("weekly_start_value", 0) or 0)
     try:

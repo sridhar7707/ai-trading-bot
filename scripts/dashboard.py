@@ -120,9 +120,12 @@ def _toggle_view(tier: str):
 
 # ── Build UI ──────────────────────────────────────────────────────────────────
 
-with gr.Blocks(title="Trading Bot Dashboard", theme=gr.themes.Base(
-    primary_hue="cyan", neutral_hue="slate"
-)) as demo:
+_theme = gr.themes.Base(primary_hue="cyan", neutral_hue="slate")
+_gr_major = int(gr.__version__.split(".")[0])
+with gr.Blocks(
+    title="Trading Bot Dashboard",
+    **({} if _gr_major >= 6 else {"theme": _theme}),
+) as demo:
 
     gr.Markdown("# 📊 AI Trading Bot Dashboard")
 
@@ -320,4 +323,5 @@ with gr.Blocks(title="Trading Bot Dashboard", theme=gr.themes.Base(
 
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    _launch_kw = {"theme": _theme} if _gr_major >= 6 else {}
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, **_launch_kw)
