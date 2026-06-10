@@ -907,6 +907,13 @@ def run(mode: str = "paper"):
     logger.info("=== Trading cycle complete ===")
     con.close()
 
+    try:
+        from bot.monitor.sync_db import push_db
+        if push_db():
+            logger.info("trades.db synced to HuggingFace dataset")
+    except Exception as _e:
+        logger.warning(f"HF DB sync skipped: {_e}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

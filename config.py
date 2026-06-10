@@ -15,6 +15,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # --- HuggingFace ---
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 HF_REPO_ID = os.getenv("HF_REPO_ID", "")
+HF_DB_REPO_ID = os.getenv("HF_DB_REPO_ID", "ksri77/ai-trading-bot-db")
 
 # --- Trading universe (live bot trades these) ---
 # Balanced across 8 sectors so the model can rotate capital into whatever is leading,
