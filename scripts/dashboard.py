@@ -12,6 +12,19 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# HF Spaces pins Gradio 4.x via sdk_version, but huggingface_hub>=0.30 removed HfFolder.
+# Patch it back before Gradio imports so gradio/oauth.py doesn't blow up.
+import huggingface_hub as _hfhub
+if not hasattr(_hfhub, "HfFolder"):
+    class _HfFolder:
+        @staticmethod
+        def get_token(): return None
+        @staticmethod
+        def save_token(token): pass
+        @staticmethod
+        def delete_token(): pass
+    _hfhub.HfFolder = _HfFolder
+
 import gradio as gr
 from bot.monitor.dashboard_data import (
     get_overview, overview_md,
