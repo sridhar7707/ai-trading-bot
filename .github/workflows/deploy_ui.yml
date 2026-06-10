@@ -55,9 +55,9 @@ jobs:
           # Full bot package (dashboard imports from many submodules)
           shutil.copytree("bot", staging / "bot")
 
-          # Top-level config and requirements
-          shutil.copy("config.py",       staging / "config.py")
-          shutil.copy("requirements.txt", staging / "requirements.txt")
+          # config.py + minimal Space-only requirements (no ML/trading packages)
+          shutil.copy("config.py",               staging / "config.py")
+          shutil.copy("requirements_space.txt",  staging / "requirements.txt")
 
           # Space metadata (creates the Space as a Gradio app on first deploy)
           readme = staging / "README.md"

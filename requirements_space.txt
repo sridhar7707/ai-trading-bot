@@ -1,0 +1,13 @@
+# Minimal requirements for the Gradio dashboard Space.
+# Does NOT include trading/ML packages (alpaca, torch, xgboost, transformers, etc.)
+# which are only needed by the live bot running in GitHub Actions.
+gradio>=4.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+scipy>=1.11.0
+loguru>=0.7.0
+yfinance>=0.2.0
+huggingface-hub>=0.20.0
+python-dotenv>=1.0.0
+pillow>=10.4.0

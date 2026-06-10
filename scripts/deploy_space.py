@@ -48,9 +48,9 @@ shutil.copy(root / "scripts" / "dashboard.py", staging / "app.py")
 # Full bot package
 shutil.copytree(root / "bot", staging / "bot")
 
-# Top-level config and requirements
-shutil.copy(root / "config.py",        staging / "config.py")
-shutil.copy(root / "requirements.txt", staging / "requirements.txt")
+# config.py + minimal Space-only requirements (no ML/trading packages)
+shutil.copy(root / "config.py",               staging / "config.py")
+shutil.copy(root / "requirements_space.txt",  staging / "requirements.txt")
 
 # Space README (only written if not already in the Space)
 readme = staging / "README.md"
