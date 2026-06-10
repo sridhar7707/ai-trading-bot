@@ -6,6 +6,7 @@ on:
     paths:
       - 'scripts/dashboard.py'
       - 'bot/monitor/dashboard_data.py'
+  workflow_dispatch:  # allow manual trigger from GitHub Actions tab
 
 jobs:
   deploy-ui:
