@@ -61,7 +61,7 @@ readme.write_text(
     "colorFrom: blue\n"
     "colorTo: indigo\n"
     "sdk: gradio\n"
-    "sdk_version: 5.0.0\n"
+    "sdk_version: 4.44.1\n"
     "app_file: app.py\n"
     "pinned: false\n"
     "---\n",
