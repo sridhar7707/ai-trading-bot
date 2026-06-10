@@ -20,8 +20,14 @@ THRESHOLDS = {
 
 def load_trades():
     con = sqlite3.connect(TRADE_DB_PATH)
-    rows = con.execute("SELECT timestamp, action, pnl_pct, portfolio_value FROM trades ORDER BY timestamp").fetchall()
-    con.close()
+    try:
+        rows = con.execute(
+            "SELECT timestamp, action, pnl_pct, portfolio_value FROM trades ORDER BY timestamp"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        con.close()
     return rows
 
 
