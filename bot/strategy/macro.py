@@ -1,7 +1,13 @@
 import os
+import math
 import time
 import threading
 from loguru import logger
+
+
+def _sigmoid(x: float, center: float, scale: float) -> float:
+    """Logistic sigmoid centered at `center`, transitions over ±`scale`."""
+    return 1.0 / (1.0 + math.exp(-(x - center) / scale))
 
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
@@ -27,24 +33,18 @@ def _compute_from_raw(raw: dict) -> dict:
     vix         = raw["vix"]
     fed_rate    = raw["fed_rate"]
 
-    score = 0.5
-    if yield_curve < 0:
-        score -= 0.15
-    elif yield_curve > 1.5:
-        score += 0.10
+    # Continuous sigmoid scoring removes hard-threshold discontinuities.
+    # VIX: low fear → bullish. Center=20, scale=5 gives smooth 15→25 transition.
+    vix_score  = 1.0 - _sigmoid(vix, center=20.0, scale=5.0)
+    # Yield curve: positive (normal) → bullish, negative (inverted) → bearish.
+    yc_score   = _sigmoid(yield_curve, center=0.0, scale=0.5)
+    # Fed rate: high rates pressure multiples. Center=3.5%, scale=1.5.
+    rate_score = 1.0 - _sigmoid(fed_rate, center=3.5, scale=1.5)
 
-    if vix > 30:
-        score -= 0.20
-    elif vix < 15:
-        score += 0.10
+    score = max(0.0, min(1.0, 0.50 * vix_score + 0.30 * yc_score + 0.20 * rate_score))
 
-    if fed_rate > 5.0:
-        score -= 0.10
-    elif fed_rate < 2.0:
-        score += 0.05
-
-    score = max(0.0, min(1.0, score))
-    cap   = 0.5 if (yield_curve < 0 or vix > 30) else 1.0
+    # Cap position sizing when macro stress is elevated (same logic, same threshold)
+    cap = 0.5 if (yield_curve < 0 or vix > 30) else 1.0
 
     logger.info(
         f"Macro: yield_curve={yield_curve:.2f}, vix={vix:.1f}, "

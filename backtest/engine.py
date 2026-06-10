@@ -15,6 +15,7 @@ from config import (
 )
 
 SEQ_LEN = 60  # matches LSTMPredictor.SEQ_LEN
+SLIPPAGE_BPS = 7  # 7 bps per side on limit orders; 14 bps round-trip (conservative for S&P names)
 
 
 def _atr_stop_price(entry_price: float, atr: float) -> float:
@@ -66,9 +67,10 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
 
             stop_px = _atr_stop_price(entry_price, atr)
             if price <= stop_px:
-                pnl_pct = (price - entry_price) / entry_price
-                balance += shares * price
-                trades.append({"step": i, "action": "SELL_STOP", "price": price, "pnl_pct": pnl_pct})
+                fill_price = price * (1 - SLIPPAGE_BPS / 10_000)
+                pnl_pct = (fill_price - entry_price) / entry_price
+                balance += shares * fill_price
+                trades.append({"step": i, "action": "SELL_STOP", "price": fill_price, "pnl_pct": pnl_pct})
                 shares = high_water_mark = entry_price = total_cost = 0.0
                 portfolio_values.append(balance)
                 continue
@@ -76,9 +78,10 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
             if high_water_mark > entry_price * 1.005 and atr > 0:
                 trail_px = _trail_price(high_water_mark, atr)
                 if price <= trail_px:
-                    pnl_pct = (price - entry_price) / entry_price
-                    balance += shares * price
-                    trades.append({"step": i, "action": "SELL_TRAIL", "price": price, "pnl_pct": pnl_pct})
+                    fill_price = price * (1 - SLIPPAGE_BPS / 10_000)
+                    pnl_pct = (fill_price - entry_price) / entry_price
+                    balance += shares * fill_price
+                    trades.append({"step": i, "action": "SELL_TRAIL", "price": fill_price, "pnl_pct": pnl_pct})
                     shares = high_water_mark = entry_price = total_cost = 0.0
                     portfolio_values.append(balance)
                     continue
@@ -87,8 +90,10 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
                 tp_pct = max(0.06, min(0.08, (3 * atr) / entry_price)) if atr > 0 else 0.06
                 current_pnl = (price - entry_price) / entry_price
                 if current_pnl >= tp_pct:
-                    balance += shares * price
-                    trades.append({"step": i, "action": "SELL_TP", "price": price, "pnl_pct": current_pnl})
+                    fill_price = price * (1 - SLIPPAGE_BPS / 10_000)
+                    pnl_pct = (fill_price - entry_price) / entry_price
+                    balance += shares * fill_price
+                    trades.append({"step": i, "action": "SELL_TP", "price": fill_price, "pnl_pct": pnl_pct})
                     shares = high_water_mark = entry_price = total_cost = 0.0
                     portfolio_values.append(balance)
                     continue
@@ -109,17 +114,19 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
 
         if action == 1 and balance > 1:
             spend = balance * MAX_POSITION_PCT
-            shares += spend / price
+            fill_price = price * (1 + SLIPPAGE_BPS / 10_000)
+            shares += spend / fill_price
             balance -= spend
             total_cost += spend
             entry_price = total_cost / shares
-            high_water_mark = price
-            trades.append({"step": i, "action": "BUY", "price": price, "pnl_pct": 0.0})
+            high_water_mark = fill_price
+            trades.append({"step": i, "action": "BUY", "price": fill_price, "pnl_pct": 0.0})
 
         elif action == 2 and shares > 0:
-            pnl_pct = (price - entry_price) / entry_price if entry_price > 0 else 0.0
-            balance += shares * price
-            trades.append({"step": i, "action": "SELL", "price": price, "pnl_pct": pnl_pct})
+            fill_price = price * (1 - SLIPPAGE_BPS / 10_000)
+            pnl_pct = (fill_price - entry_price) / entry_price if entry_price > 0 else 0.0
+            balance += shares * fill_price
+            trades.append({"step": i, "action": "SELL", "price": fill_price, "pnl_pct": pnl_pct})
             shares = high_water_mark = entry_price = total_cost = 0.0
 
         portfolio_values.append(balance + shares * price)

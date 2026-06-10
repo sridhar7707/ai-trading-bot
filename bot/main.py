@@ -572,10 +572,10 @@ def run(mode: str = "paper"):
             regime_code   = regime_clf.predict(latest)
             regime_name   = regime_clf.regime_name(regime_code)
 
-            xgb_prob   = xgb.predict_proba(latest)
-            lstm_prob  = lstm.predict_proba(bars)
-            sentiment  = sentiments.get(symbol, 0.0)
-            action_str, pos_fraction = ensemble_signal(
+            xgb_prob          = xgb.predict_proba(latest)
+            lstm_prob         = lstm.predict_proba(bars)
+            sentiment         = sentiments.get(symbol, 0.0)
+            action_str, ensemble_size = ensemble_signal(
                 xgb_prob, lstm_prob, sentiment, regime_name, macro_score=macro_score
             )
             action = action_to_int(action_str)
@@ -712,8 +712,10 @@ def run(mode: str = "paper"):
                 continue
 
             # Gate 8 — Cash and risk approval
+            # ensemble_size: STRONG_BUY=0.20, BUY=0.12 — use as confidence multiplier on Kelly
             kelly_f      = _kelly_fraction(con, symbol)
-            pos_fraction = kelly_f * macro_cap
+            confidence   = ensemble_size / BUY_FRACTION  # 1.0 for BUY, 1.67 for STRONG_BUY
+            pos_fraction = min(kelly_f * macro_cap * confidence, KELLY_FRACTION_MAX)
             notional     = portfolio_value * pos_fraction
 
             if notional > available_cash * 0.95:

@@ -11,6 +11,7 @@ from bot.strategy.features import FEATURE_COLS
 LSTM_MODEL_PATH = Path("models/saved/lstm_predictor.pt")
 SEQ_LEN         = 60
 FORWARD_PERIODS = 5
+MIN_MOVE_PCT    = 0.003  # must match XGBPredictor — both models predict the same target
 PATIENCE        = 3   # early stopping: halt if val loss doesn't improve for this many epochs
 
 
@@ -58,8 +59,8 @@ class LSTMPredictor:
 
     def _make_sequences(self, df: pd.DataFrame):
         data  = df[FEATURE_COLS].values.astype(np.float32)
-        future_close = df["close"].shift(-FORWARD_PERIODS)
-        labels = (future_close > df["close"]).astype(float).values
+        future_return = (df["close"].shift(-FORWARD_PERIODS) - df["close"]) / df["close"]
+        labels = (future_return > MIN_MOVE_PCT).astype(float).values
 
         X, y = [], []
         for i in range(SEQ_LEN, len(data) - FORWARD_PERIODS):

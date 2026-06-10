@@ -4,11 +4,13 @@ from loguru import logger
 
 # Fix #10: macro_score added as a 5th signal.
 # Weights redistributed so they still sum to 1.0.
+# Regime is intentionally excluded from the score weights —
+# it acts as a hard entry gate in main.py (ENTRY_REGIMES). Including it here
+# would double-count it: once as a score component and again as a binary block.
 WEIGHTS = {
-    "xgb":       0.25,
-    "lstm":      0.25,
+    "xgb":       0.35,
+    "lstm":      0.35,
     "sentiment": 0.15,
-    "regime":    0.20,
     "macro":     0.15,
 }
 
@@ -20,13 +22,6 @@ STRONG_BUY_FRACTION   = 0.20
 BUY_FRACTION          = 0.12
 SELL_FRACTION         = 0.00
 STRONG_SELL_FRACTION  = 0.00
-
-REGIME_SCORES = {
-    "TRENDING_UP":    1.0,
-    "RANGING":        0.5,
-    "HIGH_VOLATILITY":0.2,
-    "TRENDING_DOWN":  0.0,
-}
 
 
 def ensemble_signal(
@@ -48,14 +43,12 @@ def ensemble_signal(
         action: STRONG_BUY | BUY | HOLD | SELL | STRONG_SELL
         position_fraction: fraction of portfolio to allocate (0.0 for HOLD/SELL)
     """
-    regime_score   = REGIME_SCORES.get(regime, 0.5)
     sentiment_norm = (sentiment_score + 1.0) / 2.0  # [-1, +1] → [0, 1]
 
     score = (
         WEIGHTS["xgb"]       * xgb_prob +
         WEIGHTS["lstm"]      * lstm_prob +
         WEIGHTS["sentiment"] * sentiment_norm +
-        WEIGHTS["regime"]    * regime_score +
         WEIGHTS["macro"]     * macro_score
     )
 
@@ -69,7 +62,7 @@ def ensemble_signal(
     logger.debug(
         f"Ensemble score={score:.3f} "
         f"(xgb={xgb_prob:.2f}, lstm={lstm_prob:.2f}, "
-        f"sentiment={sentiment_score:.2f}, regime={regime}, macro={macro_score:.2f})"
+        f"sentiment={sentiment_score:.2f}, regime={regime}[gate-only], macro={macro_score:.2f})"
     )
 
     if score > STRONG_BUY_THRESHOLD:

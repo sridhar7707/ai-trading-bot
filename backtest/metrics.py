@@ -7,7 +7,8 @@ def compute_metrics(portfolio_values: List[float], trades: list, initial_balance
     returns = np.diff(values) / (values[:-1] + 1e-8)
 
     total_return = (values[-1] - initial_balance) / initial_balance
-    ann_return   = (1 + total_return) ** (252 / max(len(values), 1)) - 1
+    trading_days = max(len(values) / 78, 1)  # 78 five-min bars per trading day
+    ann_return   = (1 + total_return) ** (252 / trading_days) - 1
     sharpe       = (float(np.mean(returns)) / (float(np.std(returns)) + 1e-8)
                     * np.sqrt(252 * 78)) if len(returns) > 1 else 0.0  # 78 five-min bars/day
 

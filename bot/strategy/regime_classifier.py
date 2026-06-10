@@ -9,22 +9,44 @@ from config import REGIME_MODEL_PATH
 REGIMES = {0: "TRENDING_UP", 1: "TRENDING_DOWN", 2: "RANGING", 3: "HIGH_VOLATILITY"}
 
 ATR_VOLATILITY_THRESHOLD = 0.03  # atr/close ratio above which market is HIGH_VOLATILITY
+REGIME_LOOKAHEAD = 20            # bars to look FORWARD when generating training labels
 
 
 def label_regime(df: pd.DataFrame) -> pd.Series:
-    """Create ground-truth regime labels from price data for training."""
+    """
+    Generate regime labels based on what price DOES over the next REGIME_LOOKAHEAD bars.
+    The model then learns to predict future regime from current features — not to
+    replicate the current RSI/MACD rules, which was the old circular labeling approach.
+
+    Labels are training-only; live prediction uses the trained RandomForest on current features.
+    """
+    closes = df["close"].values
+    atrs   = df["atr"].values if "atr" in df.columns else np.zeros(len(df))
     labels = []
+
     for i in range(len(df)):
-        row = df.iloc[i]
-        atr_ratio = row.get("atr", 0) / row["close"] if row["close"] > 0 else 0
+        atr_ratio = atrs[i] / closes[i] if closes[i] > 0 else 0.0
         if atr_ratio > ATR_VOLATILITY_THRESHOLD:
-            labels.append(3)  # HIGH_VOLATILITY
-        elif row.get("rsi", 50) > 55 and row.get("macd_diff", 0) > 0:
-            labels.append(0)  # TRENDING_UP
-        elif row.get("rsi", 50) < 45 and row.get("macd_diff", 0) < 0:
+            labels.append(3)  # HIGH_VOLATILITY — detected from current bar, not future
+            continue
+
+        end = min(i + REGIME_LOOKAHEAD, len(df) - 1)
+        if end <= i:
+            labels.append(2)  # RANGING — not enough future data at tail of series
+            continue
+
+        window      = closes[i: end + 1]
+        fwd_return  = (window[-1] - window[0]) / (window[0] + 1e-8)
+        fwd_rets    = np.diff(window) / (window[:-1] + 1e-8)
+        fwd_sharpe  = float(np.mean(fwd_rets) / (np.std(fwd_rets) + 1e-8)) if len(fwd_rets) > 1 else 0.0
+
+        if fwd_sharpe > 0.5 and fwd_return > 0.005:
+            labels.append(0)  # TRENDING_UP — consistent positive move over next 20 bars
+        elif fwd_sharpe < -0.5 and fwd_return < -0.005:
             labels.append(1)  # TRENDING_DOWN
         else:
             labels.append(2)  # RANGING
+
     return pd.Series(labels, index=df.index)
 
 
