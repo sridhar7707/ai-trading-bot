@@ -293,7 +293,7 @@ with gr.Blocks(title="Trading Bot Dashboard", theme=gr.themes.Base(
         path = "/tmp/audit_export.csv"
         if not df.empty:
             df.to_csv(path, index=False)
-        return df, gr.DownloadButton(value=path, visible=not df.empty)
+        return df, gr.update(value=path if not df.empty else None, visible=not df.empty)
 
     demo.load(lambda: _audit(60), outputs=[i_audit_table, i_audit_dl])
     i_refresh_au.click(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl])
