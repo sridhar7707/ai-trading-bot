@@ -260,12 +260,7 @@ with gr.Blocks(
                 i_compliance  = gr.HTML("*Loading...*")
                 i_refresh_cp  = gr.Button("🔄 Refresh", size="sm")
 
-    # ── Tier toggle ───────────────────────────────────────────────────────────
-    tier_radio.change(_toggle_view, inputs=tier_radio, outputs=[sub_screen, inst_screen])
-
-    # ── Subscriber event wiring ───────────────────────────────────────────────
-    def _ov(status_html, btn_lbl, overview): return overview, status_html, btn_lbl
-
+    # ── Named helpers (no lambdas — Gradio 5.x lambda API conflicts) ─────────────
     def _load_ov():
         refresh_db_from_hf()
         s, b = halt_status_html()
@@ -275,38 +270,18 @@ with gr.Blocks(
         s, b, msg = toggle_halt()
         return s, b, msg
 
-    demo.load(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
-    demo.load(get_positions_df, outputs=s_positions)
-    s_refresh_ov.click(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn])
-    s_halt_btn.click(_do_halt, outputs=[s_halt_status, s_halt_btn, s_halt_msg])
-    s_refresh_pos.click(get_positions_df, outputs=s_positions)
-    demo.load(lambda: trades_html_table(30), outputs=s_trades_table)
-    s_refresh_tl.click(lambda d: trades_html_table(int(d)), inputs=s_days_slider, outputs=s_trades_table)
-    s_days_slider.change(lambda d: trades_html_table(int(d)), inputs=s_days_slider, outputs=s_trades_table)
-
-    # ── Institutional event wiring ────────────────────────────────────────────
-    demo.load(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
-    demo.load(get_positions_df, outputs=i_positions)
-    i_refresh_ov.click(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn])
-    i_halt_btn.click(_do_halt, outputs=[i_halt_status, i_halt_btn, i_halt_msg])
-    i_refresh_pos.click(get_positions_df, outputs=i_positions)
-    demo.load(lambda: trades_html_table(30), outputs=i_trades_table)
-    i_refresh_tl.click(lambda d: trades_html_table(int(d)), inputs=i_days_slider, outputs=i_trades_table)
-    i_days_slider.change(lambda d: trades_html_table(int(d)), inputs=i_days_slider, outputs=i_trades_table)
+    def _s_trades_default():    return trades_html_table(30)
+    def _s_trades_slider(d):    return trades_html_table(int(d))
+    def _i_trades_default():    return trades_html_table(30)
+    def _i_trades_slider(d):    return trades_html_table(int(d))
 
     def _perf(d):
         d = int(d)
         return performance_md(get_performance_metrics(d)), portfolio_chart(d), monthly_chart(d * 3)
 
-    demo.load(lambda: _perf(60), outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
-    i_refresh_pf.click(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
-    i_perf_days.change(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot])
-
-    demo.load(lambda: signals_chart(30), outputs=i_sig_chart)
-    i_refresh_sg.click(lambda d: signals_chart(int(d)), inputs=i_sig_days, outputs=i_sig_chart)
-    i_sig_days.change(lambda d: signals_chart(int(d)), inputs=i_sig_days, outputs=i_sig_chart)
-
-    i_run_check_btn.click(run_readiness_check, outputs=i_readiness_md)
+    def _perf_default():        return _perf(60)
+    def _sig_default():         return signals_chart(30)
+    def _sig_slider(d):         return signals_chart(int(d))
 
     def _audit(d):
         df   = get_audit_df(int(d))
@@ -315,15 +290,50 @@ with gr.Blocks(
             df.to_csv(path, index=False)
         return df, gr.update(value=path if not df.empty else None, visible=not df.empty)
 
-    demo.load(lambda: _audit(60), outputs=[i_audit_table, i_audit_dl])
-    i_refresh_au.click(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl])
-    i_audit_days.change(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl])
+    def _audit_default():       return _audit(60)
+    def _comp():                return compliance_gauges_html(get_compliance_state())
 
-    def _comp():
-        return compliance_gauges_html(get_compliance_state())
+    _kw = {"api_name": False}   # suppress Gradio 5.x API-name conflicts
 
-    demo.load(_comp, outputs=i_compliance)
-    i_refresh_cp.click(_comp, outputs=i_compliance)
+    # ── Tier toggle ───────────────────────────────────────────────────────────
+    tier_radio.change(_toggle_view, inputs=tier_radio, outputs=[sub_screen, inst_screen], **_kw)
+
+    # ── Subscriber wiring ─────────────────────────────────────────────────────
+    demo.load(_load_ov,          outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+    demo.load(get_positions_df,  outputs=s_positions, **_kw)
+    demo.load(_s_trades_default, outputs=s_trades_table, **_kw)
+    s_refresh_ov.click(_load_ov,         outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+    s_halt_btn.click(_do_halt,           outputs=[s_halt_status, s_halt_btn, s_halt_msg], **_kw)
+    s_refresh_pos.click(get_positions_df, outputs=s_positions, **_kw)
+    s_refresh_tl.click(_s_trades_slider,  inputs=s_days_slider, outputs=s_trades_table, **_kw)
+    s_days_slider.change(_s_trades_slider, inputs=s_days_slider, outputs=s_trades_table, **_kw)
+
+    # ── Institutional wiring ──────────────────────────────────────────────────
+    demo.load(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
+    demo.load(get_positions_df,  outputs=i_positions, **_kw)
+    demo.load(_i_trades_default, outputs=i_trades_table, **_kw)
+    i_refresh_ov.click(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
+    i_halt_btn.click(_do_halt,            outputs=[i_halt_status, i_halt_btn, i_halt_msg], **_kw)
+    i_refresh_pos.click(get_positions_df,  outputs=i_positions, **_kw)
+    i_refresh_tl.click(_i_trades_slider,   inputs=i_days_slider, outputs=i_trades_table, **_kw)
+    i_days_slider.change(_i_trades_slider, inputs=i_days_slider, outputs=i_trades_table, **_kw)
+
+    demo.load(_perf_default,  outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
+    i_refresh_pf.click(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
+    i_perf_days.change(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
+
+    demo.load(_sig_default,  outputs=i_sig_chart, **_kw)
+    i_refresh_sg.click(_sig_slider, inputs=i_sig_days, outputs=i_sig_chart, **_kw)
+    i_sig_days.change(_sig_slider,  inputs=i_sig_days, outputs=i_sig_chart, **_kw)
+
+    i_run_check_btn.click(run_readiness_check, outputs=i_readiness_md, **_kw)
+
+    demo.load(_audit_default, outputs=[i_audit_table, i_audit_dl], **_kw)
+    i_refresh_au.click(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl], **_kw)
+    i_audit_days.change(_audit, inputs=i_audit_days, outputs=[i_audit_table, i_audit_dl], **_kw)
+
+    demo.load(_comp,           outputs=i_compliance, **_kw)
+    i_refresh_cp.click(_comp,  outputs=i_compliance, **_kw)
 
 
 if __name__ == "__main__":
