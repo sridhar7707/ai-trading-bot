@@ -6,7 +6,7 @@ on:
     paths:
       - 'scripts/dashboard.py'
       - 'bot/monitor/dashboard_data.py'
-  workflow_dispatch:  # allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install huggingface-hub
-        run: pip install huggingface-hub>=0.20.0
+        run: pip install "huggingface-hub>=0.20.0"
 
       - name: Deploy to HuggingFace Spaces
         env:
@@ -31,33 +31,56 @@ jobs:
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
         run: |
           python - <<'PYEOF'
-          import os, sys
-          from huggingface_hub import HfApi, CommitOperationAdd
+          import os, sys, shutil
+          from pathlib import Path
+          from huggingface_hub import HfApi
 
           token    = os.environ.get("HF_TOKEN", "")
           space_id = os.environ.get("HF_SPACE_ID", "")
 
           if not token or not space_id:
-              print("HF_TOKEN or HF_SPACE_ID not set — skipping deploy")
-              sys.exit(0)
+              print("::error::HF_TOKEN or HF_SPACE_ID secret is not set.")
+              print("Add HF_SPACE_ID=ksri77/ai-trading-bot in GitHub repo Settings → Secrets.")
+              sys.exit(1)
+
+          # Stage all files the Space needs to run the Gradio dashboard
+          staging = Path("/tmp/hf_space")
+          if staging.exists():
+              shutil.rmtree(staging)
+          staging.mkdir()
+
+          # dashboard.py → app.py  (Gradio Spaces entry point)
+          shutil.copy("scripts/dashboard.py", staging / "app.py")
+
+          # Full bot package (dashboard imports from many submodules)
+          shutil.copytree("bot", staging / "bot")
+
+          # Top-level config and requirements
+          shutil.copy("config.py",       staging / "config.py")
+          shutil.copy("requirements.txt", staging / "requirements.txt")
+
+          # Space metadata (creates the Space as a Gradio app on first deploy)
+          readme = staging / "README.md"
+          if not readme.exists():
+              readme.write_text(
+                  "---\n"
+                  "title: AI Trading Bot Dashboard\n"
+                  "emoji: 📊\n"
+                  "colorFrom: blue\n"
+                  "colorTo: cyan\n"
+                  "sdk: gradio\n"
+                  "sdk_version: 4.44.1\n"
+                  "app_file: app.py\n"
+                  "pinned: false\n"
+                  "---\n"
+              )
 
           api = HfApi(token=token)
-          ops = [
-              # dashboard.py is renamed to app.py — Gradio Spaces entry point
-              CommitOperationAdd(
-                  path_in_repo="app.py",
-                  path_or_fileobj="scripts/dashboard.py",
-              ),
-              CommitOperationAdd(
-                  path_in_repo="bot/monitor/dashboard_data.py",
-                  path_or_fileobj="bot/monitor/dashboard_data.py",
-              ),
-          ]
-          api.create_commit(
+          api.upload_folder(
+              folder_path=str(staging),
               repo_id=space_id,
               repo_type="space",
-              operations=ops,
               commit_message="chore: update dashboard from CI",
           )
-          print(f"Dashboard deployed to https://huggingface.co/spaces/{space_id}")
+          print(f"Dashboard deployed → https://huggingface.co/spaces/{space_id}")
           PYEOF
