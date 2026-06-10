@@ -51,11 +51,12 @@ def main():
     xgb = XGBPredictor()
     xgb.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
 
-    # Train LSTM on all symbols combined (normalized features remove price-unit cross-symbol bias).
-    # Using full dataset instead of SPY-only exposes the model to different volatility regimes.
+    # Train LSTM on all symbols combined.
+    # symbol column is kept so _make_sequences() can group per-symbol,
+    # preventing 60-bar windows that mix data from different companies.
     logger.info("Training LSTM predictor on full multi-symbol dataset...")
     lstm = LSTMPredictor()
-    lstm.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
+    lstm.train(df.drop(columns=["regime"], errors="ignore"))
 
     logger.info("All models trained successfully.")
 

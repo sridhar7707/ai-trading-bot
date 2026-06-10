@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import joblib
+from sklearn.metrics import roc_auc_score
 from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
@@ -47,8 +48,12 @@ class XGBPredictor:
         X = train_df.loc[mask, FEATURE_COLS]
         y = train_df.loc[mask, "target"]
 
+        val_mask = val_df[FEATURE_COLS].notna().all(axis=1)
+        X_val = val_df.loc[val_mask, FEATURE_COLS]
+        y_val = val_df.loc[val_mask, "target"]
+
         self.model = XGBClassifier(
-            n_estimators=500,
+            n_estimators=1000,         # high ceiling — early stopping finds the right count
             learning_rate=0.01,
             max_depth=6,
             subsample=0.8,
@@ -56,20 +61,25 @@ class XGBPredictor:
             eval_metric="logloss",
             random_state=42,
         )
-        self.model.fit(X, y)
+        self.model.fit(
+            X, y,
+            eval_set=[(X_val, y_val)],
+            early_stopping_rounds=50,  # stop if val logloss doesn't improve for 50 trees
+            verbose=False,
+        )
+        best_trees = self.model.best_iteration
+        logger.info(f"XGBoost early stopped at tree {best_trees}")
 
-        val_mask = val_df[FEATURE_COLS].notna().all(axis=1)
-        X_val = val_df.loc[val_mask, FEATURE_COLS]
-        y_val = val_df.loc[val_mask, "target"]
         if len(X_val) > 0:
-            val_acc = float((self.model.predict(X_val) == y_val).mean())
-            if val_acc < 0.50:
+            val_proba = self.model.predict_proba(X_val)[:, 1]
+            val_auc   = float(roc_auc_score(y_val, val_proba))
+            if val_auc < 0.52:
                 logger.warning(
-                    f"XGBoost val accuracy {val_acc:.3f} is below chance — model may have degraded. "
-                    "Review training data before deploying."
+                    f"XGBoost val AUC-ROC {val_auc:.3f} is near random — "
+                    "model may have degraded. Review training data before deploying."
                 )
             else:
-                logger.info(f"XGBoost val accuracy (holdout 20%): {val_acc:.3f}")
+                logger.info(f"XGBoost val AUC-ROC (holdout 20%): {val_auc:.3f}")
 
         XGB_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, XGB_MODEL_PATH)
