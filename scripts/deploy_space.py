@@ -59,7 +59,7 @@ readme.write_text(
     "title: AI Trading Bot Dashboard\n"
     "emoji: \U0001f4ca\n"
     "colorFrom: blue\n"
-    "colorTo: cyan\n"
+    "colorTo: indigo\n"
     "sdk: gradio\n"
     "sdk_version: 4.44.1\n"
     "app_file: app.py\n"

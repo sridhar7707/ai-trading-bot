@@ -67,7 +67,7 @@ jobs:
                   "title: AI Trading Bot Dashboard\n"
                   "emoji: 📊\n"
                   "colorFrom: blue\n"
-                  "colorTo: cyan\n"
+                  "colorTo: indigo\n"
                   "sdk: gradio\n"
                   "sdk_version: 4.44.1\n"
                   "app_file: app.py\n"
