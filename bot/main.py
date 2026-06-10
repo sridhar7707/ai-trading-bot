@@ -13,7 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date, datetime, timezone
 from loguru import logger
 
-_UNIVERSE_PATH = "data/universe_today.json"
+_UNIVERSE_PATH  = "data/universe_today.json"
+_HALT_FILE      = "data/HALT_TRADING"   # create this file to pause the bot without canceling the workflow
 
 
 def _load_today_universe() -> list[str]:
@@ -51,10 +52,10 @@ from bot.strategy.features import compute_features, FEATURE_COLS
 from bot.strategy.regime_classifier import RegimeClassifier
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
-from bot.strategy.sentiment import collect_headlines, batch_sentiment_scores
+from bot.strategy.sentiment import batch_sentiment_scores
 from bot.strategy.macro import _fetch_macro_raw, _compute_from_raw
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
-from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION
+from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION, WEIGHTS
 from bot.risk.risk_manager import RiskManager
 import bot.monitor.telegram_bot as tg
 
@@ -114,9 +115,26 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT, symbol TEXT, action TEXT,
             shares REAL, price REAL, notional REAL,
-            regime TEXT, portfolio_value REAL, pnl_pct REAL
+            regime TEXT, portfolio_value REAL, pnl_pct REAL,
+            xgb_prob REAL DEFAULT 0.0,
+            lstm_prob REAL DEFAULT 0.0,
+            sentiment_score REAL DEFAULT 0.0,
+            macro_score REAL DEFAULT 0.0,
+            ensemble_score REAL DEFAULT 0.0
         )
     """)
+    # Migration: add signal audit columns to existing DBs (safe no-op if already present)
+    for _col in (
+        "xgb_prob REAL DEFAULT 0.0",
+        "lstm_prob REAL DEFAULT 0.0",
+        "sentiment_score REAL DEFAULT 0.0",
+        "macro_score REAL DEFAULT 0.0",
+        "ensemble_score REAL DEFAULT 0.0",
+    ):
+        try:
+            con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
+        except sqlite3.OperationalError:
+            pass
     con.execute("""
         CREATE TABLE IF NOT EXISTS position_state (
             symbol TEXT PRIMARY KEY, entry_price REAL,
@@ -142,11 +160,17 @@ def init_db():
     return con
 
 
-def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct):
+def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
+              xgb_prob: float = 0.0, lstm_prob: float = 0.0,
+              sentiment_score: float = 0.0, macro_score: float = 0.0):
+    sentiment_norm  = (sentiment_score + 1.0) / 2.0
+    ensemble_score  = (WEIGHTS["xgb"]  * xgb_prob + WEIGHTS["lstm"] * lstm_prob
+                       + WEIGHTS["sentiment"] * sentiment_norm + WEIGHTS["macro"] * macro_score)
     con.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (datetime.now(timezone.utc).isoformat(),
-         symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct),
+         symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
+         xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score),
     )
     con.commit()
 
@@ -162,30 +186,59 @@ def _opened_today(con, symbol: str) -> bool:
 
 # ── Risk state persistence ────────────────────────────────────────────────────
 
-def _load_risk_state(con) -> tuple[float | None, list[str]]:
+def _week_key() -> str:
+    """Return current ISO year-week string, e.g. '2026-W24'."""
+    return date.today().strftime("%G-W%V")
+
+
+def _load_risk_state(con) -> tuple[float | None, list[str], float | None, bool, bool]:
+    """Returns (daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted)."""
     today = date.today().isoformat()
+    wk    = _week_key()
     rows  = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
+
     daily_start: float | None = None
     if rows.get("daily_start_date") == today:
         try:
             daily_start = float(rows["daily_start_value"])
         except (KeyError, ValueError, TypeError):
             pass
+
     day_trade_dates: list[str] = []
     try:
         day_trade_dates = json.loads(rows.get("day_trade_dates", "[]"))
     except (json.JSONDecodeError, TypeError):
         pass
-    return daily_start, day_trade_dates
+
+    weekly_start: float | None = None
+    if rows.get("weekly_start_week") == wk:
+        try:
+            weekly_start = float(rows["weekly_start_value"])
+        except (KeyError, ValueError, TypeError):
+            pass
+
+    daily_warning_sent  = rows.get("daily_warning_sent_date") == today
+    weekly_halt_alerted = rows.get("weekly_halt_alerted_week") == wk
+
+    return daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted
 
 
 def _save_risk_state(con, risk: RiskManager):
-    today  = date.today().isoformat()
-    trades = json.dumps([d.isoformat() for d in risk.day_trade_log])
-    start  = str(risk.daily_start_value) if risk.daily_start_value is not None else ""
-    for key, val in [("daily_start_value", start),
-                     ("daily_start_date",  today),
-                     ("day_trade_dates",   trades)]:
+    today = date.today().isoformat()
+    wk    = _week_key()
+    trades  = json.dumps([d.isoformat() for d in risk.day_trade_log])
+    start   = str(risk.daily_start_value)  if risk.daily_start_value  is not None else ""
+    weekly  = str(risk.weekly_start_value) if risk.weekly_start_value is not None else ""
+    entries = [
+        ("daily_start_value",       start),
+        ("daily_start_date",        today),
+        ("day_trade_dates",         trades),
+        ("weekly_start_value",      weekly),
+        ("weekly_start_week",       wk),
+        ("daily_warning_sent_date", today if risk.daily_warning_sent else ""),
+        ("weekly_halt_alerted_week", wk   if risk.weekly_halt_alerted else ""),
+    ]
+    for key, val in entries:
         con.execute(
             "INSERT OR REPLACE INTO risk_state (key, value, updated_at) VALUES (?,?,?)",
             (key, val, datetime.now(timezone.utc).isoformat())
@@ -195,7 +248,8 @@ def _save_risk_state(con, risk: RiskManager):
 
 # ── Macro cache (DB-backed, survives subprocess restarts) ─────────────────────
 
-def _get_macro_from_db(con) -> tuple[float, float]:
+def _get_macro_from_db(con) -> tuple[float, float, bool]:
+    """Returns (score, cap, halt). halt=True means VIX >= MACRO_HALT_VIX — block all new buys."""
     now  = time.time()
     rows = {r[0]: (float(r[1]), r[2])
             for r in con.execute("SELECT key, value, cached_at FROM macro_cache")}
@@ -203,22 +257,23 @@ def _get_macro_from_db(con) -> tuple[float, float]:
         try:
             cached_ts = datetime.fromisoformat(rows["score"][1]).timestamp()
             if now - cached_ts < _MACRO_DB_TTL:
-                return rows["score"][0], rows["cap"][0]
+                halt = bool(rows["halt"][0]) if "halt" in rows else False
+                return rows["score"][0], rows["cap"][0], halt
         except (ValueError, TypeError):
             pass
     try:
         result = _compute_from_raw(_fetch_macro_raw())
     except Exception as e:
         logger.warning(f"Macro fetch failed — using neutral defaults: {e}")
-        result = {"score": 0.5, "cap": 1.0}
+        result = {"score": 0.5, "cap": 1.0, "halt": False}
     ts = datetime.now(timezone.utc).isoformat()
-    for key in ("score", "cap"):
+    for key in ("score", "cap", "halt"):
         con.execute(
             "INSERT OR REPLACE INTO macro_cache (key, value, cached_at) VALUES (?,?,?)",
-            (key, result[key], ts)
+            (key, float(result[key]), ts)
         )
     con.commit()
-    return result["score"], result["cap"]
+    return result["score"], result["cap"], bool(result["halt"])
 
 
 # ── Earnings calendar ─────────────────────────────────────────────────────────
@@ -396,14 +451,15 @@ def _signal_sell(con, client, symbol, pos_qty, current_price,
             if sell_result:
                 client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
     if sell_result:
+        sell_notional = pos_qty * current_price  # actual sell value for audit trail
         if is_from_stop:
-            tg.alert_stop_loss(symbol, pnl_pct)
-            log_trade(con, symbol, "SELL_STOP", pos_qty, current_price, 0,
+            tg.alert_stop_loss(symbol, pnl_pct, notional=sell_notional)
+            log_trade(con, symbol, "SELL_STOP", pos_qty, current_price, sell_notional,
                       regime_name, portfolio_value, pnl_pct)
         else:
             action_tag = "SELL" if reason == "signal" else f"SELL_{reason.upper().replace('-','_')}"
-            tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason)
-            log_trade(con, symbol, action_tag, pos_qty, current_price, 0,
+            tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason, notional=sell_notional)
+            log_trade(con, symbol, action_tag, pos_qty, current_price, sell_notional,
                       regime_name, portfolio_value, pnl_pct)
         _delete_position_state(con, symbol)
         return True
@@ -416,15 +472,15 @@ def _signal_sell(con, client, symbol, pos_qty, current_price,
 # ── End-of-day summary ────────────────────────────────────────────────────────
 
 def end_of_day_summary():
+    import zoneinfo
     con    = init_db()
     client = AlpacaClient()
     today  = date.today().isoformat()
     trades_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
     ).fetchone()[0]
-    _, day_trade_dates = _load_risk_state(con)
-    day_trade_count    = day_trade_dates.count(today)
-    daily_start, _     = _load_risk_state(con)
+    daily_start, day_trade_dates, weekly_start, _, __ = _load_risk_state(con)
+    day_trade_count = day_trade_dates.count(today)
     portfolio_value, available_cash = client.get_account_summary()
     positions = client.get_positions()
     day_return = ((portfolio_value - daily_start) / daily_start) if daily_start else 0.0
@@ -442,6 +498,46 @@ def end_of_day_summary():
         day_trades=day_trade_count,
     )
     logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}")
+
+    # Friday weekly report — Portfolio Manager visibility into week performance
+    et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
+    if et.weekday() == 4:  # Friday
+        try:
+            from datetime import timedelta
+            monday = date.today() - timedelta(days=date.today().weekday())
+            week_rows = con.execute(
+                "SELECT action, pnl_pct, portfolio_value FROM trades WHERE timestamp >= ?",
+                (monday.isoformat(),)
+            ).fetchall()
+            week_sells  = [r for r in week_rows if r[0].startswith("SELL")]
+            week_wins   = [r for r in week_sells if r[1] > 0]
+            week_wr     = len(week_wins) / len(week_sells) if week_sells else 0.0
+            week_return = ((portfolio_value - weekly_start) / weekly_start) if weekly_start else 0.0
+            pv_week     = [r[2] for r in week_rows if r[2] > 0]
+            week_dd     = 0.0
+            if pv_week:
+                pk = pv_week[0]
+                for v in pv_week:
+                    pk = max(pk, v)
+                    week_dd = max(week_dd, (pk - v) / (pk + 1e-8))
+            spy_wk = 0.0
+            try:
+                spy_wk_bars = client.get_bars("SPY", timeframe="1Day", limit=6)
+                if len(spy_wk_bars) > 1:
+                    spy_wk = float(spy_wk_bars["close"].iloc[-1] / spy_wk_bars["close"].iloc[-6] - 1)
+            except Exception:
+                pass
+            tg.alert_weekly_report(
+                week_return=week_return,
+                vs_spy=spy_wk,
+                win_rate=week_wr,
+                sharpe=0.0,   # requires full intraday history; omitted for simplicity
+                drawdown=week_dd,
+            )
+            logger.info(f"Weekly report sent: return={week_return:.2%}, win_rate={week_wr:.1%}")
+        except Exception as e:
+            logger.warning(f"Weekly report failed: {e}")
+
     con.close()
 
 
@@ -466,6 +562,14 @@ def _load_premarket_sentiment() -> dict[str, float]:
 
 def run(mode: str = "paper"):
     logger.info(f"=== Trading cycle start | mode={mode} ===")
+
+    # Emergency override: create data/HALT_TRADING file to pause without canceling the workflow.
+    # Portfolio Manager can push this file to HuggingFace or add it via GitHub manual trigger.
+    if os.path.exists(_HALT_FILE):
+        logger.warning("HALT_TRADING file detected — cycle skipped. Remove file to resume.")
+        tg._send("⛔ <b>EMERGENCY HALT ACTIVE</b> — bot paused. Delete data/HALT_TRADING to resume.")
+        return
+
     client = AlpacaClient()
     if not _is_market_hours(client.api):
         return
@@ -474,17 +578,41 @@ def run(mode: str = "paper"):
 
     active_symbols = _load_today_universe()
 
-    daily_start, day_trade_dates = _load_risk_state(con)
-    risk = RiskManager(daily_start_value=daily_start, day_trade_dates=day_trade_dates)
+    daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted = _load_risk_state(con)
+    risk = RiskManager(
+        daily_start_value=daily_start,
+        day_trade_dates=day_trade_dates,
+        weekly_start_value=weekly_start,
+        daily_warning_sent=daily_warning_sent,
+        weekly_halt_alerted=weekly_halt_alerted,
+    )
 
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()
     lstm       = LSTMPredictor()
 
     portfolio_value, available_cash = client.get_account_summary()
+
+    # Compliance: check Alpaca account status before trading
+    try:
+        acct = client.get_account()
+        if getattr(acct, "pattern_day_trader", False):
+            logger.warning("Alpaca account is flagged as Pattern Day Trader — PDT limits apply.")
+        pdt_equity = float(getattr(acct, "equity", 0) or 0)
+        pdt_exempt = pdt_equity >= 25_000
+        if pdt_exempt:
+            logger.info(f"Account equity ${pdt_equity:,.2f} ≥ $25,000 — PDT day-trade limits waived.")
+    except Exception as e:
+        logger.warning(f"Account compliance check failed: {e}")
+        pdt_exempt = False
+
     positions       = client.get_positions()
     _reconcile_positions(con, positions)
     open_order_syms = client.get_open_order_symbols()
+
+    # First cycle of the day — daily_start was None before reset_daily sets it
+    if daily_start is None:
+        tg.alert_bot_started(mode, portfolio_value)
 
     risk.reset_daily(portfolio_value)
     _save_risk_state(con, risk)
@@ -494,36 +622,60 @@ def run(mode: str = "paper"):
         f"Open positions: {list(positions.keys())} | Pending orders: {open_order_syms}"
     )
 
-    macro_score, macro_cap = _get_macro_from_db(con)
-    logger.info(f"Macro: score={macro_score:.2f}, cap={macro_cap:.1f}x")
+    # Early warning: once per day when portfolio crosses 50% of daily loss limit
+    if risk.check_daily_loss_warning(portfolio_value):
+        pnl_warn = (portfolio_value - risk.daily_start_value) / risk.daily_start_value
+        tg.alert_risk_warning(portfolio_value, pnl_warn)
+        risk.daily_warning_sent = True
+        _save_risk_state(con, risk)
+
+    macro_score, macro_cap, macro_halt = _get_macro_from_db(con)
+    logger.info(f"Macro: score={macro_score:.2f}, cap={macro_cap:.1f}x, halt={macro_halt}")
+    if macro_halt:
+        logger.warning("VIX emergency halt active — no new buys this cycle")
+        tg.alert_vix_halt()  # fires every cycle — VIX crisis events warrant repeated alerts
+
+    # Weekly loss circuit breaker alert — sent once per week when limit is first hit
+    if not risk.check_weekly_loss(portfolio_value) and not risk.weekly_halt_alerted:
+        wk_pnl = (portfolio_value - risk.weekly_start_value) / risk.weekly_start_value
+        tg.alert_weekly_loss_limit(portfolio_value, wk_pnl)
+        risk.weekly_halt_alerted = True
+        _save_risk_state(con, risk)
 
     premarket_sentiment = _load_premarket_sentiment()
+    if not premarket_sentiment:
+        logger.warning(
+            "Pre-market sentiment unavailable — sentiment defaults to neutral (0.0) this cycle. "
+            "NewsAPI quota (100 req/day) is not consumed in-cycle."
+        )
 
-    def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, list[str]]:
+    def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame]:
         try:
             bars = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
+            # Staleness guard: skip symbols whose last bar is >15 min old during market hours
+            if not bars.empty:
+                last_ts = bars.index[-1]
+                now_utc = pd.Timestamp.now(tz="UTC")
+                last_utc = last_ts.tz_localize("UTC") if last_ts.tzinfo is None else last_ts.tz_convert("UTC")
+                age_mins = (now_utc - last_utc).total_seconds() / 60
+                if age_mins > 15:
+                    logger.warning(f"Stale bars for {symbol}: last bar is {age_mins:.0f}m old — skipping")
+                    bars = pd.DataFrame()
         except Exception as e:
             logger.warning(f"Bar fetch failed for {symbol}: {e}")
             bars = pd.DataFrame()
-        headlines: list[str] = []
-        if not premarket_sentiment:
-            try:
-                headlines = collect_headlines(symbol)
-            except Exception as e:
-                logger.warning(f"Headline fetch failed for {symbol}: {e}")
-        return symbol, bars, headlines
+        return symbol, bars
 
     with ThreadPoolExecutor(max_workers=min(len(active_symbols), 10)) as pool:
         fetched = list(pool.map(_fetch_symbol, active_symbols))
 
-    bars_map         = {sym: bars for sym, bars, _   in fetched}
-    symbol_headlines = {sym: hdl  for sym, _,    hdl in fetched}
+    bars_map = {sym: bars for sym, bars in fetched}
 
     if premarket_sentiment:
         finbert_scores = premarket_sentiment
         logger.info("Using pre-market FinBERT sentiment — skipping in-cycle BERT pass")
     else:
-        finbert_scores = batch_sentiment_scores(symbol_headlines)
+        finbert_scores = {sym: 0.0 for sym in active_symbols}
 
     def _wsb(symbol: str) -> tuple[str, dict]:
         try:
@@ -593,9 +745,9 @@ def run(mode: str = "paper"):
                     sell_result = client.sell_market(symbol, pos_qty)
                     if sell_result:
                         client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
-                        tg.alert_stop_loss(symbol, pnl_pct)
-                        log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price, 0,
-                                  regime_name, portfolio_value, pnl_pct)
+                        tg.alert_stop_loss(symbol, pnl_pct, notional=pos_qty * current_price)
+                        log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price,
+                                  pos_qty * current_price, regime_name, portfolio_value, pnl_pct)
                         _delete_position_state(con, symbol)
                         _maybe_record_day_trade(con, risk, symbol, True)
                     continue
@@ -656,7 +808,7 @@ def run(mode: str = "paper"):
                 # ⑤ Ensemble sell signal
                 if action == 2:
                     is_day_trade = _opened_today(con, symbol)
-                    if is_day_trade and not risk.check_pdt(is_day_trade=True):
+                    if is_day_trade and not pdt_exempt and not risk.check_pdt(is_day_trade=True):
                         logger.warning(f"PDT limit — skipping signal sell of {symbol}")
                     else:
                         success = _signal_sell(
@@ -671,6 +823,10 @@ def run(mode: str = "paper"):
 
             # ── Entry gates (applied in order of cheapness) ───────────────────
             if action != 1:
+                continue
+
+            # Gate 0 — VIX emergency halt: no new positions when VIX >= 40
+            if macro_halt:
                 continue
 
             # Gate 1 — Regime: only buy in trending or ranging markets
@@ -733,9 +889,13 @@ def run(mode: str = "paper"):
                 filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
                 if filled:
                     tg.alert_buy(symbol, notional / current_price, current_price,
-                                 regime_name, portfolio_value, vs_spy_today * 100)
+                                 regime_name, portfolio_value, vs_spy_today * 100,
+                                 notional=notional)
                     log_trade(con, symbol, "BUY", notional / current_price,
-                              current_price, notional, regime_name, portfolio_value, 0)
+                              current_price, notional, regime_name, portfolio_value, 0,
+                              xgb_prob=xgb_prob, lstm_prob=lstm_prob,
+                              sentiment_score=sentiments.get(symbol, 0.0),
+                              macro_score=macro_score)
                     _upsert_position_state(con, symbol, current_price, current_price, current_atr)
                     available_cash -= notional
                 else:

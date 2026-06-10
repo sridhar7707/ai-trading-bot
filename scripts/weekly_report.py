@@ -32,7 +32,8 @@ def compute_weekly_report():
 
     values = np.array(portfolio_values)
     returns = np.diff(values) / values[:-1]
-    sharpe = float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252)) if len(returns) > 1 else 0.0
+    # 78 five-minute bars per trading day × 252 days — matches confidence_check.py and backtest/metrics.py
+    sharpe = float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252 * 78)) if len(returns) > 1 else 0.0
 
     peak, max_dd = values[0], 0.0
     for v in values:
@@ -42,7 +43,7 @@ def compute_weekly_report():
         if dd > max_dd:
             max_dd = dd
 
-    sell_trades = [r for r in rows if r[1] in ("SELL", "SELL_STOP")]
+    sell_trades = [r for r in rows if r[1].startswith("SELL")]
     win_rate = sum(1 for r in sell_trades if r[2] > 0) / len(sell_trades) if sell_trades else 0.0
 
     # SPY return over the same window

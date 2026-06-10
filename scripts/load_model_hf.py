@@ -11,10 +11,10 @@ def pull():
     if not HF_TOKEN or not HF_REPO_ID:
         raise EnvironmentError("HF_TOKEN and HF_REPO_ID must be set.")
     for filename, dest in [
-        ("ppo_trading_bot.zip", f"{MODEL_SAVE_PATH}.zip"),
         ("regime_classifier.pkl", REGIME_MODEL_PATH),
         ("xgb_predictor.pkl", "models/saved/xgb_predictor.pkl"),
         ("lstm_predictor.pt", "models/saved/lstm_predictor.pt"),
+        ("lstm_scaler.pkl", "models/saved/lstm_scaler.pkl"),
     ]:
         try:
             cached = hf_hub_download(repo_id=HF_REPO_ID, filename=filename, token=HF_TOKEN)

@@ -3,7 +3,8 @@ from datetime import date
 from collections import deque
 from loguru import logger
 from config import (
-    MAX_POSITION_PCT, STOP_LOSS_PCT, DAILY_LOSS_LIMIT_PCT,
+    MAX_POSITION_PCT, STOP_LOSS_PCT,
+    DAILY_LOSS_LIMIT_PCT, DAILY_LOSS_WARNING_PCT, WEEKLY_LOSS_LIMIT_PCT,
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
     ATR_STOP_MULTIPLIER, ATR_TRAIL_MULTIPLIER,
     ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT,
@@ -16,7 +17,10 @@ class RiskManager:
 
     def __init__(self,
                  daily_start_value: float | None = None,
-                 day_trade_dates: list[str] | None = None):
+                 day_trade_dates: list[str] | None = None,
+                 weekly_start_value: float | None = None,
+                 daily_warning_sent: bool = False,
+                 weekly_halt_alerted: bool = False):
         self.day_trade_log: deque[date] = deque()
         if day_trade_dates:
             for ds in day_trade_dates:
@@ -24,15 +28,24 @@ class RiskManager:
                     self.day_trade_log.append(date.fromisoformat(ds))
                 except ValueError:
                     pass
-        self.daily_start_value = daily_start_value
+        self.daily_start_value   = daily_start_value
+        self.weekly_start_value  = weekly_start_value
+        self.daily_warning_sent  = daily_warning_sent
+        self.weekly_halt_alerted = weekly_halt_alerted
         self.halted = False
 
     def reset_daily(self, portfolio_value: float):
-        # Only record the start-of-day value on the FIRST cycle of the day.
+        # Only record start-of-day value on the FIRST cycle of the day.
         # Subsequent cycles must NOT overwrite it — otherwise the daily loss
         # gate compares against "5 minutes ago" instead of true start-of-day.
         if self.daily_start_value is None:
             self.daily_start_value = portfolio_value
+        # Weekly start is initialized to the first portfolio value seen this ISO week.
+        # It persists across daily resets — cleared only when a new week begins.
+        if self.weekly_start_value is None:
+            self.weekly_start_value = portfolio_value
+        # halted resets to False each cycle; protection relies on check_daily_loss()
+        # recalculating from daily_start_value (persisted in DB) every approve_buy() call.
         self.halted = False
         today = date.today()
         self.day_trade_log = deque(
@@ -41,6 +54,7 @@ class RiskManager:
         )
         logger.info(
             f"Risk state — daily_start=${self.daily_start_value:.2f}, "
+            f"weekly_start=${self.weekly_start_value:.2f}, "
             f"current=${portfolio_value:.2f}, "
             f"day_trades_used={len(self.day_trade_log)}/{PDT_MAX_DAY_TRADES}"
         )
@@ -53,6 +67,24 @@ class RiskManager:
         if pnl_pct <= -DAILY_LOSS_LIMIT_PCT:
             logger.warning(f"Daily loss limit hit ({pnl_pct:.1%}) — halting trading.")
             self.halted = True
+            return False
+        return True
+
+    def check_daily_loss_warning(self, current_value: float) -> bool:
+        """Returns True if portfolio is in the warning zone (50–100% of daily limit, unsent)."""
+        if self.daily_warning_sent or self.daily_start_value is None or self.daily_start_value == 0.0:
+            return False
+        pnl_pct = (current_value - self.daily_start_value) / self.daily_start_value
+        return -DAILY_LOSS_LIMIT_PCT < pnl_pct <= -DAILY_LOSS_WARNING_PCT
+
+    # ── Weekly loss gate ───────────────────────────────────────────────────────
+    def check_weekly_loss(self, current_value: float) -> bool:
+        """Returns True (buy allowed) unless weekly drawdown circuit breaker is hit."""
+        if self.weekly_start_value is None or self.weekly_start_value == 0.0:
+            return True
+        weekly_pnl = (current_value - self.weekly_start_value) / self.weekly_start_value
+        if weekly_pnl <= -WEEKLY_LOSS_LIMIT_PCT:
+            logger.warning(f"Weekly loss limit hit ({weekly_pnl:.1%}) — blocking new buys.")
             return False
         return True
 
@@ -164,6 +196,8 @@ class RiskManager:
             return False
         if not self.check_daily_loss(current_value):
             return False
+        if not self.check_weekly_loss(current_value):
+            return False
         max_notional = portfolio_value * MAX_POSITION_PCT
         if notional > max_notional:
             logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
@@ -176,6 +210,5 @@ class RiskManager:
         return True
 
     def approve_sell(self, symbol: str, pnl_pct: float, current_value: float) -> bool:
-        if not self.check_daily_loss(current_value):
-            return True  # force sell when daily limit hit
+        # Sells are never blocked — exits must always be possible regardless of loss limits.
         return True

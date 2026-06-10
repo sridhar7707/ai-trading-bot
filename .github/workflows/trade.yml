@@ -11,7 +11,9 @@ env:
 
 concurrency:
   group: trading-bot
-  cancel-in-progress: false
+  # Two simultaneous runs would read the same trades.db from HuggingFace, submit duplicate orders,
+  # and race to push back — last writer wins and the earlier cycle's trades are lost.
+  cancel-in-progress: true
 
 jobs:
   trade:
@@ -98,6 +100,7 @@ jobs:
           HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           TRADING_MODE: paper
           PYTHONUNBUFFERED: "1"
         run: |
@@ -163,6 +166,8 @@ jobs:
                   print(f"HF push skipped: {e}", flush=True)
 
           cycle = 0
+          last_hf_push = 0
+          HF_PUSH_INTERVAL = 30 * 60  # push at most every 30 min (~13 commits/day vs 78)
           while market_open():
               cycle += 1
               et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
@@ -170,7 +175,21 @@ jobs:
               r = subprocess.run([sys.executable, "bot/main.py", "--mode", "paper"])
               if r.returncode != 0:
                   print(f"::warning::Cycle {cycle} exited with code {r.returncode}", flush=True)
-              push_hf()
+                  try:
+                      import requests as _req
+                      _tok = os.environ.get("TELEGRAM_TOKEN", "")
+                      _cid = os.environ.get("TELEGRAM_CHAT_ID", "")
+                      if _tok and _cid:
+                          _req.post(f"https://api.telegram.org/bot{_tok}/sendMessage",
+                              json={"chat_id": _cid, "parse_mode": "HTML",
+                                    "text": f"⚠️ <b>CYCLE {cycle} FAILED</b> — exit code {r.returncode}. Check GitHub Actions log."},
+                              timeout=5)
+                  except Exception:
+                      pass
+              now = time.time()
+              if now - last_hf_push >= HF_PUSH_INTERVAL:
+                  push_hf()
+                  last_hf_push = now
               # Sleep in 30s chunks so market-close is detected promptly
               for _ in range(10):
                   time.sleep(30)

@@ -78,7 +78,7 @@ def ensemble_signal(
 
 
 def action_to_int(action: str) -> int:
-    """Convert ensemble action to RL-compatible int: 0=Hold, 1=Buy, 2=Sell."""
+    """Convert ensemble action string to int: 0=Hold, 1=Buy, 2=Sell."""
     if "BUY" in action:
         return 1
     if "SELL" in action:

@@ -8,6 +8,7 @@ from loguru import logger
 from config import TRADE_DB_PATH, BENCHMARK
 import yfinance as yf
 from datetime import datetime, timedelta
+import bot.monitor.telegram_bot as tg
 
 THRESHOLDS = {
     "min_days": 60,
@@ -64,7 +65,7 @@ def run_check():
     end = datetime.fromisoformat(timestamps[-1])
     days_trading = (end - start).days
 
-    sell_trades = [t for t in trades if t[1] in ("SELL", "SELL_STOP")]
+    sell_trades = [t for t in trades if t[1].startswith("SELL")]
     wins = sum(1 for t in sell_trades if t[2] > 0)
     win_rate = wins / len(sell_trades) if sell_trades else 0.0
 
@@ -111,6 +112,7 @@ def run_check():
 
     if all_pass:
         logger.info("ALL CHECKS PASSED — Bot is ready for real money.")
+        tg.alert_confidence_passed()
     else:
         logger.warning("NOT READY — Keep paper trading.")
     return all_pass

@@ -1,10 +1,13 @@
 from __future__ import annotations
 import os
 import requests
+from datetime import date, timedelta
 from loguru import logger
 
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
-SEC_USER_AGENT = "ai-trading-bot ksri77@gmail.com"
+NEWSAPI_KEY    = os.getenv("NEWSAPI_KEY", "")
+# SEC EDGAR requires a valid User-Agent with contact info per https://www.sec.gov/os/webmaster-faq
+# Set SEC_USER_AGENT env var (e.g. "ai-trading-bot your@email.com") — do not hardcode in source.
+SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "ai-trading-bot contact@example.com")
 
 _finbert_pipeline = None
 
@@ -72,9 +75,11 @@ def get_news_headlines(ticker: str) -> list[str]:
 def get_sec_headlines(ticker: str) -> list[str]:
     """Pull recent SEC filing descriptions from EDGAR full-text search (no key needed)."""
     try:
+        # Rolling 90-day window — hardcoded year would stop returning results as time passes
+        startdt = (date.today() - timedelta(days=90)).isoformat()
         resp = requests.get(
             "https://efts.sec.gov/LATEST/search-index",
-            params={"q": f'"{ticker}"', "forms": "8-K,10-Q", "dateRange": "custom", "startdt": "2024-01-01"},
+            params={"q": f'"{ticker}"', "forms": "8-K,10-Q", "dateRange": "custom", "startdt": startdt},
             headers={"User-Agent": SEC_USER_AGENT},
             timeout=5,
         )

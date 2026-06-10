@@ -3,6 +3,7 @@ import math
 import time
 import threading
 from loguru import logger
+from config import MACRO_HALT_VIX
 
 
 def _sigmoid(x: float, center: float, scale: float) -> float:
@@ -43,14 +44,19 @@ def _compute_from_raw(raw: dict) -> dict:
 
     score = max(0.0, min(1.0, 0.50 * vix_score + 0.30 * yc_score + 0.20 * rate_score))
 
-    # Cap position sizing when macro stress is elevated (same logic, same threshold)
+    # Cap position sizing when macro stress is elevated (sigmoid-based, continuous)
     cap = 0.5 if (yield_curve < 0 or vix > 30) else 1.0
+
+    # Hard binary halt at VIX >= MACRO_HALT_VIX (2008/COVID crisis threshold).
+    # Sigmoid scoring is correct for position sizing; emergency circuit breakers
+    # MUST be hard thresholds so they are deterministic and auditable.
+    halt = vix >= MACRO_HALT_VIX
 
     logger.info(
         f"Macro: yield_curve={yield_curve:.2f}, vix={vix:.1f}, "
-        f"fed_rate={fed_rate:.2f} → score={score:.2f}, cap={cap:.1f}"
+        f"fed_rate={fed_rate:.2f} → score={score:.2f}, cap={cap:.1f}, halt={halt}"
     )
-    return {"score": score, "cap": cap}
+    return {"score": score, "cap": cap, "halt": halt}
 
 
 def _get_cached() -> dict:
@@ -66,7 +72,7 @@ def _get_cached() -> dict:
         except Exception as e:
             logger.warning(f"FRED macro fetch failed: {e}")
             if not _MACRO_CACHE:
-                _MACRO_CACHE = {"score": 0.5, "cap": 1.0}
+                _MACRO_CACHE = {"score": 0.5, "cap": 1.0, "halt": False}
         _MACRO_TS = now
         return _MACRO_CACHE
 
