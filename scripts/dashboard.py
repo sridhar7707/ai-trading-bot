@@ -101,7 +101,7 @@ def _section(label: str) -> str:
 
 
 def _toggle_view(tier: str):
-    is_inst = tier == "Institutional / Enterprise"
+    is_inst = tier == "Institutional"
     return gr.update(visible=not is_inst), gr.update(visible=is_inst)
 
 
@@ -115,7 +115,7 @@ with gr.Blocks(title="Trading Bot Dashboard", theme=gr.themes.Base(
 
     with gr.Row():
         tier_radio = gr.Radio(
-            choices=["Subscriber", "Institutional / Enterprise"],
+            choices=["Subscriber", "Institutional"],
             value="Subscriber",
             label="Access Tier",
             interactive=True,
