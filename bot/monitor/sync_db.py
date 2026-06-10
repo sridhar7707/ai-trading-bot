@@ -57,17 +57,29 @@ def pull_db(force: bool = False) -> bool:
         import time
         if time.time() - local.stat().st_mtime < 300:  # fresher than 5 min
             return True
-    try:
-        from huggingface_hub import hf_hub_download
-        cached = hf_hub_download(
-            repo_id=repo_id,
-            filename="trades.db",
-            repo_type="dataset",
-            token=token or None,
-            force_download=True,
-        )
-        local.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(cached, local)
-        return True
-    except Exception:
-        return False
+    # Run the download in a thread with a hard timeout so it never hangs the app
+    import threading
+    result: list[bool] = [False]
+
+    def _download():
+        try:
+            from huggingface_hub import hf_hub_download
+            # token from env takes precedence (set as Space secret or in .env)
+            tok = os.environ.get("HF_TOKEN") or token or None
+            cached = hf_hub_download(
+                repo_id=repo_id,
+                filename="trades.db",
+                repo_type="dataset",
+                token=tok,
+                force_download=True,
+            )
+            local.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(cached, local)
+            result[0] = True
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_download, daemon=True)
+    t.start()
+    t.join(timeout=20)  # give up after 20 s — never block app startup
+    return result[0]
