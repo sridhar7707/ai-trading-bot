@@ -8,6 +8,9 @@ on:
       - 'bot/monitor/dashboard_data.py'
   workflow_dispatch:  # allow manual trigger from GitHub Actions tab
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy-ui:
     runs-on: ubuntu-latest
