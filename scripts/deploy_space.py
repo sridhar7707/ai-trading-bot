@@ -57,14 +57,15 @@ readme = staging / "README.md"
 readme.write_text(
     "---\n"
     "title: AI Trading Bot Dashboard\n"
-    "emoji: 📊\n"
+    "emoji: \U0001f4ca\n"
     "colorFrom: blue\n"
     "colorTo: cyan\n"
     "sdk: gradio\n"
     "sdk_version: 4.44.1\n"
     "app_file: app.py\n"
     "pinned: false\n"
-    "---\n"
+    "---\n",
+    encoding="utf-8",
 )
 
 print(f"Deploying to https://huggingface.co/spaces/{space_id} ...")
