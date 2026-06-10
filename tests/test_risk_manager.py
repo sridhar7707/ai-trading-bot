@@ -14,27 +14,29 @@ def risk():
 # --- approve_buy ---
 
 def test_approve_buy_passes_normal(risk):
-    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, 2) is True
+    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, {}) is True
 
 
 def test_approve_buy_blocked_when_halted(risk):
     risk.halted = True
-    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, 2) is False
+    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, {}) is False
 
 
 def test_approve_buy_blocked_over_position_size(risk):
     # MAX_POSITION_PCT = 0.20; max notional = 0.20 * 10_000 = 2_000
-    assert risk.approve_buy("AAPL", 2_500, 10_000, 10_000, 2) is False
+    assert risk.approve_buy("AAPL", 2_500, 10_000, 10_000, {}) is False
 
 
 def test_approve_buy_blocked_max_positions(risk):
-    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, 5) is False
+    # MAX_POSITIONS = 5; dict must have 5 entries to hit the limit
+    full = {"A": None, "B": None, "C": None, "D": None, "E": None}
+    assert risk.approve_buy("AAPL", 500, 10_000, 10_000, full) is False
 
 
 def test_approve_buy_blocked_daily_loss(risk):
     # Current value is 6% below start (limit is 5%)
     current = 10_000 * (1 - 0.06)
-    assert risk.approve_buy("AAPL", 500, 10_000, current, 2) is False
+    assert risk.approve_buy("AAPL", 500, 10_000, current, {}) is False
 
 
 # --- check_daily_loss ---
@@ -62,17 +64,19 @@ def test_daily_loss_at_limit_halts(risk):
 
 
 # --- check_stop_loss ---
+# New signature: check_stop_loss(symbol, current_price, entry_price, atr=None, pnl_pct=None)
+# STOP_LOSS_PCT = 0.04; pnl_pct path used when atr=None
 
 def test_stop_loss_triggers(risk):
-    assert risk.check_stop_loss("AAPL", -0.05) is True  # STOP_LOSS_PCT = 0.04
+    assert risk.check_stop_loss("AAPL", 95.0, 100.0, pnl_pct=-0.05) is True
 
 
 def test_stop_loss_within_tolerance(risk):
-    assert risk.check_stop_loss("AAPL", -0.03) is False
+    assert risk.check_stop_loss("AAPL", 97.0, 100.0, pnl_pct=-0.03) is False
 
 
 def test_stop_loss_positive_pnl(risk):
-    assert risk.check_stop_loss("AAPL", 0.10) is False
+    assert risk.check_stop_loss("AAPL", 110.0, 100.0, pnl_pct=0.10) is False
 
 
 # --- PDT ---
@@ -105,3 +109,56 @@ def test_record_day_trade_increments(risk):
     risk.record_day_trade()
     risk.record_day_trade()
     assert len(risk.day_trade_log) == 2
+
+
+# --- check_weekly_loss ---
+
+def test_weekly_loss_no_start_value_passes():
+    rm = RiskManager()
+    assert rm.check_weekly_loss(9_000) is True
+
+
+def test_weekly_loss_within_limit(risk):
+    risk.weekly_start_value = 10_000.0
+    current = 10_000 * (1 - 0.09)  # 9% loss, limit is 10%
+    assert risk.check_weekly_loss(current) is True
+
+
+def test_weekly_loss_at_limit_blocks(risk):
+    risk.weekly_start_value = 10_000.0
+    current = 10_000 * (1 - 0.10)  # exactly at 10% limit
+    assert risk.check_weekly_loss(current) is False
+
+
+def test_approve_buy_blocked_weekly_loss(risk):
+    risk.weekly_start_value = 10_000.0
+    current = 10_000 * (1 - 0.11)  # 11% weekly loss
+    assert risk.approve_buy("AAPL", 500, 10_000, current, {}) is False
+
+
+# --- check_daily_loss_warning ---
+
+def test_daily_loss_warning_in_zone(risk):
+    # DAILY_LOSS_LIMIT_PCT=0.05, warning at 50% = 2.5%; put at 3% (in warning zone)
+    current = 10_000 * (1 - 0.03)
+    assert risk.check_daily_loss_warning(current) is True
+
+
+def test_daily_loss_warning_not_sent_twice(risk):
+    current = 10_000 * (1 - 0.03)
+    risk.daily_warning_sent = True
+    assert risk.check_daily_loss_warning(current) is False
+
+
+def test_daily_loss_warning_outside_zone(risk):
+    # 1% loss — below the 2.5% warning threshold
+    current = 10_000 * (1 - 0.01)
+    assert risk.check_daily_loss_warning(current) is False
+
+
+# --- approve_sell ---
+
+def test_approve_sell_always_returns_true(risk):
+    # Sells must never be blocked — exits must always be possible.
+    assert risk.approve_sell("AAPL", -0.10, 9_000) is True
+    assert risk.approve_sell("AAPL",  0.05, 10_500) is True

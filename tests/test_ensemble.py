@@ -36,8 +36,9 @@ def test_hold():
 
 
 def test_sell():
-    # xgb=0.4, lstm=0.4, sentiment=-0.2, regime=TRENDING_DOWN → score ≈ 0.32
-    action, fraction = ensemble_signal(0.4, 0.4, -0.2, "TRENDING_DOWN")
+    # xgb=0.4, lstm=0.4, sentiment=-0.6, macro=0.5(default) → score ≈ 0.39 → SELL
+    # regime is excluded from weights (it's a gate in main.py, not a score component)
+    action, fraction = ensemble_signal(0.4, 0.4, -0.6, "TRENDING_DOWN")
     assert action == "SELL"
     assert fraction == 0.0
 
@@ -61,7 +62,8 @@ def test_nan_input_defaults_to_hold(xgb, lstm, sent):
 
 
 def test_unknown_regime_uses_neutral_score():
-    # Unknown regime → REGIME_SCORES.get(regime, 0.5) = 0.5
+    # Regime is excluded from score weights — only acts as a gate in main.py.
+    # Both known and unknown regimes produce the same score → same action.
     action_known, _ = ensemble_signal(0.5, 0.5, 0.0, "RANGING")
     action_unknown, _ = ensemble_signal(0.5, 0.5, 0.0, "UNKNOWN_REGIME")
     assert action_known == action_unknown

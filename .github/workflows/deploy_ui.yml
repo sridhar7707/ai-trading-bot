@@ -1,0 +1,59 @@
+name: Deploy Dashboard to HuggingFace Spaces
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/dashboard.py'
+      - 'bot/monitor/dashboard_data.py'
+
+jobs:
+  deploy-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install huggingface-hub
+        run: pip install huggingface-hub>=0.20.0
+
+      - name: Deploy to HuggingFace Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+        run: |
+          python - <<'PYEOF'
+          import os, sys
+          from huggingface_hub import HfApi, CommitOperationAdd
+
+          token    = os.environ.get("HF_TOKEN", "")
+          space_id = os.environ.get("HF_SPACE_ID", "")
+
+          if not token or not space_id:
+              print("HF_TOKEN or HF_SPACE_ID not set — skipping deploy")
+              sys.exit(0)
+
+          api = HfApi(token=token)
+          ops = [
+              # dashboard.py is renamed to app.py — Gradio Spaces entry point
+              CommitOperationAdd(
+                  path_in_repo="app.py",
+                  path_or_fileobj="scripts/dashboard.py",
+              ),
+              CommitOperationAdd(
+                  path_in_repo="bot/monitor/dashboard_data.py",
+                  path_or_fileobj="bot/monitor/dashboard_data.py",
+              ),
+          ]
+          api.create_commit(
+              repo_id=space_id,
+              repo_type="space",
+              operations=ops,
+              commit_message="chore: update dashboard from CI",
+          )
+          print(f"Dashboard deployed to https://huggingface.co/spaces/{space_id}")
+          PYEOF
