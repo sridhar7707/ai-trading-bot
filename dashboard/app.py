@@ -1,4 +1,6 @@
 """Gradio dashboard — TradeGenius AI, hosted on HuggingFace Spaces."""
+from __future__ import annotations
+
 import os
 import shutil
 import sqlite3

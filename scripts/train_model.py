@@ -1,4 +1,6 @@
 """Offline training script — trains all models. Run locally or on HuggingFace ZeroGPU."""
+from __future__ import annotations
+
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -56,6 +58,8 @@ def main():
     lstm = LSTMPredictor()
     lstm.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
 
+    # RL agent environment is single-asset — use SPY as the representative series
+    primary = df[df["symbol"] == "SPY"].drop(columns=["symbol", "regime"], errors="ignore")
     logger.info("Training PPO RL agent...")
     agent = RLAgent()
     agent.train(primary, initial_balance=INITIAL_CAPITAL)

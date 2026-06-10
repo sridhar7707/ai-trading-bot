@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import date
 from collections import deque
 from loguru import logger

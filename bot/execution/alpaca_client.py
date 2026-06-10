@@ -1,3 +1,4 @@
+from __future__ import annotations
 import alpaca_trade_api as tradeapi
 import pandas as pd
 from loguru import logger

@@ -11,6 +11,7 @@ Usage:
     python scripts/walk_forward.py --symbol SPY
     python scripts/walk_forward.py --rolling --train-months 12 --test-months 3
 """
+from __future__ import annotations
 import sys, os, argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

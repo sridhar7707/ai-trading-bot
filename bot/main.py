@@ -1,4 +1,6 @@
 """Main trading loop — runs every 5 minutes via GitHub Actions."""
+from __future__ import annotations
+
 import argparse
 import json
 import math
