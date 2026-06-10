@@ -7,7 +7,7 @@ from config import (
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
     ATR_STOP_MULTIPLIER, ATR_TRAIL_MULTIPLIER,
     ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT,
-    MAX_SECTOR_POSITIONS, SECTOR_MAP,
+    MAX_POSITIONS, MAX_SECTOR_POSITIONS, SECTOR_MAP,
 )
 
 
@@ -168,8 +168,8 @@ class RiskManager:
         if notional > max_notional:
             logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
             return False
-        if len(open_positions) >= 5:
-            logger.warning("Max 5 open positions reached — buy blocked.")
+        if len(open_positions) >= MAX_POSITIONS:
+            logger.warning(f"Max {MAX_POSITIONS} open positions reached — buy blocked.")
             return False
         if not self.sector_check(symbol, open_positions):
             return False

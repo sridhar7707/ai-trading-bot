@@ -54,7 +54,6 @@ TRAINING_EXTRA = [
 TRAINING_SYMBOLS = SYMBOLS + TRAINING_EXTRA
 
 # --- Trading parameters ---
-TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", 0.20))
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))       # fallback flat stop (no ATR data)
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", 0.05))
