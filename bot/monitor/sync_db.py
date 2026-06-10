@@ -22,7 +22,7 @@ def _get_cfg() -> tuple[str, str, str]:
 
 
 def push_db() -> bool:
-    """Upload trades.db to HF dataset. Silently skips if no token/repo configured."""
+    """Upload trades.db to HF dataset. Creates the repo if it doesn't exist."""
     db_path, repo_id, token = _get_cfg()
     if not token or not repo_id:
         return False
@@ -30,7 +30,12 @@ def push_db() -> bool:
         return False
     try:
         from huggingface_hub import HfApi
-        HfApi(token=token).upload_file(
+        api = HfApi(token=token)
+        try:
+            api.repo_info(repo_id=repo_id, repo_type="dataset")
+        except Exception:
+            api.create_repo(repo_id=repo_id, repo_type="dataset", private=True, exist_ok=True)
+        api.upload_file(
             path_or_fileobj=db_path,
             path_in_repo="trades.db",
             repo_id=repo_id,
