@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 import alpaca_trade_api as tradeapi
 import pandas as pd
 from loguru import logger
@@ -125,6 +126,44 @@ class AlpacaClient:
             return {"order_id": order.id, "symbol": symbol, "side": "sell", "qty": qty}
         except Exception as e:
             logger.error(f"SELL failed {symbol}: {e}")
+            return None
+
+    def wait_for_fill(self, order_id: str, timeout_secs: int = 15) -> bool:
+        """Poll until filled, cancelled/rejected, or timeout.
+        If timeout: cancels the order and returns False.
+        Stop-loss callers should fall back to a market order when this returns False.
+        """
+        deadline = time.monotonic() + timeout_secs
+        while time.monotonic() < deadline:
+            try:
+                order = self.api.get_order(order_id)
+                if order.status == "filled":
+                    return True
+                if order.status in ("cancelled", "expired", "rejected", "done_for_day"):
+                    logger.warning(f"Order {order_id} ended as {order.status} — not filled")
+                    return False
+            except Exception as e:
+                logger.warning(f"Order status poll failed ({order_id}): {e}")
+            time.sleep(2)
+        # Timeout — cancel so it doesn't fill later at a stale price
+        try:
+            self.api.cancel_order(order_id)
+            logger.warning(f"Order {order_id} timed out after {timeout_secs}s — cancelled")
+        except Exception as e:
+            logger.warning(f"Could not cancel order {order_id}: {e}")
+        return False
+
+    def sell_market(self, symbol: str, qty: float) -> dict | None:
+        """Market sell — used as stop-loss escalation when a limit sell times out."""
+        try:
+            order = self.api.submit_order(
+                symbol=symbol, qty=float(qty), side="sell",
+                type="market", time_in_force="day",
+            )
+            logger.warning(f"SELL MARKET {symbol} qty={qty:.4f} (stop escalation) order_id={order.id}")
+            return {"order_id": order.id, "symbol": symbol, "side": "sell", "qty": qty}
+        except Exception as e:
+            logger.error(f"Market sell escalation failed {symbol}: {e}")
             return None
 
     def get_open_order_symbols(self) -> set[str]:

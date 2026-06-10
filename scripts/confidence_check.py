@@ -36,7 +36,8 @@ def compute_sharpe(values):
     returns = np.diff(values) / values[:-1]
     if len(returns) < 2:
         return 0.0
-    return float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252))
+    # 78 five-minute bars per trading day × 252 days — matches backtest/metrics.py
+    return float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252 * 78))
 
 
 def compute_max_drawdown(values):

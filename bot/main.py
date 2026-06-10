@@ -75,13 +75,24 @@ _EARNINGS_DB_TTL  = 12 * 3600
 _MACRO_DB_TTL     = 4  * 3600
 
 
-def _is_market_hours() -> bool:
+def _is_market_hours(alpaca_api=None) -> bool:
     import zoneinfo
     from datetime import timedelta
     et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
     if et.weekday() >= 5:
         return False
-    if et.strftime("%Y-%m-%d") in _US_MARKET_HOLIDAYS:
+    today_str = et.strftime("%Y-%m-%d")
+    is_holiday = False
+    if alpaca_api is not None:
+        try:
+            cal = alpaca_api.get_calendar(start=today_str, end=today_str)
+            is_holiday = len(cal) == 0  # empty list = market closed today
+        except Exception as e:
+            logger.warning(f"Alpaca calendar check failed — using hardcoded holidays: {e}")
+            is_holiday = today_str in _US_MARKET_HOLIDAYS
+    else:
+        is_holiday = today_str in _US_MARKET_HOLIDAYS
+    if is_holiday:
         logger.info("NYSE holiday — skipping cycle.")
         return False
     base = et.replace(second=0, microsecond=0)
@@ -356,10 +367,34 @@ def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: b
         _save_risk_state(con, risk)
 
 
+def _reconcile_positions(con, alpaca_positions: dict):
+    """Sync position_state table with Alpaca's live positions at startup.
+    Removes stale DB entries for positions closed externally;
+    seeds DB entries for positions opened manually/outside the bot.
+    """
+    db_syms = {r[0] for r in con.execute("SELECT symbol FROM position_state").fetchall()}
+    for sym in db_syms - set(alpaca_positions.keys()):
+        logger.warning(f"Reconcile: {sym} in DB but not Alpaca — removing stale state")
+        _delete_position_state(con, sym)
+    for sym, pos in alpaca_positions.items():
+        if sym not in db_syms:
+            entry = float(getattr(pos, "avg_entry_price", 0) or 0)
+            logger.warning(f"Reconcile: {sym} in Alpaca but not DB — seeding position state")
+            _upsert_position_state(con, sym, entry, entry, 0.0)
+
+
 def _signal_sell(con, client, symbol, pos_qty, current_price,
                  regime_name, portfolio_value, is_from_stop=False,
                  reason="stop-loss", pnl_pct=0.0) -> bool:
     sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
+    if sell_result:
+        filled = client.wait_for_fill(sell_result["order_id"], timeout_secs=12)
+        if not filled and is_from_stop:
+            # Stop-loss must execute — escalate to market order immediately
+            logger.warning(f"Stop limit timed out for {symbol} — escalating to market sell")
+            sell_result = client.sell_market(symbol, pos_qty)
+            if sell_result:
+                client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
     if sell_result:
         if is_from_stop:
             tg.alert_stop_loss(symbol, pnl_pct)
@@ -410,11 +445,29 @@ def end_of_day_summary():
     con.close()
 
 
+def _load_premarket_sentiment() -> dict[str, float]:
+    """Load pre-computed FinBERT scores from today's prefetch run, if available."""
+    path = "data/sentiment_today.json"
+    try:
+        if os.path.exists(path):
+            with open(path) as f:
+                payload = json.load(f)
+            if payload.get("date") == date.today().isoformat():
+                scores = payload.get("scores", {})
+                if scores:
+                    logger.info(f"Loaded pre-market sentiment: {len(scores)} symbols")
+                    return scores
+    except Exception as e:
+        logger.warning(f"Failed to load pre-market sentiment: {e}")
+    return {}
+
+
 # ── Main trading cycle ────────────────────────────────────────────────────────
 
 def run(mode: str = "paper"):
     logger.info(f"=== Trading cycle start | mode={mode} ===")
-    if not _is_market_hours():
+    client = AlpacaClient()
+    if not _is_market_hours(client.api):
         return
 
     con = init_db()
@@ -424,13 +477,13 @@ def run(mode: str = "paper"):
     daily_start, day_trade_dates = _load_risk_state(con)
     risk = RiskManager(daily_start_value=daily_start, day_trade_dates=day_trade_dates)
 
-    client     = AlpacaClient()
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()
     lstm       = LSTMPredictor()
 
     portfolio_value, available_cash = client.get_account_summary()
     positions       = client.get_positions()
+    _reconcile_positions(con, positions)
     open_order_syms = client.get_open_order_symbols()
 
     risk.reset_daily(portfolio_value)
@@ -444,18 +497,20 @@ def run(mode: str = "paper"):
     macro_score, macro_cap = _get_macro_from_db(con)
     logger.info(f"Macro: score={macro_score:.2f}, cap={macro_cap:.1f}x")
 
-    # Phase 1 — parallel fetch: bars + headlines
+    premarket_sentiment = _load_premarket_sentiment()
+
     def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, list[str]]:
         try:
             bars = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
         except Exception as e:
             logger.warning(f"Bar fetch failed for {symbol}: {e}")
             bars = pd.DataFrame()
-        try:
-            headlines = collect_headlines(symbol)
-        except Exception as e:
-            logger.warning(f"Headline fetch failed for {symbol}: {e}")
-            headlines = []
+        headlines: list[str] = []
+        if not premarket_sentiment:
+            try:
+                headlines = collect_headlines(symbol)
+            except Exception as e:
+                logger.warning(f"Headline fetch failed for {symbol}: {e}")
         return symbol, bars, headlines
 
     with ThreadPoolExecutor(max_workers=min(len(active_symbols), 10)) as pool:
@@ -464,7 +519,11 @@ def run(mode: str = "paper"):
     bars_map         = {sym: bars for sym, bars, _   in fetched}
     symbol_headlines = {sym: hdl  for sym, _,    hdl in fetched}
 
-    finbert_scores = batch_sentiment_scores(symbol_headlines)
+    if premarket_sentiment:
+        finbert_scores = premarket_sentiment
+        logger.info("Using pre-market FinBERT sentiment — skipping in-cycle BERT pass")
+    else:
+        finbert_scores = batch_sentiment_scores(symbol_headlines)
 
     def _wsb(symbol: str) -> tuple[str, dict]:
         try:
@@ -527,6 +586,19 @@ def run(mode: str = "paper"):
                 entry_price = float(getattr(positions[symbol], "avg_entry_price", 0) or 0)
                 pos_qty     = float(positions[symbol].qty)
                 pnl_pct     = float(positions[symbol].unrealized_plpc or 0)
+
+                # ⓪ Gap-down hard floor — bypass limit/ATR logic, market-sell immediately
+                if pnl_pct < -0.10:
+                    logger.warning(f"Gap-down floor: {symbol} pnl={pnl_pct:.1%} — immediate market sell")
+                    sell_result = client.sell_market(symbol, pos_qty)
+                    if sell_result:
+                        client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
+                        tg.alert_stop_loss(symbol, pnl_pct)
+                        log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price, 0,
+                                  regime_name, portfolio_value, pnl_pct)
+                        _delete_position_state(con, symbol)
+                        _maybe_record_day_trade(con, risk, symbol, True)
+                    continue
 
                 if pos_state:
                     new_hwm = max(pos_state["high_water_mark"], current_price)
@@ -656,12 +728,16 @@ def run(mode: str = "paper"):
 
             result = client.buy(symbol, notional, limit_price=current_price)
             if result:
-                tg.alert_buy(symbol, notional / current_price, current_price,
-                             regime_name, portfolio_value, vs_spy_today * 100)
-                log_trade(con, symbol, "BUY", notional / current_price,
-                          current_price, notional, regime_name, portfolio_value, 0)
-                _upsert_position_state(con, symbol, current_price, current_price, current_atr)
-                available_cash -= notional  # decrement running cash for multi-buy cycles
+                filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
+                if filled:
+                    tg.alert_buy(symbol, notional / current_price, current_price,
+                                 regime_name, portfolio_value, vs_spy_today * 100)
+                    log_trade(con, symbol, "BUY", notional / current_price,
+                              current_price, notional, regime_name, portfolio_value, 0)
+                    _upsert_position_state(con, symbol, current_price, current_price, current_atr)
+                    available_cash -= notional
+                else:
+                    logger.warning(f"BUY {symbol} order did not fill — position state NOT recorded")
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")

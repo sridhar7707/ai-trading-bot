@@ -15,9 +15,8 @@ MIN_RETURN = -0.03      # must not lose more than 3% on holdout
 MAX_DRAWDOWN = 0.20     # max 20% drawdown
 MIN_WIN_RATE = 0.45     # at least 45% of closed trades must be winners
 
-# Holdout = 2023-present (out-of-sample — model never saw this during training)
-HOLDOUT_START = "2023-01-01"
-MIN_VALID_ROWS = 50
+# Holdout = last 60 days of 5-min bars (yfinance max for intraday; out-of-sample)
+MIN_VALID_ROWS = 500  # ~78 bars/day × 60 days = ~4680; 500 is a conservative floor
 
 
 def main():
@@ -27,7 +26,7 @@ def main():
     # Test all SYMBOLS, not just 3 — we have more data now so this is affordable
     for symbol in SYMBOLS:
         try:
-            df = yf.download(symbol, start=HOLDOUT_START, interval="1d", progress=False, auto_adjust=True)
+            df = yf.download(symbol, period="60d", interval="5m", progress=False, auto_adjust=True)
             if df is None or len(df) < MIN_VALID_ROWS:
                 logger.warning(f"{symbol}: insufficient holdout data ({len(df) if df is not None else 0} rows), skipping")
                 continue

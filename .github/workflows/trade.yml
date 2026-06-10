@@ -80,6 +80,13 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python scripts/screen_universe.py --max 25 --max-per-sector 3
 
+      - name: Prefetch sentiment (pre-market)
+        continue-on-error: true
+        env:
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          PYTHONUNBUFFERED: "1"
+        run: python scripts/prefetch_sentiment.py
+
       - name: Run trading loop (market open to close)
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
@@ -98,7 +105,7 @@ jobs:
           import subprocess, time, datetime, os, sys
           from zoneinfo import ZoneInfo
 
-          # NYSE market holidays 2025 and 2026 (observed dates)
+          # Hardcoded fallback — Alpaca API is authoritative (see market_open below)
           US_MARKET_HOLIDAYS = {
               # 2025
               "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18",
@@ -108,19 +115,36 @@ jobs:
               "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
               "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
               "2026-11-26", "2026-12-25",
+              # 2027
+              "2027-01-01", "2027-01-18", "2027-02-15", "2027-04-02",
+              "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06",
+              "2027-11-25", "2027-12-24",
+              # 2028
+              "2027-12-31", "2028-01-17", "2028-02-21", "2028-04-14",
+              "2028-05-29", "2028-06-19", "2028-07-04", "2028-09-04",
+              "2028-11-23", "2028-12-25",
           }
 
           def market_open():
               et = datetime.datetime.now(ZoneInfo("America/New_York"))
               if et.weekday() >= 5:
                   return False
-              if et.strftime("%Y-%m-%d") in US_MARKET_HOLIDAYS:
-                  return False
-              # Use a wide outer window — bot/main.py's _is_market_hours() enforces
-              # the 15-min open buffer and 10-min close buffer per cycle.
               open_t  = et.replace(hour=9,  minute=30, second=0, microsecond=0)
               close_t = et.replace(hour=16, minute=0,  second=0, microsecond=0)
-              return open_t <= et < close_t
+              if not (open_t <= et < close_t):
+                  return False
+              # Prefer Alpaca calendar API — authoritative source for holidays
+              today_str = et.strftime("%Y-%m-%d")
+              try:
+                  import alpaca_trade_api as tradeapi
+                  api = tradeapi.REST(
+                      os.environ.get("ALPACA_KEY", ""),
+                      os.environ.get("ALPACA_SECRET", ""),
+                      "https://paper-api.alpaca.markets", api_version="v2"
+                  )
+                  return len(api.get_calendar(start=today_str, end=today_str)) > 0
+              except Exception:
+                  return today_str not in US_MARKET_HOLIDAYS
 
           def push_hf():
               token = os.environ.get("HF_TOKEN", "")

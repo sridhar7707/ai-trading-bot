@@ -8,7 +8,6 @@ import pandas as pd
 from loguru import logger
 from bot.strategy.features import compute_features
 from bot.strategy.regime_classifier import RegimeClassifier, label_regime
-from bot.strategy.rl_agent import RLAgent
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from config import TRAINING_SYMBOLS, INITIAL_CAPITAL
@@ -57,12 +56,6 @@ def main():
     logger.info("Training LSTM predictor on full multi-symbol dataset...")
     lstm = LSTMPredictor()
     lstm.train(df.drop(columns=["symbol", "regime"], errors="ignore"))
-
-    # RL agent environment is single-asset — use SPY as the representative series
-    primary = df[df["symbol"] == "SPY"].drop(columns=["symbol", "regime"], errors="ignore")
-    logger.info("Training PPO RL agent...")
-    agent = RLAgent()
-    agent.train(primary, initial_balance=INITIAL_CAPITAL)
 
     logger.info("All models trained successfully.")
 
