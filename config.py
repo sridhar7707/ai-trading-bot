@@ -17,17 +17,39 @@ HF_TOKEN = os.getenv("HF_TOKEN", "")
 HF_REPO_ID = os.getenv("HF_REPO_ID", "")
 
 # --- Trading universe (live bot trades these) ---
-STOCKS = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META"]
-ETFS = ["VOO", "QQQ", "SPY", "VTI", "ARKK"]
+# Balanced across 8 sectors so the model can rotate capital into whatever is leading,
+# not just chase the tech names it was originally given.
+STOCKS = [
+    # Technology
+    "AAPL", "MSFT", "NVDA",
+    # Communication Services
+    "GOOGL", "META",
+    # Consumer Discretionary
+    "AMZN", "TSLA",
+    # Financials
+    "JPM",
+    # Healthcare
+    "JNJ",
+    # Energy
+    "XOM",
+    # Consumer Staples (defensive)
+    "WMT",
+]
+ETFS = [
+    "SPY", "QQQ", "VTI",   # broad market
+    "XLF",                  # Financials ETF
+    "XLV",                  # Healthcare ETF
+    "XLE",                  # Energy ETF
+    "GLD",                  # Gold — macro hedge / safe haven
+]
 SYMBOLS = STOCKS + ETFS
 BENCHMARK = "SPY"
 
-# --- Training universe (superset — more symbols = better regime/XGB generalisation) ---
-# Sector ETFs teach the model different correlation regimes without adding live trades
+# --- Training universe (superset — more symbols = better model generalisation) ---
 TRAINING_EXTRA = [
-    "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLC",  # GICS sectors
-    "GLD", "TLT",                                                # gold + bonds
-    "JPM", "JNJ", "XOM", "WMT", "BRK-B",                       # sector anchors
+    "XLK", "XLI", "XLY", "XLP", "XLC",     # remaining GICS sector ETFs
+    "TLT", "BRK-B",                          # bonds + value anchor
+    "VOO", "ARKK",                           # previously in SYMBOLS, still train on them
 ]
 TRAINING_SYMBOLS = SYMBOLS + TRAINING_EXTRA
 
@@ -50,12 +72,28 @@ MARKET_OPEN_BUFFER_MINS  = int(os.getenv("MARKET_OPEN_BUFFER_MINS",  15))
 MARKET_CLOSE_BUFFER_MINS = int(os.getenv("MARKET_CLOSE_BUFFER_MINS", 10))
 
 # --- Sector map for concentration limits ---
+# MAX_SECTOR_POSITIONS=2 means at most 2 open positions per sector at any time.
 SECTOR_MAP: dict[str, str] = {
-    "AAPL": "Technology",      "MSFT": "Technology",       "NVDA": "Technology",
-    "GOOGL": "Comm_Services",  "META": "Comm_Services",
-    "AMZN": "Consumer_Disc",   "TSLA": "Consumer_Disc",
-    "VOO":  "Broad_ETF",       "SPY":  "Broad_ETF",        "VTI": "Broad_ETF",
-    "QQQ":  "Tech_ETF",        "ARKK": "Tech_ETF",
+    # Technology
+    "AAPL": "Technology",    "MSFT": "Technology",    "NVDA": "Technology",
+    "QQQ":  "Technology",    "XLK":  "Technology",    "ARKK": "Technology",
+    # Communication Services
+    "GOOGL": "Comm_Services", "META": "Comm_Services", "XLC": "Comm_Services",
+    # Consumer Discretionary
+    "AMZN": "Consumer_Disc",  "TSLA": "Consumer_Disc", "XLY": "Consumer_Disc",
+    # Consumer Staples
+    "WMT":  "Consumer_Staples", "XLP": "Consumer_Staples",
+    # Financials
+    "JPM":  "Financials",    "XLF":  "Financials",    "BRK-B": "Financials",
+    # Healthcare
+    "JNJ":  "Healthcare",    "XLV":  "Healthcare",
+    # Energy
+    "XOM":  "Energy",        "XLE":  "Energy",
+    # Industrials
+    "XLI":  "Industrials",
+    # Broad / macro
+    "SPY":  "Broad_ETF",     "VTI":  "Broad_ETF",     "VOO":  "Broad_ETF",
+    "GLD":  "Commodities",   "TLT":  "Bonds",
 }
 
 INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))
