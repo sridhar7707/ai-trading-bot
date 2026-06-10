@@ -1,21 +1,27 @@
 """
-Nightly universe screener — ranks ~110 liquid candidates and outputs
-the top symbols to data/universe_today.json.
+Pre-market universe screener — hedge fund multi-factor approach.
 
-Scoring methodology (institutional-grade):
-  40%  Risk-adjusted 60-day momentum  (60d return / 20d volatility)
-  25%  20-day momentum vs SPY         (relative strength, medium-term)
-  20%  Trend quality                  (R² of 20-day linear regression)
-  15%  Price-confirmed volume surge   (volume only counts when price rising)
+Two-stage pipeline:
+  Stage 1 — Hard filters (price, ADV, above-50-SMA, beta range)
+  Stage 2 — Factor scoring with regime-adaptive weights
 
-Hard filters (all must pass):
-  - Price ≥ $10
-  - 20-day ADV ≥ $5M
-  - Close above 50-day SMA  (no falling knives)
-  - Earnings not within ±3 days
+Factors (all computed from 1-year daily price data, no extra API calls):
+  • Risk-adjusted 60-day momentum  (return / 20d volatility)
+  • 20-day relative strength vs SPY
+  • Trend quality R²               (OLS fit over last 20 bars)
+  • 52-week high proximity         (O'Neil breakout signal)
+  • Price-confirmed volume surge   (volume only positive when price rising)
+  • Market beta                    (filter: 0.6–2.0 for swing/day trading)
 
-Run once before market open (handled by GitHub Actions workflow).
-Falls back to config.SYMBOLS automatically on any failure.
+Regime-adaptive weights:
+  Bull (SPY > 50-SMA): emphasise momentum
+  Bear (SPY < 50-SMA): emphasise RS + trend quality + defensive sectors
+
+Final pass — correlation deduplication:
+  Replace any pair with pairwise correlation >0.85 with the next-best
+  uncorrelated candidate (avoids owning 3 stocks that move identically).
+
+Falls back to config.SYMBOLS on any failure.
 
 Usage:
     python scripts/screen_universe.py
@@ -43,10 +49,14 @@ from config import SECTOR_MAP, SYMBOLS
 OUTPUT_PATH        = "data/universe_today.json"
 DEFAULT_MAX        = 25
 DEFAULT_MAX_SECTOR = 3
-DEFAULT_MIN_PRICE  = 10.0     # raised from $5 — better spreads, institutional support
-DEFAULT_MIN_ADV    = 5_000_000  # raised from $2M — guarantees clean algo fills
+DEFAULT_MIN_PRICE  = 10.0
+DEFAULT_MIN_ADV    = 5_000_000
+BETA_MIN           = 0.6    # too-slow stocks don't move enough for intraday trading
+BETA_MAX           = 2.0    # too-wild stocks blow stops before the edge plays out
+CORR_THRESHOLD     = 0.85   # pairwise correlation above which one position is redundant
 
-# ~110 liquid candidates across all 11 GICS sectors.
+DEFENSIVE_SECTORS = {"Consumer_Staples", "Healthcare", "Utilities", "Bonds", "Commodities"}
+
 CANDIDATE_UNIVERSE: list[str] = [
     # Technology
     "AAPL", "MSFT", "NVDA", "AMD", "INTC", "QCOM", "TXN", "AVGO",
@@ -75,7 +85,7 @@ CANDIDATE_UNIVERSE: list[str] = [
     "SPY", "QQQ", "VTI",
     # Sector ETFs
     "XLF", "XLV", "XLE", "XLK", "XLI", "XLY", "XLP", "XLC",
-    # Macro ETFs
+    # Macro
     "GLD", "TLT",
 ]
 
@@ -118,20 +128,98 @@ def _sector(sym: str) -> str:
 
 
 def _rank_pct(series: pd.Series) -> pd.Series:
-    """Percentile rank — robust to outliers, values in [0, 1]."""
     return series.rank(pct=True)
 
 
-def _trend_r2(prices: pd.Series) -> float:
-    """R² of OLS linear fit over last 20 bars — measures trend cleanness.
-    1.0 = perfect straight-line trend, 0.0 = pure noise."""
-    n = min(20, len(prices))
-    if n < 5:
+def _trend_r2(prices: pd.Series, n: int = 20) -> float:
+    """R² of OLS linear fit over last n bars — 1.0 = perfect trend, 0.0 = noise."""
+    window = min(n, len(prices))
+    if window < 5:
         return 0.0
-    y = prices.iloc[-n:].values.astype(float)
-    x = np.arange(n)
+    y = prices.iloc[-window:].values.astype(float)
+    x = np.arange(window)
     _, _, r, _, _ = scipy_stats.linregress(x, y)
     return float(r ** 2)
+
+
+def _compute_beta(sym_rets: pd.Series, spy_rets: pd.Series) -> float:
+    """OLS beta of sym_rets ~ spy_rets over overlapping period."""
+    aligned = pd.concat([sym_rets, spy_rets], axis=1).dropna()
+    if len(aligned) < 20:
+        return 1.0
+    cov = aligned.iloc[:, 0].cov(aligned.iloc[:, 1])
+    var = aligned.iloc[:, 1].var()
+    return float(cov / var) if var > 0 else 1.0
+
+
+def _detect_regime(spy_closes: pd.Series) -> str:
+    """Bull if SPY above its 50-day SMA, else Bear."""
+    if len(spy_closes) < 50:
+        return "BULL"
+    sma50 = float(spy_closes.tail(50).mean())
+    return "BULL" if float(spy_closes.iloc[-1]) > sma50 else "BEAR"
+
+
+def _factor_weights(regime: str) -> dict[str, float]:
+    if regime == "BULL":
+        return {
+            "risk_adj_mom": 0.35,
+            "rs_20":        0.25,
+            "r2":           0.20,
+            "proximity_hi": 0.10,
+            "vol_surge":    0.10,
+        }
+    # BEAR — rotate toward quality + RS, de-emphasise raw momentum
+    return {
+        "risk_adj_mom": 0.15,
+        "rs_20":        0.35,
+        "r2":           0.25,
+        "proximity_hi": 0.05,
+        "vol_surge":    0.05,
+        "defensive":    0.15,   # bonus for defensive sectors
+    }
+
+
+def _corr_dedup(
+    ranked: list[str],
+    close_df: pd.DataFrame,
+    max_sym: int,
+    threshold: float = CORR_THRESHOLD,
+) -> list[str]:
+    """
+    Walk the ranked list in order, keep a symbol only if its pairwise
+    correlation with every already-selected symbol is below threshold.
+    Gives the same effect as portfolio diversification without an optimizer.
+    """
+    selected: list[str] = []
+    returns_cache: dict[str, pd.Series] = {}
+
+    for sym in ranked:
+        if len(selected) >= max_sym:
+            break
+        if sym not in close_df.columns:
+            selected.append(sym)
+            continue
+        rets = close_df[sym].pct_change().dropna()
+        returns_cache[sym] = rets
+
+        too_corr = False
+        for held in selected:
+            if held not in returns_cache:
+                continue
+            aligned = pd.concat([rets, returns_cache[held]], axis=1).dropna()
+            if len(aligned) < 10:
+                continue
+            corr = float(aligned.iloc[:, 0].corr(aligned.iloc[:, 1]))
+            if corr > threshold:
+                too_corr = True
+                logger.debug(f"  {sym} ↔ {held} corr={corr:.2f} > {threshold} — skipped")
+                break
+
+        if not too_corr:
+            selected.append(sym)
+
+    return selected
 
 
 def screen(
@@ -140,13 +228,12 @@ def screen(
     min_price: float = DEFAULT_MIN_PRICE,
     min_adv: float = DEFAULT_MIN_ADV,
 ) -> list[str]:
-    all_candidates = list(dict.fromkeys(CANDIDATE_UNIVERSE))
-    logger.info(f"Downloading 75-day history for {len(all_candidates)} candidates...")
+    candidates = list(dict.fromkeys(CANDIDATE_UNIVERSE))
+    logger.info(f"Downloading 1-year history for {len(candidates)} candidates...")
 
-    # 75 days covers: 60-day momentum + 50-day SMA + buffer
     raw = yf.download(
-        tickers=all_candidates,
-        period="75d",
+        tickers=candidates,
+        period="1y",
         interval="1d",
         auto_adjust=True,
         progress=False,
@@ -159,124 +246,121 @@ def screen(
 
     close_df  = raw["Close"]
     volume_df = raw.get("Volume")
-    high_df   = raw.get("High")
-    low_df    = raw.get("Low")
 
-    spy_close = close_df.get("SPY")
+    spy_closes = close_df.get("SPY", pd.Series(dtype=float)).dropna()
+    regime     = _detect_regime(spy_closes)
+    weights    = _factor_weights(regime)
+    logger.info(f"Market regime: {regime} | weights: {weights}")
 
-    passed_filters = 0
+    spy_rets = spy_closes.pct_change().dropna()
+
+    # ── Stage 1: hard filters + factor computation ────────────────────────────
     scores: dict[str, dict] = {}
+    n_filtered = 0
 
-    for sym in all_candidates:
+    for sym in candidates:
         if sym not in close_df.columns:
             continue
         closes = close_df[sym].dropna()
-        if len(closes) < 22:   # need at least 22 days for all signals
+        if len(closes) < 60:
             continue
 
         last_price = float(closes.iloc[-1])
-
-        # ── Hard filters ─────────────────────────────────────────────────────
-
-        # 1. Price floor
         if last_price < min_price:
             continue
 
-        # 2. ADV filter
-        if volume_df is not None and sym in volume_df.columns:
-            vols = volume_df[sym].dropna()
-            adv = float((closes.reindex(vols.index) * vols).tail(20).mean())
-            if adv < min_adv:
-                continue
-        else:
-            continue   # skip if no volume data
+        # ADV filter
+        if volume_df is None or sym not in volume_df.columns:
+            continue
+        vols = volume_df[sym].dropna()
+        adv  = float((closes.reindex(vols.index) * vols).tail(20).mean())
+        if adv < min_adv:
+            continue
 
-        # 3. Above 50-day SMA — no falling knives
-        sma50 = float(closes.tail(50).mean()) if len(closes) >= 50 else float(closes.mean())
+        # Above 50-SMA — no falling knives
+        sma50 = float(closes.tail(50).mean())
         if last_price < sma50:
             continue
 
-        passed_filters += 1
+        # Beta filter — too slow or too wild
+        sym_rets = closes.pct_change().dropna()
+        beta = _compute_beta(sym_rets, spy_rets)
+        if beta < BETA_MIN or beta > BETA_MAX:
+            continue
 
-        # ── Signal factors ────────────────────────────────────────────────────
+        n_filtered += 1
 
-        # Factor 1 — Risk-adjusted 60-day momentum
-        # Uses volatility normalisation: a smooth 5% move beats a choppy 15% move.
-        ret_60 = 0.0
-        if len(closes) >= 61:
-            ret_60 = float(closes.iloc[-1] / closes.iloc[-61] - 1)
-        std_20 = float(closes.pct_change().tail(20).std()) or 0.001
-        risk_adj_mom = ret_60 / std_20   # Sharpe-like: return per unit of risk
+        # ── Factor 1: risk-adjusted 60-day momentum ───────────────────────────
+        ret_60    = float(closes.iloc[-1] / closes.iloc[-61] - 1) if len(closes) >= 61 else 0.0
+        std_20    = float(sym_rets.tail(20).std()) or 0.001
+        risk_adj_mom = ret_60 / std_20
 
-        # Factor 2 — 20-day momentum relative to SPY (beats raw return)
+        # ── Factor 2: 20-day RS vs SPY ────────────────────────────────────────
         rs_20 = 0.0
-        if spy_close is not None:
-            spy = spy_close.dropna()
-            n = min(21, len(closes), len(spy))
-            sym_ret = float(closes.iloc[-1] / closes.iloc[-n] - 1)
-            spy_ret = float(spy.iloc[-1]    / spy.iloc[-n]    - 1)
-            rs_20 = sym_ret - spy_ret
+        if len(spy_closes) >= 21 and len(closes) >= 21:
+            sym_20d = float(closes.iloc[-1] / closes.iloc[-21] - 1)
+            spy_20d = float(spy_closes.iloc[-1] / spy_closes.iloc[-21] - 1)
+            rs_20 = sym_20d - spy_20d
 
-        # Factor 3 — Trend quality (R² of 20-day regression)
+        # ── Factor 3: trend quality R² ────────────────────────────────────────
         r2 = _trend_r2(closes)
 
-        # Factor 4 — Price-confirmed volume surge
-        # Volume surge only counts as bullish when price is also rising over 5 days.
-        # High volume on a falling stock = distribution (bearish).
+        # ── Factor 4: 52-week high proximity (O'Neil breakout signal) ─────────
+        hi_52wk      = float(closes.tail(252).max())
+        proximity_hi = float(closes.iloc[-1] / hi_52wk) if hi_52wk > 0 else 0.5
+
+        # ── Factor 5: price-confirmed volume surge ────────────────────────────
         vol_surge = 0.0
-        if volume_df is not None and sym in volume_df.columns:
-            vols_sym = volume_df[sym].dropna()
-            if len(vols_sym) >= 6:
-                v5  = float(vols_sym.tail(5).mean())
-                v20 = float(vols_sym.tail(20).mean())
-                if v20 > 0:
-                    raw_surge = np.clip(v5 / v20 - 1, -1.0, 3.0)
-                    # Only count surge when price has risen in last 5 days
-                    price_5d = float(closes.iloc[-1] / closes.iloc[-6] - 1) if len(closes) >= 6 else 0.0
-                    vol_surge = raw_surge * (1.0 if price_5d > 0 else -0.5)
+        if len(vols) >= 6:
+            v5, v20 = float(vols.tail(5).mean()), float(vols.tail(20).mean())
+            if v20 > 0:
+                raw_surge = np.clip(v5 / v20 - 1, -1.0, 3.0)
+                price_5d  = float(closes.iloc[-1] / closes.iloc[-6] - 1) if len(closes) >= 6 else 0.0
+                # Only count surge as bullish when price is also rising
+                vol_surge = raw_surge * (1.0 if price_5d > 0 else -0.5)
+
+        # ── Factor 6: defensive sector bonus (only active in BEAR regime) ─────
+        defensive = 1.0 if _sector(sym) in DEFENSIVE_SECTORS else 0.0
 
         scores[sym] = {
-            "price": last_price,
-            "sma50": sma50,
-            "risk_adj_mom": risk_adj_mom,
-            "rs_20": rs_20,
-            "r2": r2,
-            "vol_surge": vol_surge,
+            "beta": beta, "price": last_price,
+            "risk_adj_mom": risk_adj_mom, "rs_20": rs_20,
+            "r2": r2, "proximity_hi": proximity_hi,
+            "vol_surge": vol_surge, "defensive": defensive,
         }
 
-    logger.info(f"Candidates: {len(all_candidates)} → passed filters: {passed_filters} → scored: {len(scores)}")
+    logger.info(f"Candidates: {len(candidates)} → passed filters: {n_filtered} → scored: {len(scores)}")
 
     if not scores:
-        logger.error("No symbols passed filters — falling back to config.SYMBOLS")
+        logger.error("No symbols passed all filters — falling back to config.SYMBOLS")
         return list(SYMBOLS)
 
+    # ── Stage 2: composite score with regime-aware weights ────────────────────
     score_df = pd.DataFrame(scores).T
-
-    # Blend factors using percentile ranks (robust to outliers)
-    score_df["composite"] = (
-        0.40 * _rank_pct(score_df["risk_adj_mom"])   # risk-adjusted momentum (primary)
-        + 0.25 * _rank_pct(score_df["rs_20"])         # relative strength vs SPY
-        + 0.20 * _rank_pct(score_df["r2"])            # trend quality / smoothness
-        + 0.15 * _rank_pct(score_df["vol_surge"])     # price-confirmed volume
-    )
+    composite = pd.Series(0.0, index=score_df.index)
+    for factor, w in weights.items():
+        if factor in score_df.columns:
+            composite += w * _rank_pct(score_df[factor])
+    score_df["composite"] = composite
     score_df = score_df.sort_values("composite", ascending=False)
 
-    top10 = score_df.head(10)[["price", "risk_adj_mom", "rs_20", "r2", "composite"]]
-    logger.info(f"Top 10 by composite score:\n{top10.to_string()}")
+    top10 = score_df.head(10)[["beta", "price", "risk_adj_mom", "rs_20", "r2", "proximity_hi", "composite"]]
+    logger.info(f"Top 10 candidates ({regime} regime):\n{top10.round(3).to_string()}")
 
-    # Apply sector cap: at most max_per_sector per sector
-    selected: list[str] = []
+    # ── Stage 3: sector cap, then correlation deduplication ───────────────────
+    # First apply sector cap on the ranked list
+    sector_capped: list[str] = []
     sector_counts: dict[str, int] = defaultdict(int)
     for sym in score_df.index:
         sec = _sector(sym)
-        if sector_counts[sec] >= max_per_sector:
-            continue
-        selected.append(sym)
-        sector_counts[sec] += 1
-        if len(selected) >= max_symbols:
-            break
+        if sector_counts[sec] < max_per_sector:
+            sector_capped.append(sym)
+            sector_counts[sec] += 1
 
-    # Always include SPY (used internally for RS gate in main.py)
+    # Then deduplicate by pairwise correlation
+    selected = _corr_dedup(sector_capped, close_df, max_symbols)
+
+    # SPY always included — used for RS gate inside main.py
     if "SPY" not in selected:
         selected.append("SPY")
 
@@ -285,7 +369,6 @@ def screen(
 
 def main(args: argparse.Namespace) -> None:
     os.makedirs("data", exist_ok=True)
-    today = date.today().isoformat()
 
     try:
         symbols = screen(
@@ -299,7 +382,7 @@ def main(args: argparse.Namespace) -> None:
         symbols = list(SYMBOLS)
 
     payload = {
-        "date": today,
+        "date": date.today().isoformat(),
         "screened_at": datetime.now(timezone.utc).isoformat(),
         "symbols": symbols,
         "count": len(symbols),
@@ -307,12 +390,10 @@ def main(args: argparse.Namespace) -> None:
     with open(OUTPUT_PATH, "w") as f:
         json.dump(payload, f, indent=2)
 
-    logger.info(f"Universe written to {OUTPUT_PATH}: {len(symbols)} symbols")
+    logger.info(f"Universe → {OUTPUT_PATH}: {len(symbols)} symbols")
     from collections import Counter
-    breakdown = Counter(_sector(s) for s in symbols)
-    for sec, n in sorted(breakdown.items()):
-        syms_in_sec = [s for s in symbols if _sector(s) == sec]
-        logger.info(f"  {sec:<22} ({n}) {syms_in_sec}")
+    for sec, n in sorted(Counter(_sector(s) for s in symbols).items()):
+        logger.info(f"  {sec:<22} ({n}) {[s for s in symbols if _sector(s)==sec]}")
 
 
 if __name__ == "__main__":
