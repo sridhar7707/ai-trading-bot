@@ -4,6 +4,7 @@ import json
 import sqlite3
 import sys
 import os
+import threading
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -25,9 +26,17 @@ _CARD = "#1a1a2e"
 
 # Tracks last pull outcome for display in overview
 _last_sync: dict = {"ok": None, "ts": None, "err": ""}
+# Serializes HF pulls so concurrent tab loads don't race the download/copy.
+_pull_lock = threading.Lock()
 
 
 def _con() -> sqlite3.Connection | None:
+    # Every read goes through here, so pull the latest DB first. This is the one
+    # place that guarantees ALL tabs (not just Overview) see fresh data — without
+    # it, tabs that render before Overview's async pull read the empty bundled DB.
+    # Cheap after the first call: pull_db respects a 5-min cache, and off-Space
+    # (tests/local) refresh_db_from_hf() is a no-op.
+    refresh_db_from_hf()
     if not Path(_DB).exists():
         logger.warning(f"dashboard_data: {_DB} not found — no data to show")
         return None
@@ -61,22 +70,27 @@ def _latest_portfolio_value(con) -> float:
 
 
 def refresh_db_from_hf(force: bool = False) -> None:
-    """Pull a fresh trades.db from HF dataset (Space-only, non-blocking)."""
+    """Pull a fresh trades.db from HF dataset (Space-only).
+
+    Called on every _con() (cheap — pull_db respects a 5-min cache) and with
+    force=True by the explicit Refresh button. The lock serializes concurrent
+    pulls so two tab loads can't download/copy the file at the same time.
+    pull_db() already logs the meaningful events (download, cache-skip, failure),
+    so this only records the outcome for the overview status line.
+    """
     global _last_sync
     if not os.environ.get("SPACE_ID"):
-        logger.debug("refresh_db_from_hf: not running in HF Space (SPACE_ID not set) — skipping pull")
         return
     try:
         from bot.monitor.sync_db import pull_db
-        ok = pull_db(force=force)
+        with _pull_lock:
+            ok = pull_db(force=force)
         _last_sync = {
             "ok": ok,
             "ts": datetime.now(timezone.utc),
             "err": "" if ok else "pull_db returned False — check HF_TOKEN and HF_DB_REPO_ID",
         }
-        if ok:
-            logger.info("refresh_db_from_hf: DB pulled successfully from HF dataset")
-        else:
+        if not ok:
             logger.error("refresh_db_from_hf: DB pull returned False — dashboard may show stale data")
     except Exception as exc:
         _last_sync = {"ok": False, "ts": datetime.now(timezone.utc), "err": str(exc)}
