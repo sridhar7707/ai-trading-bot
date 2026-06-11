@@ -695,7 +695,9 @@ def get_trades_df(days: int = 30) -> pd.DataFrame:
 # ── Performance metrics (Pro+) ────────────────────────────────────────────────
 
 # Minimum 5-min-bar return observations before an annualized Sharpe is meaningful.
-_MIN_SHARPE_OBS = 20
+_MIN_SHARPE_OBS  = 20   # minimum return observations
+_MIN_SHARPE_DAYS = 20   # AND minimum distinct trading days — a Sharpe from a few
+                        # hours of intraday snapshots is meaningless (annualization blows up)
 
 
 def get_performance_metrics(days: int = 60) -> dict:
@@ -741,9 +743,12 @@ def get_performance_metrics(days: int = 60) -> dict:
         return _empty
     rets   = np.diff(vals) / (vals[:-1] + 1e-8)
     # Annualized Sharpe assumes ~uniform 5-min bar returns (sqrt(252*78)). With only
-    # a handful of irregular points it produces absurd values (e.g. 39), so report
-    # None until there's enough history to be meaningful.
-    if len(rets) >= _MIN_SHARPE_OBS and np.std(rets) > 0:
+    # a few hours of intraday snapshots it produces absurd values (e.g. 24), so it's
+    # reported only once there are enough observations AND enough distinct trading
+    # days for the annualization to mean something.
+    distinct_days = len({ts[:10] for ts, _ in pv_rows if ts})
+    if (len(rets) >= _MIN_SHARPE_OBS and distinct_days >= _MIN_SHARPE_DAYS
+            and np.std(rets) > 0):
         sharpe = float(np.mean(rets) / np.std(rets) * np.sqrt(252 * 78))
     else:
         sharpe = None
