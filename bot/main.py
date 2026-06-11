@@ -200,8 +200,8 @@ def _week_key() -> str:
     return date.today().strftime("%G-W%V")
 
 
-def _load_risk_state(con) -> tuple[float | None, list[str], float | None, bool, bool]:
-    """Returns (daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted)."""
+def _load_risk_state(con) -> tuple[float | None, list[str], float | None, bool, bool, float | None]:
+    """Returns (daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted, portfolio_high)."""
     today = date.today().isoformat()
     wk    = _week_key()
     rows  = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
@@ -229,7 +229,13 @@ def _load_risk_state(con) -> tuple[float | None, list[str], float | None, bool, 
     daily_warning_sent  = rows.get("daily_warning_sent_date") == today
     weekly_halt_alerted = rows.get("weekly_halt_alerted_week") == wk
 
-    return daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted
+    portfolio_high: float | None = None
+    try:
+        portfolio_high = float(rows["portfolio_high"])
+    except (KeyError, ValueError, TypeError):
+        pass
+
+    return daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted, portfolio_high
 
 
 def _save_risk_state(con, risk: RiskManager):
@@ -239,13 +245,14 @@ def _save_risk_state(con, risk: RiskManager):
     start   = str(risk.daily_start_value)  if risk.daily_start_value  is not None else ""
     weekly  = str(risk.weekly_start_value) if risk.weekly_start_value is not None else ""
     entries = [
-        ("daily_start_value",       start),
-        ("daily_start_date",        today),
-        ("day_trade_dates",         trades),
-        ("weekly_start_value",      weekly),
-        ("weekly_start_week",       wk),
-        ("daily_warning_sent_date", today if risk.daily_warning_sent else ""),
-        ("weekly_halt_alerted_week", wk   if risk.weekly_halt_alerted else ""),
+        ("daily_start_value",        start),
+        ("daily_start_date",         today),
+        ("day_trade_dates",          trades),
+        ("weekly_start_value",       weekly),
+        ("weekly_start_week",        wk),
+        ("daily_warning_sent_date",  today if risk.daily_warning_sent else ""),
+        ("weekly_halt_alerted_week", wk    if risk.weekly_halt_alerted else ""),
+        ("portfolio_high",           str(risk.portfolio_high) if risk.portfolio_high is not None else ""),
     ]
     for key, val in entries:
         con.execute(
@@ -489,7 +496,7 @@ def end_of_day_summary():
     trades_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
     ).fetchone()[0]
-    daily_start, day_trade_dates, weekly_start, _, __ = _load_risk_state(con)
+    daily_start, day_trade_dates, weekly_start, _, __, ___ = _load_risk_state(con)
     day_trade_count = day_trade_dates.count(today)
     portfolio_value, available_cash = client.get_account_summary()
     positions = client.get_positions()
@@ -602,13 +609,26 @@ def run(mode: str = "paper"):
 
     active_symbols = _load_today_universe()
 
-    daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted = _load_risk_state(con)
+    daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted, portfolio_high = _load_risk_state(con)
+
+    # Anchor daily_start to last known portfolio value before today (not current live price).
+    # Prevents the daily loss gate from using a mid-day restart value on gap-down mornings.
+    if daily_start is None:
+        row = con.execute(
+            "SELECT portfolio_value FROM trades WHERE timestamp < ? ORDER BY timestamp DESC LIMIT 1",
+            (date.today().isoformat(),)
+        ).fetchone()
+        if row:
+            daily_start = float(row[0])
+            logger.info(f"Daily start anchored to last known portfolio value: ${daily_start:.2f}")
+
     risk = RiskManager(
         daily_start_value=daily_start,
         day_trade_dates=day_trade_dates,
         weekly_start_value=weekly_start,
         daily_warning_sent=daily_warning_sent,
         weekly_halt_alerted=weekly_halt_alerted,
+        portfolio_high=portfolio_high,
     )
 
     regime_clf = RegimeClassifier()
@@ -616,6 +636,7 @@ def run(mode: str = "paper"):
     lstm       = LSTMPredictor()
 
     portfolio_value, available_cash = client.get_account_summary()
+    risk.update_portfolio_high(portfolio_value)
 
     # Compliance: check Alpaca account status before trading
     try:

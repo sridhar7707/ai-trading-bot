@@ -5,6 +5,7 @@ from loguru import logger
 from config import (
     MAX_POSITION_PCT, STOP_LOSS_PCT,
     DAILY_LOSS_LIMIT_PCT, DAILY_LOSS_WARNING_PCT, WEEKLY_LOSS_LIMIT_PCT,
+    PORTFOLIO_DRAWDOWN_LIMIT_PCT,
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
     ATR_STOP_MULTIPLIER, ATR_TRAIL_MULTIPLIER,
     ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT,
@@ -20,7 +21,8 @@ class RiskManager:
                  day_trade_dates: list[str] | None = None,
                  weekly_start_value: float | None = None,
                  daily_warning_sent: bool = False,
-                 weekly_halt_alerted: bool = False):
+                 weekly_halt_alerted: bool = False,
+                 portfolio_high: float | None = None):
         self.day_trade_log: deque[date] = deque()
         if day_trade_dates:
             for ds in day_trade_dates:
@@ -32,6 +34,7 @@ class RiskManager:
         self.weekly_start_value  = weekly_start_value
         self.daily_warning_sent  = daily_warning_sent
         self.weekly_halt_alerted = weekly_halt_alerted
+        self.portfolio_high      = portfolio_high
         self.halted = False
 
     def reset_daily(self, portfolio_value: float):
@@ -85,6 +88,25 @@ class RiskManager:
         weekly_pnl = (current_value - self.weekly_start_value) / self.weekly_start_value
         if weekly_pnl <= -WEEKLY_LOSS_LIMIT_PCT:
             logger.warning(f"Weekly loss limit hit ({weekly_pnl:.1%}) — blocking new buys.")
+            return False
+        return True
+
+    # ── All-time-high drawdown gate ───────────────────────────────────────────
+    def update_portfolio_high(self, current_value: float):
+        if self.portfolio_high is None or current_value > self.portfolio_high:
+            self.portfolio_high = current_value
+
+    def check_portfolio_drawdown(self, current_value: float) -> bool:
+        """Returns False (block new buys) when portfolio is >= PORTFOLIO_DRAWDOWN_LIMIT_PCT
+        below its all-time high — catches multi-week grinding losses the weekly gate misses."""
+        if self.portfolio_high is None or self.portfolio_high == 0.0:
+            return True
+        dd = (self.portfolio_high - current_value) / self.portfolio_high
+        if dd >= PORTFOLIO_DRAWDOWN_LIMIT_PCT:
+            logger.warning(
+                f"Portfolio drawdown limit: {dd:.1%} below all-time peak ${self.portfolio_high:.2f} "
+                f"— blocking new buys until recovery."
+            )
             return False
         return True
 
@@ -197,6 +219,8 @@ class RiskManager:
         if not self.check_daily_loss(current_value):
             return False
         if not self.check_weekly_loss(current_value):
+            return False
+        if not self.check_portfolio_drawdown(current_value):
             return False
         max_notional = portfolio_value * MAX_POSITION_PCT
         if notional > max_notional:

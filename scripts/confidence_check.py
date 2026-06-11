@@ -32,13 +32,37 @@ def load_trades():
     return rows
 
 
-def compute_sharpe(values):
-    values = np.array(values)
-    returns = np.diff(values) / values[:-1]
-    if len(returns) < 2:
+def _daily_close_values(trades: list) -> list:
+    """One portfolio snapshot per trading weekday (last trade of day), forward-filled for no-trade days.
+    Quiet days contribute zero return rather than being excluded — prevents Sharpe inflation.
+    """
+    import datetime as dt
+    daily: dict[str, float] = {}
+    for ts, action, pnl_pct, pv in trades:
+        daily[ts[:10]] = pv  # last trade of each day wins
+    if not daily:
+        return []
+    keys = sorted(daily.keys())
+    start_d = dt.date.fromisoformat(keys[0])
+    end_d   = dt.date.fromisoformat(keys[-1])
+    result, prev_val, d = [], daily[keys[0]], start_d
+    while d <= end_d:
+        ds = d.isoformat()
+        if ds in daily:
+            prev_val = daily[ds]
+        if d.weekday() < 5:  # Mon–Fri only
+            result.append(prev_val)
+        d += dt.timedelta(days=1)
+    return result
+
+
+def compute_sharpe(values: list) -> float:
+    v = np.array(values)
+    if len(v) < 2:
         return 0.0
-    # 78 five-minute bars per trading day × 252 days — matches backtest/metrics.py
-    return float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252 * 78))
+    returns = np.diff(v) / (v[:-1] + 1e-8)
+    # Daily returns → annualise with sqrt(252)
+    return float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252))
 
 
 def compute_max_drawdown(values):
@@ -69,22 +93,21 @@ def run_check():
     wins = sum(1 for t in sell_trades if t[2] > 0)
     win_rate = wins / len(sell_trades) if sell_trades else 0.0
 
-    portfolio_values = [t[3] for t in trades]
-    sharpe = compute_sharpe(portfolio_values)
-    max_dd = compute_max_drawdown(portfolio_values)
+    # Use daily snapshots for Sharpe/drawdown/streaks — trade-row values inflate Sharpe
+    # by excluding quiet (no-trade) days from the denominator.
+    daily_values = _daily_close_values(trades)
+    sharpe = compute_sharpe(daily_values)
+    max_dd = compute_max_drawdown(daily_values)
 
-    # Consecutive losing days (simplified)
-    # Group by date and check daily P&L
-    from collections import defaultdict
-    daily = defaultdict(list)
-    for t in trades:
-        day = t[0][:10]
-        daily[day].append(t[2])
-    day_returns = [sum(v) for v in daily.values()]
-    max_consec_loss = _max_consecutive_losses(day_returns)
+    daily_arr = np.array(daily_values)
+    if len(daily_arr) >= 2:
+        daily_returns = (np.diff(daily_arr) / (daily_arr[:-1] + 1e-8)).tolist()
+    else:
+        daily_returns = []
+    max_consec_loss = _max_consecutive_losses(daily_returns)
 
     # vs S&P 500 over the same period
-    bot_return = (portfolio_values[-1] - portfolio_values[0]) / portfolio_values[0] if portfolio_values[0] else 0.0
+    bot_return = (daily_values[-1] - daily_values[0]) / daily_values[0] if daily_values and daily_values[0] else 0.0
     spy_return = 0.0
     try:
         spy = yf.download("SPY", start=start.date(), end=end.date(), progress=False, auto_adjust=True)

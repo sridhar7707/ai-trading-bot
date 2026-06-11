@@ -26,17 +26,36 @@ def compute_weekly_report():
         tg.alert_weekly_report(0.0, 0.0, 0.0, 0.0, 0.0)
         return
 
-    portfolio_values = [r[3] for r in rows]
-    start_val, end_val = portfolio_values[0], portfolio_values[-1]
+    # Build daily snapshots (last trade per day, forward-fill no-trade days)
+    # so Sharpe/drawdown aren't inflated by excluding quiet days.
+    import datetime as dt
+    _daily: dict[str, float] = {}
+    for ts, action, pnl_pct, pv in rows:
+        _daily[ts[:10]] = pv
+    _keys = sorted(_daily.keys())
+    daily_values: list[float] = []
+    if _keys:
+        _d = dt.date.fromisoformat(_keys[0])
+        _end = dt.date.fromisoformat(_keys[-1])
+        _prev = _daily[_keys[0]]
+        while _d <= _end:
+            _ds = _d.isoformat()
+            if _ds in _daily:
+                _prev = _daily[_ds]
+            if _d.weekday() < 5:
+                daily_values.append(_prev)
+            _d += dt.timedelta(days=1)
+
+    start_val = daily_values[0] if daily_values else rows[0][3]
+    end_val   = daily_values[-1] if daily_values else rows[-1][3]
     week_return = (end_val - start_val) / start_val if start_val else 0.0
 
-    values = np.array(portfolio_values)
-    returns = np.diff(values) / values[:-1]
-    # 78 five-minute bars per trading day × 252 days — matches confidence_check.py and backtest/metrics.py
-    sharpe = float(np.mean(returns) / (np.std(returns) + 1e-8) * np.sqrt(252 * 78)) if len(returns) > 1 else 0.0
+    dv = np.array(daily_values) if daily_values else np.array([r[3] for r in rows])
+    ret = np.diff(dv) / (dv[:-1] + 1e-8)
+    sharpe = float(np.mean(ret) / (np.std(ret) + 1e-8) * np.sqrt(252)) if len(ret) > 1 else 0.0
 
-    peak, max_dd = values[0], 0.0
-    for v in values:
+    peak, max_dd = dv[0], 0.0
+    for v in dv:
         if v > peak:
             peak = v
         dd = (peak - v) / peak

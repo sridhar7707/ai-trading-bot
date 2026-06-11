@@ -60,6 +60,7 @@ STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))       # fallback flat st
 DAILY_LOSS_LIMIT_PCT = float(os.getenv("DAILY_LOSS_LIMIT_PCT", 0.05))
 DAILY_LOSS_WARNING_PCT = DAILY_LOSS_LIMIT_PCT * 0.50          # warn at 50% of daily limit
 WEEKLY_LOSS_LIMIT_PCT = float(os.getenv("WEEKLY_LOSS_LIMIT_PCT", 0.10))  # 10% weekly circuit breaker
+PORTFOLIO_DRAWDOWN_LIMIT_PCT = float(os.getenv("PORTFOLIO_DRAWDOWN_LIMIT_PCT", 0.20))  # 20% from all-time high
 MACRO_HALT_VIX = float(os.getenv("MACRO_HALT_VIX", 40.0))    # halt all new buys above this VIX level
 MAX_POSITIONS = 5
 MAX_SECTOR_POSITIONS = 2                                        # max open positions per sector
