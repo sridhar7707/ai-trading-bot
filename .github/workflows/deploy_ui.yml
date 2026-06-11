@@ -1,11 +1,14 @@
 name: Deploy Dashboard to HuggingFace Spaces
 
+# Gated on CI: this runs only AFTER the "CI" workflow completes successfully on
+# main, so a dashboard with failing tests is never shipped to HuggingFace.
+# (Previously this triggered directly on push, racing CI in parallel — a broken
+#  build could deploy even when tests failed.)
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - 'scripts/dashboard.py'
-      - 'bot/monitor/dashboard_data.py'
   workflow_dispatch:
 
 env:
@@ -14,18 +17,46 @@ env:
 jobs:
   deploy-ui:
     runs-on: ubuntu-latest
+    # Deploy only when CI passed (workflow_run) or when manually dispatched.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
+        with:
+          # For workflow_run, check out the exact commit CI validated.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 2   # need the parent to diff changed files
+
+      - name: Check whether dashboard files changed
+        id: changed
+        run: |
+          # Manual dispatch always deploys. Otherwise only rebuild the Space when
+          # the dashboard entry point or its data layer changed in this commit.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "Manual dispatch — deploying."
+          elif git diff --name-only HEAD~1 HEAD \
+                | grep -Eq '^(scripts/dashboard\.py|bot/monitor/dashboard_data\.py)$'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "Dashboard files changed — deploying."
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "No dashboard changes in this commit — skipping deploy."
+          fi
 
       - name: Set up Python
+        if: steps.changed.outputs.deploy == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install huggingface-hub
+        if: steps.changed.outputs.deploy == 'true'
         run: pip install "huggingface-hub>=0.20.0"
 
       - name: Deploy to HuggingFace Spaces
+        if: steps.changed.outputs.deploy == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
