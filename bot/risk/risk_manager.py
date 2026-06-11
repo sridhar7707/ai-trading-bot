@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import date
+from datetime import date, timedelta
 from collections import deque
 from loguru import logger
 from config import (
@@ -11,6 +11,19 @@ from config import (
     ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT,
     MAX_POSITIONS, MAX_SECTOR_POSITIONS, SECTOR_MAP,
 )
+
+
+def _business_days_between(d1: date, d2: date) -> int:
+    """Count business days in [d1, d2) for FINRA's rolling 5-business-day PDT window.
+    Calendar-day counting undercounts across weekends — a Monday trade expires from
+    a 5-calendar-day window on Saturday but FINRA keeps it through the following Monday.
+    """
+    n, cur = 0, d1
+    while cur < d2:
+        if cur.weekday() < 5:
+            n += 1
+        cur += timedelta(days=1)
+    return n
 
 
 class RiskManager:
@@ -53,7 +66,7 @@ class RiskManager:
         today = date.today()
         self.day_trade_log = deque(
             d for d in self.day_trade_log
-            if (today - d).days < PDT_WINDOW_DAYS
+            if _business_days_between(d, today) < PDT_WINDOW_DAYS
         )
         logger.info(
             f"Risk state — daily_start=${self.daily_start_value:.2f}, "
@@ -173,7 +186,7 @@ class RiskManager:
     # ── PDT compliance ────────────────────────────────────────────────────────
     def check_pdt(self, is_day_trade: bool = False) -> bool:
         today = date.today()
-        recent = sum(1 for d in self.day_trade_log if (today - d).days < PDT_WINDOW_DAYS)
+        recent = sum(1 for d in self.day_trade_log if _business_days_between(d, today) < PDT_WINDOW_DAYS)
         if is_day_trade and recent >= PDT_MAX_DAY_TRADES:
             logger.warning(f"PDT limit reached ({recent}/{PDT_MAX_DAY_TRADES}) — blocking day trade.")
             return False

@@ -7,7 +7,7 @@ from bot.main import (
     _opened_today, _maybe_record_day_trade, log_trade, init_db,
     _kelly_fraction, _passes_correlation_gate, _check_time_exit,
     _reconcile_positions, _load_risk_state, _save_risk_state,
-    _upsert_position_state, _delete_position_state,
+    _upsert_position_state, _delete_position_state, _is_wash_sale_risk,
 )
 from bot.risk.risk_manager import RiskManager
 
@@ -27,7 +27,9 @@ def db():
             sentiment_score REAL DEFAULT 0.0,
             macro_score REAL DEFAULT 0.0,
             ensemble_score REAL DEFAULT 0.0,
-            realized_pnl REAL DEFAULT 0.0
+            realized_pnl REAL DEFAULT 0.0,
+            order_id TEXT DEFAULT NULL,
+            holding_days INTEGER DEFAULT 0
         )
     """)
     con.execute("""
@@ -447,3 +449,93 @@ def test_save_and_load_day_trade_log(db):
     _save_risk_state(db, risk)
     _, day_trades, _, _, _, _ = _load_risk_state(db)
     assert len(day_trades) == 2
+
+
+# --- _is_wash_sale_risk (IRS IRC §1091) ---
+
+def _insert_loss_sell(db, symbol, pnl_pct, days_ago=1, realized_pnl=-50.0):
+    from datetime import timezone, timedelta
+    ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,"
+        "portfolio_value,pnl_pct,realized_pnl) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (ts, symbol, "SELL_STOP", 10.0, 90.0, 900.0, "VOLATILE", 9900.0, pnl_pct, realized_pnl),
+    )
+    db.commit()
+
+
+def _insert_profit_sell(db, symbol, days_ago=1):
+    from datetime import timezone, timedelta
+    ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,"
+        "portfolio_value,pnl_pct,realized_pnl) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (ts, symbol, "SELL", 10.0, 110.0, 1100.0, "TRENDING_UP", 10100.0, 0.10, 100.0),
+    )
+    db.commit()
+
+
+def test_wash_sale_blocks_rebuy_after_loss(db):
+    _insert_loss_sell(db, "AAPL", pnl_pct=-0.05, days_ago=5)
+    assert _is_wash_sale_risk(db, "AAPL") is True
+
+
+def test_wash_sale_clears_after_30_days(db):
+    # 31 days ago is outside the 30-day window
+    _insert_loss_sell(db, "AAPL", pnl_pct=-0.05, days_ago=31)
+    assert _is_wash_sale_risk(db, "AAPL") is False
+
+
+def test_wash_sale_no_block_on_profit_sell(db):
+    # Sold at a profit — no wash-sale concern
+    _insert_profit_sell(db, "AAPL", days_ago=5)
+    assert _is_wash_sale_risk(db, "AAPL") is False
+
+
+def test_wash_sale_symbol_isolation(db):
+    # Loss on MSFT does not block AAPL
+    _insert_loss_sell(db, "MSFT", pnl_pct=-0.05, days_ago=5)
+    assert _is_wash_sale_risk(db, "AAPL") is False
+
+
+def test_wash_sale_no_history_allows_buy(db):
+    assert _is_wash_sale_risk(db, "TSLA") is False
+
+
+def test_wash_sale_blocks_on_negative_pnl_pct_without_realized(db):
+    # Older rows may have realized_pnl=0 (entry_price not recorded)
+    # Should fall back to pnl_pct < 0 as the loss signal
+    _insert_loss_sell(db, "NVDA", pnl_pct=-0.03, days_ago=10, realized_pnl=0.0)
+    assert _is_wash_sale_risk(db, "NVDA") is True
+
+
+# --- log_trade audit fields ---
+
+def test_log_trade_stores_order_id(db):
+    log_trade(db, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0,
+              order_id="abc-123")
+    row = db.execute("SELECT order_id FROM trades").fetchone()
+    assert row[0] == "abc-123"
+
+
+def test_log_trade_stores_holding_days(db):
+    log_trade(db, "AAPL", "SELL", 1.0, 160.0, 160.0, "RANGING", 10100.0, 0.06,
+              entry_price=150.0, holding_days=3)
+    row = db.execute("SELECT holding_days FROM trades").fetchone()
+    assert row[0] == 3
+
+
+def test_log_trade_order_id_defaults_none(db):
+    log_trade(db, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0)
+    row = db.execute("SELECT order_id FROM trades").fetchone()
+    assert row[0] is None
+
+
+def test_init_db_has_order_id_and_holding_days_columns(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "audit_test.db")
+    monkeypatch.setattr("bot.main.TRADE_DB_PATH", db_path)
+    con = init_db()
+    cols = {r[1] for r in con.execute("PRAGMA table_info(trades)").fetchall()}
+    assert "order_id" in cols
+    assert "holding_days" in cols
+    con.close()

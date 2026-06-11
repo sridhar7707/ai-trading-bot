@@ -126,7 +126,9 @@ def init_db():
             sentiment_score REAL DEFAULT 0.0,
             macro_score REAL DEFAULT 0.0,
             ensemble_score REAL DEFAULT 0.0,
-            realized_pnl REAL DEFAULT 0.0
+            realized_pnl REAL DEFAULT 0.0,
+            order_id TEXT DEFAULT NULL,
+            holding_days INTEGER DEFAULT 0
         )
     """)
     # Migration: add columns to existing DBs (safe no-op if already present)
@@ -137,6 +139,8 @@ def init_db():
         "macro_score REAL DEFAULT 0.0",
         "ensemble_score REAL DEFAULT 0.0",
         "realized_pnl REAL DEFAULT 0.0",
+        "order_id TEXT DEFAULT NULL",
+        "holding_days INTEGER DEFAULT 0",
     ):
         try:
             con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
@@ -170,16 +174,22 @@ def init_db():
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
               xgb_prob: float = 0.0, lstm_prob: float = 0.0,
               sentiment_score: float = 0.0, macro_score: float = 0.0,
-              entry_price: float = 0.0):
+              entry_price: float = 0.0, order_id: str | None = None,
+              holding_days: int = 0):
     sentiment_norm  = (sentiment_score + 1.0) / 2.0
     ensemble_score  = (WEIGHTS["xgb"]  * xgb_prob + WEIGHTS["lstm"] * lstm_prob
                        + WEIGHTS["sentiment"] * sentiment_norm + WEIGHTS["macro"] * macro_score)
     realized_pnl = shares * (price - entry_price) if "SELL" in action and entry_price > 0 else 0.0
     con.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        """INSERT INTO trades
+           (timestamp, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
+            xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
+            order_id, holding_days)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (datetime.now(timezone.utc).isoformat(),
          symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
-         xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl),
+         xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
+         order_id, holding_days),
     )
     con.commit()
 
@@ -431,6 +441,29 @@ def _check_time_exit(pos_state: dict | None, pnl_pct: float) -> bool:
     return False
 
 
+def _is_wash_sale_risk(con, symbol: str) -> bool:
+    """IRS wash-sale rule: if the same security was sold at a loss within the past 30 days,
+    re-buying it disallows that loss deduction (IRC §1091). Block the buy to avoid the trap.
+    We use realized_pnl < 0 as the loss indicator; falls back to pnl_pct < 0 if realised_pnl
+    is zero (e.g., entry_price not recorded on older rows).
+    """
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    row = con.execute(
+        "SELECT 1 FROM trades WHERE symbol=? AND action LIKE 'SELL%' "
+        "AND (realized_pnl < 0 OR (realized_pnl = 0 AND pnl_pct < 0)) "
+        "AND timestamp >= ? LIMIT 1",
+        (symbol, cutoff),
+    ).fetchone()
+    if row:
+        logger.warning(
+            f"Wash-sale guard: {symbol} sold at a loss within 30 days — "
+            "skipping buy to avoid IRS loss disallowance (IRC §1091)"
+        )
+        return True
+    return False
+
+
 def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: bool,
                              pdt_exempt: bool = False):
     """Record PDT day trade for exits on positions opened today (skipped when account is exempt)."""
@@ -457,7 +490,8 @@ def _reconcile_positions(con, alpaca_positions: dict):
 
 def _signal_sell(con, client, symbol, pos_qty, current_price,
                  regime_name, portfolio_value, is_from_stop=False,
-                 reason="stop-loss", pnl_pct=0.0, entry_price: float = 0.0) -> bool:
+                 reason="stop-loss", pnl_pct=0.0, entry_price: float = 0.0,
+                 holding_days: int = 0) -> bool:
     sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
     if sell_result:
         filled = client.wait_for_fill(sell_result["order_id"], timeout_secs=12)
@@ -468,16 +502,19 @@ def _signal_sell(con, client, symbol, pos_qty, current_price,
             if sell_result:
                 client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
     if sell_result:
-        sell_notional = pos_qty * current_price  # actual sell value for audit trail
+        sell_notional = pos_qty * current_price
+        order_id = sell_result.get("order_id")
         if is_from_stop:
             tg.alert_stop_loss(symbol, pnl_pct, notional=sell_notional)
             log_trade(con, symbol, "SELL_STOP", pos_qty, current_price, sell_notional,
-                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price)
+                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
+                      order_id=order_id, holding_days=holding_days)
         else:
             action_tag = "SELL" if reason == "signal" else f"SELL_{reason.upper().replace('-','_')}"
             tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason, notional=sell_notional)
             log_trade(con, symbol, action_tag, pos_qty, current_price, sell_notional,
-                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price)
+                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
+                      order_id=order_id, holding_days=holding_days)
         _delete_position_state(con, symbol)
         return True
     if is_from_stop:
@@ -778,6 +815,15 @@ def run(mode: str = "paper"):
                 pos_qty     = float(positions[symbol].qty)
                 pnl_pct     = float(positions[symbol].unrealized_plpc or 0)
 
+                # Compute holding period for audit trail (SEC reconciliation)
+                holding_days = 0
+                if pos_state and pos_state.get("opened_at"):
+                    try:
+                        opened_dt = datetime.fromisoformat(pos_state["opened_at"]).replace(tzinfo=timezone.utc)
+                        holding_days = (datetime.now(timezone.utc) - opened_dt).days
+                    except (ValueError, TypeError):
+                        pass
+
                 # ⓪ Gap-down hard floor — bypass limit/ATR logic, market-sell immediately
                 if pnl_pct < -0.10:
                     logger.warning(f"Gap-down floor: {symbol} pnl={pnl_pct:.1%} — immediate market sell")
@@ -787,7 +833,9 @@ def run(mode: str = "paper"):
                         tg.alert_stop_loss(symbol, pnl_pct, notional=pos_qty * current_price)
                         log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price,
                                   pos_qty * current_price, regime_name, portfolio_value, pnl_pct,
-                                  entry_price=entry_price)
+                                  entry_price=entry_price,
+                                  order_id=sell_result.get("order_id"),
+                                  holding_days=holding_days)
                         _delete_position_state(con, symbol)
                         _maybe_record_day_trade(con, risk, symbol, True, pdt_exempt=pdt_exempt)
                     continue
@@ -808,7 +856,8 @@ def run(mode: str = "paper"):
                         success = _signal_sell(
                             con, client, symbol, pos_qty, current_price,
                             regime_name, portfolio_value,
-                            reason="take-profit", pnl_pct=pnl_pct, entry_price=entry_price
+                            reason="take-profit", pnl_pct=pnl_pct, entry_price=entry_price,
+                            holding_days=holding_days
                         )
                         _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                         continue
@@ -820,7 +869,7 @@ def run(mode: str = "paper"):
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
                         is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct,
-                        entry_price=entry_price
+                        entry_price=entry_price, holding_days=holding_days
                     )
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
@@ -832,7 +881,7 @@ def run(mode: str = "paper"):
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
                         is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct,
-                        entry_price=entry_price
+                        entry_price=entry_price, holding_days=holding_days
                     )
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
@@ -842,7 +891,8 @@ def run(mode: str = "paper"):
                     success = _signal_sell(
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
-                        reason="time-exit", pnl_pct=pnl_pct, entry_price=entry_price
+                        reason="time-exit", pnl_pct=pnl_pct, entry_price=entry_price,
+                        holding_days=holding_days
                     )
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
@@ -856,7 +906,8 @@ def run(mode: str = "paper"):
                         success = _signal_sell(
                             con, client, symbol, pos_qty, current_price,
                             regime_name, portfolio_value,
-                            reason="signal", pnl_pct=pnl_pct, entry_price=entry_price
+                            reason="signal", pnl_pct=pnl_pct, entry_price=entry_price,
+                            holding_days=holding_days
                         )
                         if success and is_day_trade and not pdt_exempt:
                             risk.record_day_trade()
@@ -909,6 +960,10 @@ def run(mode: str = "paper"):
             if not _passes_correlation_gate(symbol, positions, bars_map):
                 continue
 
+            # Gate 7.5 — Wash-sale guard (IRS IRC §1091): block re-buy within 30 days of a loss sale
+            if _is_wash_sale_risk(con, symbol):
+                continue
+
             # Gate 8 — Cash and risk approval
             # ensemble_size: STRONG_BUY=0.20, BUY=0.12 — use as confidence multiplier on Kelly
             kelly_f      = _kelly_fraction(con, symbol)
@@ -937,7 +992,8 @@ def run(mode: str = "paper"):
                               current_price, notional, regime_name, portfolio_value, 0,
                               xgb_prob=xgb_prob, lstm_prob=lstm_prob,
                               sentiment_score=sentiments.get(symbol, 0.0),
-                              macro_score=macro_score)
+                              macro_score=macro_score,
+                              order_id=result.get("order_id"))
                     _upsert_position_state(con, symbol, current_price, current_price, current_atr)
                     available_cash -= notional
                 else:
