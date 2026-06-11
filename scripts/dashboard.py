@@ -52,10 +52,11 @@ diagnostics()  # second pass shows DB state AFTER the pull
 
 def run_readiness_check() -> str:
     try:
-        import sqlite3, numpy as np, yfinance as yf
+        import sqlite3, numpy as np
         from collections import defaultdict
         from config import TRADE_DB_PATH
         from datetime import datetime
+        from bot.monitor.dashboard_data import _spy_return_alpaca
 
         con  = sqlite3.connect(TRADE_DB_PATH)
         rows = con.execute(
@@ -86,14 +87,9 @@ def run_readiness_check() -> str:
             if r < 0: cur += 1; streak = max(streak, cur)
             else: cur = 0
         bot_ret = (vals[-1] - vals[0]) / vals[0] if vals[0] else 0.0
-        spy_ret = 0.0
-        try:
-            spy = yf.download("SPY", start=ts_start.date(), end=ts_end.date(),
-                              progress=False, auto_adjust=True)
-            if len(spy) > 1:
-                spy_ret = float((spy["Close"].iloc[-1] - spy["Close"].iloc[0]) / spy["Close"].iloc[0])
-        except Exception:
-            pass
+        # SPY benchmark over the same period — Alpaca official feed (no yfinance,
+        # which on the Space fails to import due to an old websockets).
+        spy_ret = _spy_return_alpaca(ts_start.date().isoformat()) or 0.0
 
         T = {"min_days": 60, "min_win_rate": 0.52, "min_sharpe": 1.0,
              "max_drawdown": 0.15, "max_consec_loss": 4}

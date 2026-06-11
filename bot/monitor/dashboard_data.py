@@ -1082,7 +1082,7 @@ def trades_html_table(days: int = 30) -> str:
         "<th style='text-align:left;padding:6px'>Shares</th>"
         "<th style='text-align:left;padding:6px'>Price</th>"
         "<th style='text-align:left;padding:6px'>Notional</th>"
-        "<th style='text-align:left;padding:6px'>P&amp;L</th>"
+        "<th style='text-align:left;padding:6px'>Realized P&amp;L</th>"
         "<th style='text-align:left;padding:6px'>Why</th>"
         "</tr></thead>"
         f"<tbody>{rows_html}</tbody>"

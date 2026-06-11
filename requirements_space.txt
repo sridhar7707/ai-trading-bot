@@ -6,5 +6,6 @@ scipy>=1.11.0
 loguru>=0.7.0
 requests>=2.31.0
 yfinance>=0.2.0
+websockets>=13.0   # yfinance imports websockets.asyncio (added in 13.0)
 python-dotenv>=1.0.0
 pillow>=10.4.0
