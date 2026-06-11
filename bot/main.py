@@ -479,7 +479,11 @@ def _is_wash_sale_risk(con, symbol: str) -> bool:
     is zero (e.g., entry_price not recorded on older rows).
     """
     from datetime import timedelta
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    # Calendar-day cutoff (IRC §1091 is measured in calendar days, not to the second).
+    # Using a date — not a precise datetime — means a loss sale from exactly 30 days
+    # ago counts for the whole of that day, and the boundary is deterministic
+    # (a microsecond-precise "now - 30d" made the 30-day edge race-dependent).
+    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
     row = con.execute(
         "SELECT 1 FROM trades WHERE symbol=? AND action LIKE 'SELL%' "
         "AND (realized_pnl < 0 OR (realized_pnl = 0 AND pnl_pct < 0)) "
