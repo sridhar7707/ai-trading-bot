@@ -834,6 +834,34 @@ _ACTION_COLOR = {
     "SELL_GAP_DOWN":      "#7f0000",   # dark red
 }
 
+# Plain-language reason per exit type (the action IS the reason for sells).
+_SELL_REASON = {
+    "SELL":               "Signal exit",
+    "SELL_TAKE_PROFIT":   "Took profit",
+    "SELL_TRAILING_STOP": "Trailing stop",
+    "SELL_TIME_EXIT":     "Max hold reached",
+    "SELL_STOP":          "Stop-loss hit",
+    "SELL_GAP_DOWN":      "Gap-down protection",
+}
+
+
+def _trade_rationale(row) -> str:
+    """One-line 'why' for a trade: exit reason for sells, top signal drivers for buys."""
+    action = str(row["action"])
+    if action.startswith("SELL"):
+        return _SELL_REASON.get(action, "Exit")
+    xgb    = float(row.get("xgb_prob")        or 0)
+    lstm   = float(row.get("lstm_prob")       or 0)
+    sent   = float(row.get("sentiment_score") or 0)
+    regime = str(row.get("regime") or "").strip()
+    parts = []
+    if xgb:  parts.append(f"XGB {xgb:.2f}")
+    if lstm: parts.append(f"LSTM {lstm:.2f}")
+    if sent: parts.append(f"news {sent:+.2f}")
+    if regime and regime not in ("", "Unknown"):
+        parts.append(regime.replace("_", " ").title())
+    return " · ".join(parts) if parts else "—"
+
 
 def trades_html_table(days: int = 30) -> str:
     con = _con()
@@ -841,7 +869,8 @@ def trades_html_table(days: int = 30) -> str:
         return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades yet. {_EMPTY_HINT}</p>"
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
-        "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct "
+        "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct, "
+        "xgb_prob, lstm_prob, sentiment_score, regime "
         "FROM trades WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 200",
         con, params=(since,),
     )
@@ -854,20 +883,24 @@ def trades_html_table(days: int = 30) -> str:
     for _, row in df.iterrows():
         action  = str(row["action"])
         color   = _ACTION_COLOR.get(action, _MUTED)
+        # Glyph makes buy/sell distinguishable without relying on colour (colourblind-safe).
+        glyph   = "▲" if action == "BUY" else "▼"
         ts      = pd.to_datetime(row["timestamp"]).strftime("%m-%d %H:%M")
         pnl_str = f"{row['pnl_pct']:+.2%}" if row["pnl_pct"] else "–"
         pnl_col = _POS if row["pnl_pct"] and row["pnl_pct"] > 0 else (_NEG if row["pnl_pct"] and row["pnl_pct"] < 0 else _MUTED)
         notional_str = f"${row['notional']:,.2f}" if row["notional"] else "–"
+        why = _trade_rationale(row)
         rows_html += (
             f"<tr style='border-bottom:1px solid {_GRID}'>"
             f"<td style='color:{_MUTED};padding:6px'>{ts}</td>"
             f"<td style='color:{_TEXT};font-weight:bold;padding:6px'>{row['symbol']}</td>"
             f"<td style='padding:6px'><span style='background:{color};color:#fff;padding:2px 7px;border-radius:4px;"
-            f"font-size:11px;white-space:nowrap'>{action}</span></td>"
-            f"<td style='color:{_TEXT};padding:6px'>{row['shares']:.4f}</td>"
+            f"font-size:11px;white-space:nowrap'>{glyph} {action}</span></td>"
+            f"<td style='color:{_TEXT};padding:6px'>{row['shares']:.3f}</td>"
             f"<td style='color:{_TEXT};padding:6px'>${row['price']:.2f}</td>"
             f"<td style='color:{_TEXT};padding:6px'>{notional_str}</td>"
             f"<td style='color:{pnl_col};font-weight:bold;padding:6px'>{pnl_str}</td>"
+            f"<td style='color:{_MUTED};padding:6px;font-size:12px'>{why}</td>"
             f"</tr>"
         )
 
@@ -882,6 +915,7 @@ def trades_html_table(days: int = 30) -> str:
         "<th style='text-align:left;padding:6px'>Price</th>"
         "<th style='text-align:left;padding:6px'>Notional</th>"
         "<th style='text-align:left;padding:6px'>P&amp;L</th>"
+        "<th style='text-align:left;padding:6px'>Why</th>"
         "</tr></thead>"
         f"<tbody>{rows_html}</tbody>"
         "</table></div>"

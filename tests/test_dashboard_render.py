@@ -259,6 +259,38 @@ def test_get_trades_df_accurate(dash_db):
     assert "ZZZA" in set(df["Symbol"])
 
 
+def test_trade_log_buy_rationale_shows_drivers(dash_db):
+    """BUY row 'Why' shows the model/regime drivers."""
+    html = dd.trades_html_table(30)
+    assert "XGB 0.80" in html
+    assert "LSTM 0.70" in html
+    assert "Trending Up" in html   # regime humanized
+
+
+def test_trade_log_sell_rationale_is_plain_language(dash_db):
+    html = dd.trades_html_table(30)
+    assert "Signal exit" in html   # plain SELL → "Signal exit"
+
+
+def test_trade_log_has_colorblind_glyphs(dash_db):
+    html = dd.trades_html_table(30)
+    assert "▲ BUY" in html         # up-triangle for buys
+    assert "▼ SELL" in html        # down-triangle for sells
+
+
+def test_trade_rationale_helper_maps_exit_reasons():
+    import pandas as pd
+    def _row(action, **kw):
+        return pd.Series({"action": action, **kw})
+    assert dd._trade_rationale(_row("SELL_STOP")) == "Stop-loss hit"
+    assert dd._trade_rationale(_row("SELL_TAKE_PROFIT")) == "Took profit"
+    assert dd._trade_rationale(_row("SELL_TRAILING_STOP")) == "Trailing stop"
+    assert dd._trade_rationale(_row("SELL_GAP_DOWN")) == "Gap-down protection"
+    # all-zero BUY (legacy row) → no fabricated rationale
+    assert dd._trade_rationale(_row("BUY", xgb_prob=0, lstm_prob=0,
+                                    sentiment_score=0, regime="")) == "—"
+
+
 # ── Performance ───────────────────────────────────────────────────────────────
 
 def test_performance_total_return_uses_snapshots(dash_db):
