@@ -649,15 +649,17 @@ def trades_html_table(days: int = 30) -> str:
         pnl_str = f"{row['pnl_pct']:+.2%}" if row["pnl_pct"] else "–"
         pnl_col = "#4caf50" if row["pnl_pct"] and row["pnl_pct"] > 0 else ("#ef5350" if row["pnl_pct"] and row["pnl_pct"] < 0 else "#888")
         notional_str = f"${row['notional']:,.2f}" if row["notional"] else "–"
+        # Dark text on the light dashboard background (the previous #fff symbol
+        # and #ccc cells were invisible / washed out on the white theme).
         rows_html += (
-            f"<tr style='border-bottom:1px solid #2a2a3e'>"
-            f"<td style='color:#aaa'>{ts}</td>"
-            f"<td style='color:#fff;font-weight:bold'>{row['symbol']}</td>"
+            f"<tr style='border-bottom:1px solid #e5e7eb'>"
+            f"<td style='color:#555'>{ts}</td>"
+            f"<td style='color:#111;font-weight:bold'>{row['symbol']}</td>"
             f"<td><span style='background:{color};color:#fff;padding:2px 7px;border-radius:4px;"
             f"font-size:11px;white-space:nowrap'>{action}</span></td>"
-            f"<td style='color:#ccc'>{row['shares']:.4f}</td>"
-            f"<td style='color:#ccc'>${row['price']:.2f}</td>"
-            f"<td style='color:#ccc'>{notional_str}</td>"
+            f"<td style='color:#333'>{row['shares']:.4f}</td>"
+            f"<td style='color:#333'>${row['price']:.2f}</td>"
+            f"<td style='color:#333'>{notional_str}</td>"
             f"<td style='color:{pnl_col};font-weight:bold'>{pnl_str}</td>"
             f"</tr>"
         )
@@ -665,7 +667,7 @@ def trades_html_table(days: int = 30) -> str:
     return (
         "<div style='overflow-x:auto'>"
         "<table style='width:100%;border-collapse:collapse;font-family:monospace;font-size:13px'>"
-        "<thead><tr style='color:#888;border-bottom:2px solid #333'>"
+        "<thead><tr style='color:#555;border-bottom:2px solid #ccc'>"
         "<th style='text-align:left;padding:6px'>Time</th>"
         "<th style='text-align:left;padding:6px'>Symbol</th>"
         "<th style='text-align:left;padding:6px'>Action</th>"
