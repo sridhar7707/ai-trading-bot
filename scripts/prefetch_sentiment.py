@@ -33,6 +33,18 @@ def main():
     except Exception as e:
         logger.warning(f"Could not load screened universe — using config.SYMBOLS: {e}")
 
+    # NewsAPI free tier: 100 req/day. Each symbol uses ~3 requests → safe up to ~30 symbols.
+    _NEWSAPI_DAILY_LIMIT = 100
+    _REQS_PER_SYMBOL = 3
+    safe_max = _NEWSAPI_DAILY_LIMIT // _REQS_PER_SYMBOL
+    if len(symbols) > safe_max:
+        logger.warning(
+            f"NewsAPI quota risk: {len(symbols)} symbols × {_REQS_PER_SYMBOL} req = "
+            f"{len(symbols) * _REQS_PER_SYMBOL} req/day, but free tier limit is {_NEWSAPI_DAILY_LIMIT}. "
+            f"Trimming to {safe_max} symbols. Upgrade NewsAPI plan or reduce universe."
+        )
+        symbols = symbols[:safe_max]
+
     logger.info(f"Prefetching sentiment for {len(symbols)} symbols: {symbols[:5]}...")
 
     symbol_headlines: dict[str, list[str]] = {}

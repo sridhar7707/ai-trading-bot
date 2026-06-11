@@ -75,6 +75,11 @@ _ETF_SYMBOLS      = {"VOO", "QQQ", "SPY", "VTI", "ARKK"}
 _EARNINGS_DB_TTL  = 12 * 3600
 _MACRO_DB_TTL     = 4  * 3600
 
+# WSB sentiment is re-fetched at most once per 5-min cycle window across all symbols.
+# Without this cache, 25 symbols × every cycle = ~1,500 Reddit API calls/day.
+_wsb_cache: dict[str, tuple[float, dict]] = {}
+_WSB_CACHE_TTL = 300  # seconds — matches the trading cycle interval
+
 
 def _is_market_hours(alpaca_api=None) -> bool:
     import zoneinfo
@@ -120,16 +125,18 @@ def init_db():
             lstm_prob REAL DEFAULT 0.0,
             sentiment_score REAL DEFAULT 0.0,
             macro_score REAL DEFAULT 0.0,
-            ensemble_score REAL DEFAULT 0.0
+            ensemble_score REAL DEFAULT 0.0,
+            realized_pnl REAL DEFAULT 0.0
         )
     """)
-    # Migration: add signal audit columns to existing DBs (safe no-op if already present)
+    # Migration: add columns to existing DBs (safe no-op if already present)
     for _col in (
         "xgb_prob REAL DEFAULT 0.0",
         "lstm_prob REAL DEFAULT 0.0",
         "sentiment_score REAL DEFAULT 0.0",
         "macro_score REAL DEFAULT 0.0",
         "ensemble_score REAL DEFAULT 0.0",
+        "realized_pnl REAL DEFAULT 0.0",
     ):
         try:
             con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
@@ -162,15 +169,17 @@ def init_db():
 
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
               xgb_prob: float = 0.0, lstm_prob: float = 0.0,
-              sentiment_score: float = 0.0, macro_score: float = 0.0):
+              sentiment_score: float = 0.0, macro_score: float = 0.0,
+              entry_price: float = 0.0):
     sentiment_norm  = (sentiment_score + 1.0) / 2.0
     ensemble_score  = (WEIGHTS["xgb"]  * xgb_prob + WEIGHTS["lstm"] * lstm_prob
                        + WEIGHTS["sentiment"] * sentiment_norm + WEIGHTS["macro"] * macro_score)
+    realized_pnl = shares * (price - entry_price) if "SELL" in action and entry_price > 0 else 0.0
     con.execute(
-        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO trades VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (datetime.now(timezone.utc).isoformat(),
          symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
-         xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score),
+         xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl),
     )
     con.commit()
 
@@ -415,9 +424,10 @@ def _check_time_exit(pos_state: dict | None, pnl_pct: float) -> bool:
     return False
 
 
-def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: bool):
-    """Record PDT day trade for ANY exit on a position opened today."""
-    if sell_success and _opened_today(con, symbol):
+def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: bool,
+                             pdt_exempt: bool = False):
+    """Record PDT day trade for exits on positions opened today (skipped when account is exempt)."""
+    if not pdt_exempt and sell_success and _opened_today(con, symbol):
         risk.record_day_trade()
         _save_risk_state(con, risk)
 
@@ -440,7 +450,7 @@ def _reconcile_positions(con, alpaca_positions: dict):
 
 def _signal_sell(con, client, symbol, pos_qty, current_price,
                  regime_name, portfolio_value, is_from_stop=False,
-                 reason="stop-loss", pnl_pct=0.0) -> bool:
+                 reason="stop-loss", pnl_pct=0.0, entry_price: float = 0.0) -> bool:
     sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
     if sell_result:
         filled = client.wait_for_fill(sell_result["order_id"], timeout_secs=12)
@@ -455,12 +465,12 @@ def _signal_sell(con, client, symbol, pos_qty, current_price,
         if is_from_stop:
             tg.alert_stop_loss(symbol, pnl_pct, notional=sell_notional)
             log_trade(con, symbol, "SELL_STOP", pos_qty, current_price, sell_notional,
-                      regime_name, portfolio_value, pnl_pct)
+                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price)
         else:
             action_tag = "SELL" if reason == "signal" else f"SELL_{reason.upper().replace('-','_')}"
             tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason, notional=sell_notional)
             log_trade(con, symbol, action_tag, pos_qty, current_price, sell_notional,
-                      regime_name, portfolio_value, pnl_pct)
+                      regime_name, portfolio_value, pnl_pct, entry_price=entry_price)
         _delete_position_state(con, symbol)
         return True
     if is_from_stop:
@@ -539,6 +549,20 @@ def end_of_day_summary():
             logger.warning(f"Weekly report failed: {e}")
 
     con.close()
+
+
+def _wsb(symbol: str) -> tuple[str, dict]:
+    """Fetch WSB sentiment with a 5-min module-level cache to avoid Reddit rate limits."""
+    now = time.time()
+    cached_ts, cached_result = _wsb_cache.get(symbol, (0.0, None))
+    if cached_result is not None and now - cached_ts < _WSB_CACHE_TTL:
+        return symbol, cached_result
+    try:
+        result = get_wsb_sentiment(symbol)
+    except Exception:
+        result = {"mentions": 0, "sentiment": 0.0}
+    _wsb_cache[symbol] = (now, result)
+    return symbol, result
 
 
 def _load_premarket_sentiment() -> dict[str, float]:
@@ -677,12 +701,6 @@ def run(mode: str = "paper"):
     else:
         finbert_scores = {sym: 0.0 for sym in active_symbols}
 
-    def _wsb(symbol: str) -> tuple[str, dict]:
-        try:
-            return symbol, get_wsb_sentiment(symbol)
-        except Exception:
-            return symbol, {"mentions": 0, "sentiment": 0.0}
-
     with ThreadPoolExecutor(max_workers=6) as pool:
         wsb_map = dict(pool.map(_wsb, active_symbols))
 
@@ -747,9 +765,10 @@ def run(mode: str = "paper"):
                         client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
                         tg.alert_stop_loss(symbol, pnl_pct, notional=pos_qty * current_price)
                         log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price,
-                                  pos_qty * current_price, regime_name, portfolio_value, pnl_pct)
+                                  pos_qty * current_price, regime_name, portfolio_value, pnl_pct,
+                                  entry_price=entry_price)
                         _delete_position_state(con, symbol)
-                        _maybe_record_day_trade(con, risk, symbol, True)
+                        _maybe_record_day_trade(con, risk, symbol, True, pdt_exempt=pdt_exempt)
                     continue
 
                 if pos_state:
@@ -768,9 +787,9 @@ def run(mode: str = "paper"):
                         success = _signal_sell(
                             con, client, symbol, pos_qty, current_price,
                             regime_name, portfolio_value,
-                            reason="take-profit", pnl_pct=pnl_pct
+                            reason="take-profit", pnl_pct=pnl_pct, entry_price=entry_price
                         )
-                        _maybe_record_day_trade(con, risk, symbol, success)
+                        _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                         continue
 
                 # ② ATR stop-loss
@@ -779,9 +798,10 @@ def run(mode: str = "paper"):
                     success = _signal_sell(
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
-                        is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct
+                        is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct,
+                        entry_price=entry_price
                     )
-                    _maybe_record_day_trade(con, risk, symbol, success)
+                    _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
                 # ③ Trailing stop (armed after 0.5% gain)
@@ -790,9 +810,10 @@ def run(mode: str = "paper"):
                     success = _signal_sell(
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
-                        is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct
+                        is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct,
+                        entry_price=entry_price
                     )
-                    _maybe_record_day_trade(con, risk, symbol, success)
+                    _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
                 # ④ Time-based forced exit — free capital from stale positions
@@ -800,9 +821,9 @@ def run(mode: str = "paper"):
                     success = _signal_sell(
                         con, client, symbol, pos_qty, current_price,
                         regime_name, portfolio_value,
-                        reason="time-exit", pnl_pct=pnl_pct
+                        reason="time-exit", pnl_pct=pnl_pct, entry_price=entry_price
                     )
-                    _maybe_record_day_trade(con, risk, symbol, success)
+                    _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
                 # ⑤ Ensemble sell signal
@@ -814,9 +835,9 @@ def run(mode: str = "paper"):
                         success = _signal_sell(
                             con, client, symbol, pos_qty, current_price,
                             regime_name, portfolio_value,
-                            reason="signal", pnl_pct=pnl_pct
+                            reason="signal", pnl_pct=pnl_pct, entry_price=entry_price
                         )
-                        if success and is_day_trade:
+                        if success and is_day_trade and not pdt_exempt:
                             risk.record_day_trade()
                             _save_risk_state(con, risk)
                 continue

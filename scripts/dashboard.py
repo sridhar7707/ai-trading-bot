@@ -129,6 +129,11 @@ with gr.Blocks(
 ) as demo:
 
     gr.Markdown("# 📊 AI Trading Bot Dashboard")
+    gr.HTML(
+        "<div style='background:#e65100;color:#fff;padding:5px 14px;border-radius:4px;"
+        "display:inline-block;font-size:12px;font-weight:bold;margin-bottom:8px'>"
+        "PAPER TRADING — Simulated capital only. No real money at risk.</div>"
+    )
 
     with gr.Row():
         tier_radio = gr.Radio(

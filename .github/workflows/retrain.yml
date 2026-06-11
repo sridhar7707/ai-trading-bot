@@ -8,6 +8,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+concurrency:
+  group: retrain
+  cancel-in-progress: false  # finish the running retrain rather than cancelling it
+
 jobs:
   retrain:
     runs-on: ubuntu-latest
