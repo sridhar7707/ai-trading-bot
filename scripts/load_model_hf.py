@@ -1,10 +1,12 @@
 """Pull trained models from HuggingFace Hub."""
-import sys, os, traceback
+import os
+import sys
+import shutil
+import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from huggingface_hub import hf_hub_download
 from loguru import logger
 from config import HF_TOKEN, HF_REPO_ID, MODEL_SAVE_PATH, REGIME_MODEL_PATH
-import os, shutil
 
 
 def pull():

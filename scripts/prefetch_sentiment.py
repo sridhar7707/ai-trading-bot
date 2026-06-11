@@ -33,9 +33,9 @@ def main():
     except Exception as e:
         logger.warning(f"Could not load screened universe — using config.SYMBOLS: {e}")
 
-    # NewsAPI free tier: 100 req/day. Each symbol uses ~3 requests → safe up to ~30 symbols.
+    # NewsAPI free tier: 100 req/day. 1 request per symbol (SEC EDGAR is unmetered).
     _NEWSAPI_DAILY_LIMIT = 100
-    _REQS_PER_SYMBOL = 3
+    _REQS_PER_SYMBOL = 1
     safe_max = _NEWSAPI_DAILY_LIMIT // _REQS_PER_SYMBOL
     if len(symbols) > safe_max:
         logger.warning(

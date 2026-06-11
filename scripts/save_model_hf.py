@@ -27,18 +27,23 @@ def push():
         "models/saved/lstm_predictor.pt",
     ]
 
+    _MIN_MODEL_BYTES = 1024  # reject suspiciously small files — likely corrupt or empty
     ops = []
     uploaded = []
     for path in model_files:
-        if os.path.exists(path):
-            ops.append(CommitOperationAdd(
-                path_in_repo=os.path.basename(path),
-                path_or_fileobj=path,
-            ))
-            uploaded.append(os.path.basename(path))
-            logger.info(f"Queued {path} for upload")
-        else:
+        if not os.path.exists(path):
             logger.warning(f"File not found (skipping): {path}")
+            continue
+        size = os.path.getsize(path)
+        if size < _MIN_MODEL_BYTES:
+            logger.error(f"Refusing to upload {path} — file is only {size} bytes (likely corrupt)")
+            continue
+        ops.append(CommitOperationAdd(
+            path_in_repo=os.path.basename(path),
+            path_or_fileobj=path,
+        ))
+        uploaded.append(os.path.basename(path))
+        logger.info(f"Queued {path} ({size / 1024:.0f} KB) for upload")
 
     if not ops:
         logger.error("No model files found — aborting push")

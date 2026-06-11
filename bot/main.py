@@ -53,7 +53,7 @@ from bot.strategy.regime_classifier import RegimeClassifier
 from bot.strategy.xgb_predictor import XGBPredictor
 from bot.strategy.lstm_predictor import LSTMPredictor
 from bot.strategy.sentiment import batch_sentiment_scores
-from bot.strategy.macro import _fetch_macro_raw, _compute_from_raw
+from bot.strategy.macro import _get_cached as _get_macro_cached
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION, WEIGHTS
 from bot.risk.risk_manager import RiskManager
@@ -288,7 +288,7 @@ def _get_macro_from_db(con) -> tuple[float, float, bool]:
         except (ValueError, TypeError):
             pass
     try:
-        result = _compute_from_raw(_fetch_macro_raw())
+        result = _get_macro_cached()
     except Exception as e:
         logger.warning(f"Macro fetch failed — using neutral defaults: {e}")
         result = {"score": 0.5, "cap": 1.0, "halt": False}

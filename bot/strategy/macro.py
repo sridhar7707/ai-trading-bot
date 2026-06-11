@@ -1,16 +1,14 @@
-import os
 import math
 import time
 import threading
 from loguru import logger
-from config import MACRO_HALT_VIX
+from config import MACRO_HALT_VIX, FRED_API_KEY
 
 
 def _sigmoid(x: float, center: float, scale: float) -> float:
     """Logistic sigmoid centered at `center`, transitions over ±`scale`."""
     return 1.0 / (1.0 + math.exp(-(x - center) / scale))
 
-FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
 _CACHE_LOCK = threading.Lock()
 _MACRO_CACHE: dict = {}      # {"score": float, "cap": float}

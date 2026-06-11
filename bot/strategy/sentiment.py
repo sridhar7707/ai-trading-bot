@@ -66,6 +66,13 @@ def get_news_headlines(ticker: str) -> list[str]:
             },
             timeout=5,
         )
+        if resp.status_code == 426:
+            logger.error("NewsAPI daily quota exhausted (HTTP 426) — upgrade plan or reduce symbols")
+            return []
+        if resp.status_code == 429:
+            logger.warning("NewsAPI rate-limited (HTTP 429) — backing off")
+            return []
+        resp.raise_for_status()
         return [a["title"] for a in resp.json().get("articles", []) if a.get("title")]
     except Exception as e:
         logger.warning(f"NewsAPI failed for {ticker}: {e}")
