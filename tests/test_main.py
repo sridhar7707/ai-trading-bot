@@ -581,3 +581,47 @@ def test_save_risk_state_clears_halt_when_not_halted(db):
         "SELECT value FROM risk_state WHERE key='trading_halted_date'"
     ).fetchone()
     assert row is None or row[0] == ""
+
+
+# --- P0: PDT audit — protective exits still recorded even when limit exceeded ---
+
+def test_maybe_record_day_trade_records_even_when_pdt_exceeded(db):
+    """A protective exit past the PDT limit must STILL be recorded in the log.
+    The function logs CRITICAL but never silently swallows the trade record —
+    the audit trail must reflect the actual day-trade count."""
+    from config import PDT_MAX_DAY_TRADES
+    _insert_buy_today(db, "AAPL")
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    # Fill the PDT window up to the limit
+    for _ in range(PDT_MAX_DAY_TRADES):
+        risk.record_day_trade()
+    initial_count = len(risk.day_trade_log)
+    assert initial_count == PDT_MAX_DAY_TRADES
+
+    # Protective exit on a position opened today — must record despite being at limit
+    _maybe_record_day_trade(db, risk, "AAPL", sell_success=True, pdt_exempt=False)
+
+    assert len(risk.day_trade_log) == PDT_MAX_DAY_TRADES + 1, (
+        "Day trade must be recorded even when PDT limit is already exceeded"
+    )
+
+
+def test_maybe_record_day_trade_pdt_exceeded_persists_to_db(db):
+    """The day-trade record written past the PDT limit must be persisted to SQLite."""
+    from config import PDT_MAX_DAY_TRADES
+    _insert_buy_today(db, "MSFT")
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    for _ in range(PDT_MAX_DAY_TRADES):
+        risk.record_day_trade()
+
+    _maybe_record_day_trade(db, risk, "MSFT", sell_success=True, pdt_exempt=False)
+
+    import json
+    row = db.execute(
+        "SELECT value FROM risk_state WHERE key='day_trade_dates'"
+    ).fetchone()
+    assert row is not None
+    stored_dates = json.loads(row[0])
+    assert len(stored_dates) == PDT_MAX_DAY_TRADES + 1
