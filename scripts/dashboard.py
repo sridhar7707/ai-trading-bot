@@ -127,9 +127,10 @@ def _section(label: str) -> str:
             f"margin-bottom:6px'>{label}</div>")
 
 
-def _toggle_view(tier: str):
-    is_inst = tier == "Institutional"
-    return gr.update(visible=not is_inst), gr.update(visible=is_inst)
+def _toggle_view(view: str):
+    # "Detailed" unlocks the full institutional tab set; "Simple" is the subscriber view.
+    is_detailed = view == "Detailed"
+    return gr.update(visible=not is_detailed), gr.update(visible=is_detailed)
 
 
 # ── Build UI ──────────────────────────────────────────────────────────────────
@@ -150,9 +151,10 @@ with gr.Blocks(
 
     with gr.Row():
         tier_radio = gr.Radio(
-            choices=["Subscriber", "Institutional"],
-            value="Subscriber",
-            label="Access Tier",
+            choices=["Simple", "Detailed"],
+            value="Simple",
+            label="View",
+            info="Simple = portfolio, positions, trades. Detailed = + performance, signals, audit, compliance.",
             interactive=True,
         )
 
@@ -367,6 +369,18 @@ with gr.Blocks(
 
     demo.load(_comp,           outputs=i_compliance, **_kw)
     i_refresh_cp.click(_comp,  outputs=i_compliance, **_kw)
+
+    # ── Auto-refresh ──────────────────────────────────────────────────────────
+    # Tick every 60s so the live "where am I" views update without a manual click.
+    # Only the cheap DB-backed surfaces (overview, halt, risk gauges) are auto-
+    # refreshed; positions intentionally aren't (each pull hits yfinance). The
+    # DB pull inside _con() respects its 5-min cache, so a tick is cheap.
+    if hasattr(gr, "Timer"):
+        _auto = gr.Timer(60)
+        _auto.tick(_load_ov, outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+        _auto.tick(_comp,    outputs=s_risk_gauges, **_kw)
+        _auto.tick(_load_ov, outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
+        _auto.tick(_comp,    outputs=i_compliance, **_kw)
 
 
 if __name__ == "__main__":
