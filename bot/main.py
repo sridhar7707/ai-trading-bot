@@ -1081,8 +1081,8 @@ def run(mode: str = "paper"):
 
     try:
         from bot.monitor.sync_db import push_db
-        if push_db():
-            logger.info("trades.db synced to HuggingFace dataset")
+        if not push_db():
+            logger.warning("trades.db sync to HuggingFace FAILED — dashboard will show stale data")
     except Exception as _e:
         logger.warning(f"HF DB sync skipped: {_e}")
 

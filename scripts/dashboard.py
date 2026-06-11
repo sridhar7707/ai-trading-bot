@@ -267,7 +267,12 @@ with gr.Blocks(
 
     # ── Named helpers (no lambdas — Gradio 5.x lambda API conflicts) ─────────────
     def _load_ov():
-        refresh_db_from_hf()
+        refresh_db_from_hf()          # on auto-load: respect 5-min cache
+        s, b = halt_status_html()
+        return overview_md(get_overview()), s, b
+
+    def _force_refresh_ov():
+        refresh_db_from_hf(force=True)  # on manual Refresh: bypass cache, always re-pull
         s, b = halt_status_html()
         return overview_md(get_overview()), s, b
 
@@ -307,7 +312,7 @@ with gr.Blocks(
     demo.load(_load_ov,          outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     demo.load(get_positions_df,  outputs=s_positions, **_kw)
     demo.load(_s_trades_default, outputs=s_trades_table, **_kw)
-    s_refresh_ov.click(_load_ov,         outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+    s_refresh_ov.click(_force_refresh_ov, outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     s_halt_btn.click(_do_halt,           outputs=[s_halt_status, s_halt_btn, s_halt_msg], **_kw)
     s_refresh_pos.click(get_positions_df, outputs=s_positions, **_kw)
     s_refresh_tl.click(_s_trades_slider,  inputs=s_days_slider, outputs=s_trades_table, **_kw)
@@ -317,7 +322,7 @@ with gr.Blocks(
     demo.load(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
     demo.load(get_positions_df,  outputs=i_positions, **_kw)
     demo.load(_i_trades_default, outputs=i_trades_table, **_kw)
-    i_refresh_ov.click(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
+    i_refresh_ov.click(_force_refresh_ov,  outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
     i_halt_btn.click(_do_halt,            outputs=[i_halt_status, i_halt_btn, i_halt_msg], **_kw)
     i_refresh_pos.click(get_positions_df,  outputs=i_positions, **_kw)
     i_refresh_tl.click(_i_trades_slider,   inputs=i_days_slider, outputs=i_trades_table, **_kw)

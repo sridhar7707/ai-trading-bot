@@ -14,6 +14,7 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as mtick
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import TRADE_DB_PATH, DAILY_LOSS_LIMIT_PCT, WEEKLY_LOSS_LIMIT_PCT
@@ -22,22 +23,38 @@ _DB   = TRADE_DB_PATH
 _DARK = "#0f0f0f"
 _CARD = "#1a1a2e"
 
+# Tracks last pull outcome for display in overview
+_last_sync: dict = {"ok": None, "ts": None, "err": ""}
+
 
 def _con() -> sqlite3.Connection | None:
     if not Path(_DB).exists():
+        logger.warning(f"dashboard_data: {_DB} not found — no data to show")
         return None
     return sqlite3.connect(_DB, check_same_thread=False)
 
 
-def refresh_db_from_hf() -> None:
+def refresh_db_from_hf(force: bool = False) -> None:
     """Pull a fresh trades.db from HF dataset (Space-only, non-blocking)."""
+    global _last_sync
     if not os.environ.get("SPACE_ID"):
+        logger.debug("refresh_db_from_hf: not running in HF Space (SPACE_ID not set) — skipping pull")
         return
     try:
         from bot.monitor.sync_db import pull_db
-        pull_db()
-    except Exception:
-        pass
+        ok = pull_db(force=force)
+        _last_sync = {
+            "ok": ok,
+            "ts": datetime.now(timezone.utc),
+            "err": "" if ok else "pull_db returned False — check HF_TOKEN and HF_DB_REPO_ID",
+        }
+        if ok:
+            logger.info("refresh_db_from_hf: DB pulled successfully from HF dataset")
+        else:
+            logger.error("refresh_db_from_hf: DB pull returned False — dashboard may show stale data")
+    except Exception as exc:
+        _last_sync = {"ok": False, "ts": datetime.now(timezone.utc), "err": str(exc)}
+        logger.error(f"refresh_db_from_hf: exception — {exc}")
 
 
 def _ax_style(ax):
@@ -98,6 +115,21 @@ def get_overview() -> dict:
         open_positions = 0
     con.close()
 
+    # DB sync status for display
+    sync_age_s: float | None = None
+    sync_ok: bool | None = _last_sync.get("ok")
+    if _last_sync.get("ts"):
+        sync_age_s = (datetime.now(timezone.utc) - _last_sync["ts"]).total_seconds()
+
+    # Also check file mtime as a fallback indicator
+    db_mtime_s: float | None = None
+    try:
+        db_mtime_s = (datetime.now(timezone.utc) - datetime.fromtimestamp(
+            Path(_DB).stat().st_mtime, tz=timezone.utc
+        )).total_seconds()
+    except Exception:
+        pass
+
     return {
         "portfolio":        portfolio,
         "day_pnl":          day_pnl,
@@ -110,7 +142,21 @@ def get_overview() -> dict:
         "emergency_halt":   Path("data/HALT_TRADING").exists(),
         "daily_limit_hit":  is_today  and daily_start  and day_pnl  <= -DAILY_LOSS_LIMIT_PCT,
         "weekly_limit_hit": is_this_week and weekly_start and week_pnl <= -WEEKLY_LOSS_LIMIT_PCT,
+        "sync_ok":          sync_ok,
+        "sync_age_s":       sync_age_s,
+        "sync_err":         _last_sync.get("err", ""),
+        "db_age_s":         db_mtime_s,
     }
+
+
+def _fmt_age(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    if seconds < 60:
+        return f"{int(seconds)}s ago"
+    if seconds < 3600:
+        return f"{int(seconds / 60)}m ago"
+    return f"{int(seconds / 3600)}h ago"
 
 
 def overview_md(d: dict) -> str:
@@ -122,6 +168,18 @@ def overview_md(d: dict) -> str:
              "🔴 DAILY LIMIT HIT" if d["daily_limit_hit"] else (
              "🟡 WEEKLY LIMIT"    if d["weekly_limit_hit"] else "🟢 ACTIVE")))
 
+    # DB sync status line
+    sync_ok  = d.get("sync_ok")
+    db_age   = d.get("db_age_s")
+    sync_err = d.get("sync_err", "")
+    if sync_ok is True:
+        sync_line = f"🟢 DB synced {_fmt_age(d.get('sync_age_s'))} · file updated {_fmt_age(db_age)}"
+    elif sync_ok is False:
+        err_hint = f" — {sync_err}" if sync_err else ""
+        sync_line = f"🔴 DB sync FAILED{err_hint} · file last updated {_fmt_age(db_age)}"
+    else:
+        sync_line = f"⚪ DB not yet synced · file last updated {_fmt_age(db_age)}"
+
     return (
         f"### Bot Status: {status}\n\n"
         f"| Metric | Value |\n|--------|-------|\n"
@@ -131,7 +189,8 @@ def overview_md(d: dict) -> str:
         f"| Trades Today | {d['trades_today']} |\n"
         f"| Open Positions | {d['open_positions']} |\n"
         f"| Day Trades Used | {d['day_trades_used']}/3 (PDT) |\n"
-        f"| Macro Score | {d['macro_score']:.2f} |\n"
+        f"| Macro Score | {d['macro_score']:.2f} |\n\n"
+        f"*{sync_line}*\n"
     )
 
 
