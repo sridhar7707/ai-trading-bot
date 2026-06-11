@@ -696,6 +696,7 @@ def run(mode: str = "paper"):
         pdt_exempt = pdt_equity >= 25_000
         if pdt_exempt:
             logger.info(f"Account equity ${pdt_equity:,.2f} ≥ $25,000 — PDT day-trade limits waived.")
+        logger.info(f"Account standing verified — status=ACTIVE, equity=${pdt_equity:,.2f}")
     except Exception as e:
         logger.warning(f"Account compliance check failed: {e}")
         pdt_exempt = False
@@ -716,6 +717,11 @@ def run(mode: str = "paper"):
         f"Open positions: {list(positions.keys())} | "
         f"Pending buys: {buy_order_syms} | Pending sells: {sell_order_syms}"
     )
+    if sell_order_syms:
+        logger.warning(
+            f"Open sell orders detected for {len(sell_order_syms)} symbol(s): {sell_order_syms} "
+            "— exit management paused for these symbols this cycle"
+        )
 
     # Early warning: once per day when portfolio crosses 50% of daily loss limit
     if risk.check_daily_loss_warning(portfolio_value):
@@ -1008,7 +1014,20 @@ def run(mode: str = "paper"):
                 filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
                 if filled:
                     # Use actual fill price for P&L accuracy; fall back to limit estimate
-                    fill_price = client.get_fill_price(result["order_id"]) or current_price
+                    _actual_fill = client.get_fill_price(result["order_id"])
+                    if _actual_fill is None:
+                        fill_price = current_price
+                        logger.debug(
+                            f"BUY {symbol}: actual fill price unavailable — "
+                            f"using limit estimate ${current_price:.2f}"
+                        )
+                    else:
+                        fill_price = _actual_fill
+                        slippage_bps = (_actual_fill - current_price) / current_price * 10_000
+                        logger.info(
+                            f"BUY {symbol}: filled ${_actual_fill:.2f} "
+                            f"({slippage_bps:+.1f} bps vs limit ${current_price:.2f})"
+                        )
                     fill_shares = notional / fill_price
                     tg.alert_buy(symbol, fill_shares, fill_price,
                                  regime_name, portfolio_value, vs_spy_today * 100,

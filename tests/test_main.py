@@ -539,3 +539,16 @@ def test_init_db_has_order_id_and_holding_days_columns(tmp_path, monkeypatch):
     assert "order_id" in cols
     assert "holding_days" in cols
     con.close()
+
+
+# --- wash-sale boundary precision ---
+
+def test_wash_sale_at_exactly_30_days_is_blocked(db):
+    # The IRS 30-day window is >=, so exactly 30 days ago is still within range
+    _insert_loss_sell(db, "AAPL", pnl_pct=-0.05, days_ago=30)
+    assert _is_wash_sale_risk(db, "AAPL") is True
+
+
+def test_wash_sale_29_days_is_blocked(db):
+    _insert_loss_sell(db, "AAPL", pnl_pct=-0.05, days_ago=29)
+    assert _is_wash_sale_risk(db, "AAPL") is True

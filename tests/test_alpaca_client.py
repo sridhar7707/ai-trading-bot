@@ -183,3 +183,92 @@ def test_get_fill_price_returns_none_when_not_filled(client):
 def test_get_fill_price_returns_none_on_api_error(client):
     client.api.get_order.side_effect = Exception("not found")
     assert client.get_fill_price("order-123") is None
+
+
+# --- sell_market ---
+
+def test_sell_market_submits_market_order(client):
+    order = MagicMock()
+    order.id = "mkt-789"
+    client.api.submit_order.return_value = order
+    result = client.sell_market("AAPL", 5.0)
+    assert result is not None
+    assert result["order_id"] == "mkt-789"
+    assert result["symbol"] == "AAPL"
+    client.api.submit_order.assert_called_once_with(
+        symbol="AAPL", qty=5.0, side="sell",
+        type="market", time_in_force="day",
+    )
+
+
+def test_sell_market_returns_none_on_api_error(client):
+    client.api.submit_order.side_effect = Exception("rejected")
+    assert client.sell_market("AAPL", 5.0) is None
+
+
+# --- wait_for_fill ---
+
+def test_wait_for_fill_returns_true_when_filled(client):
+    order = MagicMock()
+    order.status = "filled"
+    client.api.get_order.return_value = order
+    assert client.wait_for_fill("order-123", timeout_secs=5) is True
+    client.api.cancel_order.assert_not_called()
+
+
+def test_wait_for_fill_returns_false_on_cancelled(client):
+    order = MagicMock()
+    order.status = "cancelled"
+    client.api.get_order.return_value = order
+    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+
+
+def test_wait_for_fill_returns_false_on_rejected(client):
+    order = MagicMock()
+    order.status = "rejected"
+    client.api.get_order.return_value = order
+    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+
+
+def test_wait_for_fill_returns_false_on_expired(client):
+    order = MagicMock()
+    order.status = "expired"
+    client.api.get_order.return_value = order
+    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+
+
+def test_wait_for_fill_cancels_and_returns_false_on_timeout(client):
+    order = MagicMock()
+    order.status = "pending_new"
+    client.api.get_order.return_value = order
+    result = client.wait_for_fill("order-abc", timeout_secs=0)
+    assert result is False
+    client.api.cancel_order.assert_called_once_with("order-abc")
+
+
+def test_wait_for_fill_returns_false_when_poll_raises(client):
+    # Poll throws — should not propagate, loop times out
+    client.api.get_order.side_effect = Exception("network error")
+    result = client.wait_for_fill("order-xyz", timeout_secs=0)
+    assert result is False
+
+
+# --- get_account_summary ---
+
+def test_get_account_summary_returns_portfolio_and_cash(client):
+    acct = MagicMock()
+    acct.portfolio_value = "25000.00"
+    acct.cash = "5000.00"
+    client.api.get_account.return_value = acct
+    pv, cash = client.get_account_summary()
+    assert pv == pytest.approx(25_000.0)
+    assert cash == pytest.approx(5_000.0)
+
+
+def test_get_account_summary_makes_one_api_call(client):
+    acct = MagicMock()
+    acct.portfolio_value = "10000.00"
+    acct.cash = "2000.00"
+    client.api.get_account.return_value = acct
+    client.get_account_summary()
+    assert client.api.get_account.call_count == 1
