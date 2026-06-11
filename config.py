@@ -54,6 +54,14 @@ TRAINING_EXTRA = [
 ]
 TRAINING_SYMBOLS = SYMBOLS + TRAINING_EXTRA
 
+# --- Paper sim capital ---
+# When > 0, the bot SIZES and RISK-CHECKS as if the account held this much, even
+# though the real (paper) account is larger. Lets you dry-run small-account
+# mechanics — tiny position sizes, min-notional rejections, and the PDT day-trade
+# limit (which applies under $25k) — before going live with a small balance.
+# 0 = disabled (use the real account value). Example: PAPER_SIM_CAPITAL=1000
+PAPER_SIM_CAPITAL = float(os.getenv("PAPER_SIM_CAPITAL", "0") or 0)
+
 # --- Trading parameters ---
 MAX_POSITION_PCT = float(os.getenv("MAX_POSITION_PCT", 0.20))
 STOP_LOSS_PCT = float(os.getenv("STOP_LOSS_PCT", 0.04))       # fallback flat stop (no ATR data)
