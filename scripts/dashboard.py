@@ -137,8 +137,36 @@ def _toggle_view(view: str):
 
 _theme = gr.themes.Base(primary_hue="cyan", neutral_hue="slate")
 _gr_major = int(gr.__version__.split(".")[0])
+
+# Mobile-friendly tweaks: tighter padding and smaller, horizontally-scrollable
+# tables on narrow screens so the dashboard is usable on a phone.
+_CSS = """
+.gradio-container { max-width: 1200px !important; margin: auto !important; }
+@media (max-width: 640px) {
+  .gradio-container { padding: 4px !important; }
+  table { font-size: 12px !important; }
+  h1 { font-size: 1.3rem !important; }
+}
+table { display: block; overflow-x: auto; white-space: nowrap; }
+"""
+
+_GLOSSARY = """
+**Portfolio Value** — your total account value (cash + the market value of all positions).
+**Day / Week P&L** — profit or loss today / this week, shown in dollars and percent.
+**Return vs S&P 500** — how the bot is doing compared to simply buying the index.
+**Unrealized P&L** — paper gain/loss on positions you still hold (not yet sold).
+**Macro Score** — a 0–1 read on overall market conditions (higher = more favorable); the bot trades smaller when it's low.
+**Regime** — the detected market state: Trending Up/Down, Ranging, or Volatile.
+**Sharpe Ratio** — return earned per unit of risk; higher is better (above 1 is good). Shows "n/a" until there's enough history.
+**Max Drawdown** — the largest peak-to-trough drop, i.e. how bad it got at the worst point.
+**PDT (Pattern Day Trader)** — a FINRA rule limiting day trades for accounts under $25k; the bot caps itself at 3 in any 5 business days.
+**Stop-loss / Trailing stop / Take-profit** — automatic exit rules that protect capital and lock in gains.
+**ATR** — a measure of a stock's volatility, used to size the stop-loss distance.
+"""
+
 with gr.Blocks(
     title="Trading Bot Dashboard",
+    css=_CSS,
     **({} if _gr_major >= 6 else {"theme": _theme}),
 ) as demo:
 
@@ -157,6 +185,11 @@ with gr.Blocks(
             info="Simple = portfolio, positions, trades. Detailed = + performance, signals, audit, compliance.",
             interactive=True,
         )
+
+    # Plain-language glossary so the jargon (Sharpe, Macro, Regime, PDT, ATR…)
+    # is one click away from anywhere on the dashboard.
+    with gr.Accordion("ℹ️ What do these terms mean?", open=False):
+        gr.Markdown(_GLOSSARY)
 
     # ═══════════════════════════════════════════════════════════════════════════
     # SCREEN 1 — Subscriber
