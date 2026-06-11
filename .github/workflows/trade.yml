@@ -2,8 +2,18 @@ name: Trading Bot
 
 on:
   schedule:
-    # Fire once at market open Mon-Fri (9:30am ET = 13:30 UTC)
-    - cron: '30 13 * * 1-5'
+    # The bot is ONE long-running job that loops a trading cycle every ~5 min until
+    # market close — not a per-cycle cron. We fire several start times across the
+    # session (Mon-Fri, ET) rather than once, for two reasons:
+    #   1. GitHub scheduled workflows are best-effort and frequently delayed by
+    #      30 min to several hours (or skipped) — multiple triggers give the bot
+    #      several chances to actually start near each slot.
+    #   2. GitHub-hosted runners have a hard 6-hour job cap, but the session is
+    #      6.5h — so a single run can't cover it. cancel-in-progress makes each new
+    #      trigger restart a fresh job (only ever one running), keeping every job
+    #      well under the cap while staying continuous.
+    # Slots: 9:30, 11:30, 13:30, 15:30 ET  =  13:30, 15:30, 17:30, 19:30 UTC
+    - cron: '30 13,15,17,19 * * 1-5'
   workflow_dispatch:
 
 env:
