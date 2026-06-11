@@ -675,9 +675,21 @@ def run(mode: str = "paper"):
     portfolio_value, available_cash = client.get_account_summary()
     risk.update_portfolio_high(portfolio_value)
 
-    # Compliance: check Alpaca account status before trading
+    # Brokerage compliance: validate account standing before placing any orders
     try:
         acct = client.get_account()
+        # ① Account status gate — Alpaca can suspend accounts for policy violations
+        acct_status     = getattr(acct, "status",          "ACTIVE")
+        trading_blocked = getattr(acct, "trading_blocked", False)
+        account_blocked = getattr(acct, "account_blocked", False)
+        if acct_status != "ACTIVE" or trading_blocked or account_blocked:
+            status_msg = (f"status={acct_status}, trading_blocked={trading_blocked}, "
+                          f"account_blocked={account_blocked}")
+            logger.error(f"Account not tradeable ({status_msg}) — aborting cycle")
+            tg._send(f"🚨 Account not tradeable ({status_msg}) — bot halted. Check Alpaca dashboard.")
+            con.close()
+            return
+        # ② PDT flag and equity check
         if getattr(acct, "pattern_day_trader", False):
             logger.warning("Alpaca account is flagged as Pattern Day Trader — PDT limits apply.")
         pdt_equity = float(getattr(acct, "equity", 0) or 0)
@@ -690,7 +702,7 @@ def run(mode: str = "paper"):
 
     positions       = client.get_positions()
     _reconcile_positions(con, positions)
-    open_order_syms = client.get_open_order_symbols()
+    buy_order_syms, sell_order_syms = client.get_open_order_symbols()
 
     # First cycle of the day — daily_start was None before reset_daily sets it
     if daily_start is None:
@@ -701,7 +713,8 @@ def run(mode: str = "paper"):
 
     logger.info(
         f"Portfolio: ${portfolio_value:.2f} | Cash: ${available_cash:.2f} | "
-        f"Open positions: {list(positions.keys())} | Pending orders: {open_order_syms}"
+        f"Open positions: {list(positions.keys())} | "
+        f"Pending buys: {buy_order_syms} | Pending sells: {sell_order_syms}"
     )
 
     # Early warning: once per day when portfolio crosses 50% of daily loss limit
@@ -810,6 +823,15 @@ def run(mode: str = "paper"):
 
             # ── Exit / management for held positions ──────────────────────────
             if symbol in positions:
+                # Brokerage guard: skip exit processing entirely when a sell order is already
+                # open for this symbol. Submitting a second sell order while one is pending
+                # could fill both, creating an unintended short position.
+                if symbol in sell_order_syms:
+                    logger.info(
+                        f"Exit management skipped for {symbol} — open sell order pending"
+                    )
+                    continue
+
                 pos_state   = _load_position_state(con, symbol)
                 entry_price = float(getattr(positions[symbol], "avg_entry_price", 0) or 0)
                 pos_qty     = float(positions[symbol].qty)
@@ -947,9 +969,9 @@ def run(mode: str = "paper"):
                     )
                     continue
 
-            # Gate 5 — Open order: no duplicate limit submissions
-            if symbol in open_order_syms:
-                logger.info(f"BUY {symbol} skipped — open order already pending")
+            # Gate 5 — Open order: no duplicate limit buy submissions
+            if symbol in buy_order_syms:
+                logger.info(f"BUY {symbol} skipped — open buy order already pending")
                 continue
 
             # Gate 6 — Earnings proximity
@@ -985,17 +1007,21 @@ def run(mode: str = "paper"):
             if result:
                 filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
                 if filled:
-                    tg.alert_buy(symbol, notional / current_price, current_price,
+                    # Use actual fill price for P&L accuracy; fall back to limit estimate
+                    fill_price = client.get_fill_price(result["order_id"]) or current_price
+                    fill_shares = notional / fill_price
+                    tg.alert_buy(symbol, fill_shares, fill_price,
                                  regime_name, portfolio_value, vs_spy_today * 100,
                                  notional=notional)
-                    log_trade(con, symbol, "BUY", notional / current_price,
-                              current_price, notional, regime_name, portfolio_value, 0,
+                    log_trade(con, symbol, "BUY", fill_shares,
+                              fill_price, notional, regime_name, portfolio_value, 0,
                               xgb_prob=xgb_prob, lstm_prob=lstm_prob,
                               sentiment_score=sentiments.get(symbol, 0.0),
                               macro_score=macro_score,
                               order_id=result.get("order_id"))
-                    _upsert_position_state(con, symbol, current_price, current_price, current_atr)
+                    _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)
                     available_cash -= notional
+                    buy_order_syms.discard(symbol)  # order is now filled, not pending
                 else:
                     logger.warning(f"BUY {symbol} order did not fill — position state NOT recorded")
 

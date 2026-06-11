@@ -123,3 +123,63 @@ def test_get_portfolio_value_returns_float(client):
     account.portfolio_value = "50000.00"
     client.api.get_account.return_value = account
     assert client.get_portfolio_value() == 50000.0
+
+
+# --- get_open_order_symbols ---
+
+def _make_order(symbol, side):
+    o = MagicMock()
+    o.symbol = symbol
+    o.side = side
+    return o
+
+
+def test_get_open_order_symbols_returns_two_sets(client):
+    client.api.list_orders.return_value = [
+        _make_order("AAPL", "buy"),
+        _make_order("MSFT", "sell"),
+    ]
+    buy_syms, sell_syms = client.get_open_order_symbols()
+    assert "AAPL" in buy_syms
+    assert "MSFT" in sell_syms
+    assert "MSFT" not in buy_syms
+    assert "AAPL" not in sell_syms
+
+
+def test_get_open_order_symbols_empty_on_api_error(client):
+    client.api.list_orders.side_effect = Exception("timeout")
+    buy_syms, sell_syms = client.get_open_order_symbols()
+    assert buy_syms == set()
+    assert sell_syms == set()
+
+
+def test_get_open_order_symbols_multiple_same_side(client):
+    client.api.list_orders.return_value = [
+        _make_order("AAPL", "buy"),
+        _make_order("NVDA", "buy"),
+        _make_order("MSFT", "sell"),
+    ]
+    buy_syms, sell_syms = client.get_open_order_symbols()
+    assert buy_syms == {"AAPL", "NVDA"}
+    assert sell_syms == {"MSFT"}
+
+
+# --- get_fill_price ---
+
+def test_get_fill_price_returns_float(client):
+    order = MagicMock()
+    order.filled_avg_price = "152.73"
+    client.api.get_order.return_value = order
+    assert client.get_fill_price("order-123") == pytest.approx(152.73)
+
+
+def test_get_fill_price_returns_none_when_not_filled(client):
+    order = MagicMock()
+    order.filled_avg_price = None
+    client.api.get_order.return_value = order
+    assert client.get_fill_price("order-123") is None
+
+
+def test_get_fill_price_returns_none_on_api_error(client):
+    client.api.get_order.side_effect = Exception("not found")
+    assert client.get_fill_price("order-123") is None

@@ -166,14 +166,34 @@ class AlpacaClient:
             logger.error(f"Market sell escalation failed {symbol}: {e}")
             return None
 
-    def get_open_order_symbols(self) -> set[str]:
-        """Return symbols that have a pending open order — avoids duplicate limit submissions."""
+    def get_open_order_symbols(self) -> tuple[set[str], set[str]]:
+        """Return (buy_symbols, sell_symbols) with pending open orders.
+        One API call serves both the buy-duplicate guard and the sell-duplicate guard.
+        Separating sides prevents double-selling — submitting a second sell on a symbol
+        that already has a pending sell order could create an unintended short position.
+        """
         try:
             orders = self.api.list_orders(status="open")
-            return {o.symbol for o in orders}
+            buy_syms  = {o.symbol for o in orders if o.side == "buy"}
+            sell_syms = {o.symbol for o in orders if o.side == "sell"}
+            return buy_syms, sell_syms
         except Exception as e:
             logger.warning(f"Could not fetch open orders: {e}")
-            return set()
+            return set(), set()
+
+    def get_fill_price(self, order_id: str) -> float | None:
+        """Return the actual average fill price of a completed order.
+        Records real execution price (not limit estimate) for accurate P&L and slippage tracking.
+        Returns None if the order hasn't filled or the field is absent — caller falls back to estimate.
+        """
+        try:
+            order = self.api.get_order(order_id)
+            filled_avg = getattr(order, "filled_avg_price", None)
+            if filled_avg:
+                return float(filled_avg)
+        except Exception as e:
+            logger.debug(f"Could not get fill price for {order_id}: {e}")
+        return None
 
     def get_position_value(self, symbol: str) -> float:
         positions = self.get_positions()
