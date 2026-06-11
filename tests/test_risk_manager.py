@@ -63,6 +63,23 @@ def test_daily_loss_at_limit_halts(risk):
     assert risk.halted is True
 
 
+def test_halt_persists_across_reset_daily_same_day(risk):
+    # Simulate halt mid-day: halted should NOT be cleared by a subsequent reset_daily call
+    # (daily_start_value is already set, so it's not a new-day boundary)
+    risk.check_daily_loss(10_000 * (1 - DAILY_LOSS_LIMIT_PCT))
+    assert risk.halted is True
+    risk.reset_daily(9_500.0)  # second call — same day, start already set
+    assert risk.halted is True, "Halt must persist across intra-day cycles"
+
+
+def test_halt_clears_on_new_day(risk):
+    # Simulate a new-day boundary: daily_start_value is None again
+    risk.halted = True
+    risk.daily_start_value = None  # triggers the new-day branch in reset_daily
+    risk.reset_daily(10_000.0)
+    assert risk.halted is False, "Halt must clear at a calendar-day boundary"
+
+
 # --- check_stop_loss ---
 # New signature: check_stop_loss(symbol, current_price, entry_price, atr=None, pnl_pct=None)
 # STOP_LOSS_PCT = 0.04; pnl_pct path used when atr=None

@@ -46,6 +46,7 @@ from config import (
     EARNINGS_WINDOW_DAYS,
     MAX_HOLD_DAYS, KELLY_LOOKBACK_TRADES, KELLY_FRACTION_MAX,
     CORRELATION_THRESHOLD, RS_LOOKBACK_BARS, ENTRY_REGIMES,
+    PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -56,7 +57,7 @@ from bot.strategy.sentiment import batch_sentiment_scores
 from bot.strategy.macro import _get_cached as _get_macro_cached
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION, WEIGHTS
-from bot.risk.risk_manager import RiskManager
+from bot.risk.risk_manager import RiskManager, _business_days_between
 import bot.monitor.telegram_bot as tg
 
 os.makedirs("logs", exist_ok=True)
@@ -263,6 +264,7 @@ def _save_risk_state(con, risk: RiskManager):
         ("daily_warning_sent_date",  today if risk.daily_warning_sent else ""),
         ("weekly_halt_alerted_week", wk    if risk.weekly_halt_alerted else ""),
         ("portfolio_high",           str(risk.portfolio_high) if risk.portfolio_high is not None else ""),
+        ("trading_halted_date",      today if risk.halted else ""),
     ]
     for key, val in entries:
         con.execute(
@@ -468,6 +470,18 @@ def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: b
                              pdt_exempt: bool = False):
     """Record PDT day trade for exits on positions opened today (skipped when account is exempt)."""
     if not pdt_exempt and sell_success and _opened_today(con, symbol):
+        today = date.today()
+        recent = sum(
+            1 for d in risk.day_trade_log
+            if _business_days_between(d, today) < PDT_WINDOW_DAYS
+        )
+        if recent >= PDT_MAX_DAY_TRADES:
+            logger.critical(
+                f"PDT AUDIT: {symbol} protective exit is day trade #{recent + 1} "
+                f"in the 5-business-day window (limit={PDT_MAX_DAY_TRADES}) — "
+                "executed to protect capital but FINRA 4210 exposure exceeded. "
+                "Review account immediately."
+            )
         risk.record_day_trade()
         _save_risk_state(con, risk)
 
@@ -705,6 +719,15 @@ def run(mode: str = "paper"):
     _reconcile_positions(con, positions)
     buy_order_syms, sell_order_syms = client.get_open_order_symbols()
 
+    # Restore intraday halt — persists across 5-min cycles so a mid-day breach
+    # can't be traded through when the risk object is reconstructed each cycle.
+    _halt_row = con.execute(
+        "SELECT value FROM risk_state WHERE key='trading_halted_date'"
+    ).fetchone()
+    if _halt_row and _halt_row[0] == date.today().isoformat():
+        risk.halted = True
+        logger.warning("Halt state restored from DB — daily loss limit was breached earlier today")
+
     # First cycle of the day — daily_start was None before reset_daily sets it
     if daily_start is None:
         tg.alert_bot_started(mode, portfolio_value)
@@ -854,6 +877,12 @@ def run(mode: str = "paper"):
 
                 # ⓪ Gap-down hard floor — bypass limit/ATR logic, market-sell immediately
                 if pnl_pct < -0.10:
+                    if symbol in sell_order_syms:
+                        logger.info(
+                            f"Gap-down exit skipped for {symbol} — open sell order pending "
+                            "(prevents duplicate fill → unintended short position)"
+                        )
+                        continue
                     logger.warning(f"Gap-down floor: {symbol} pnl={pnl_pct:.1%} — immediate market sell")
                     sell_result = client.sell_market(symbol, pos_qty)
                     if sell_result:
@@ -1017,9 +1046,9 @@ def run(mode: str = "paper"):
                     _actual_fill = client.get_fill_price(result["order_id"])
                     if _actual_fill is None:
                         fill_price = current_price
-                        logger.debug(
+                        logger.warning(
                             f"BUY {symbol}: actual fill price unavailable — "
-                            f"using limit estimate ${current_price:.2f}"
+                            f"using limit estimate ${current_price:.2f} (audit: cost basis may differ)"
                         )
                     else:
                         fill_price = _actual_fill

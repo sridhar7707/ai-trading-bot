@@ -56,13 +56,14 @@ class RiskManager:
         # gate compares against "5 minutes ago" instead of true start-of-day.
         if self.daily_start_value is None:
             self.daily_start_value = portfolio_value
+            # Clear halt only at a true calendar-day boundary (daily_start_value was None).
+            # Intra-day halt must persist across 5-minute cycles so a mid-day breach
+            # can't be traded through after the next cycle restarts the risk object.
+            self.halted = False
         # Weekly start is initialized to the first portfolio value seen this ISO week.
         # It persists across daily resets — cleared only when a new week begins.
         if self.weekly_start_value is None:
             self.weekly_start_value = portfolio_value
-        # halted resets to False each cycle; protection relies on check_daily_loss()
-        # recalculating from daily_start_value (persisted in DB) every approve_buy() call.
-        self.halted = False
         today = date.today()
         self.day_trade_log = deque(
             d for d in self.day_trade_log

@@ -552,3 +552,32 @@ def test_wash_sale_at_exactly_30_days_is_blocked(db):
 def test_wash_sale_29_days_is_blocked(db):
     _insert_loss_sell(db, "AAPL", pnl_pct=-0.05, days_ago=29)
     assert _is_wash_sale_risk(db, "AAPL") is True
+
+
+# --- P0: halt state persistence (_save_risk_state) ---
+
+def test_save_risk_state_persists_halt(db):
+    from bot.main import _save_risk_state
+    from bot.risk.risk_manager import RiskManager
+    risk = RiskManager()
+    risk.daily_start_value = 10_000.0
+    risk.halted = True
+    _save_risk_state(db, risk)
+    row = db.execute(
+        "SELECT value FROM risk_state WHERE key='trading_halted_date'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == date.today().isoformat()
+
+
+def test_save_risk_state_clears_halt_when_not_halted(db):
+    from bot.main import _save_risk_state
+    from bot.risk.risk_manager import RiskManager
+    risk = RiskManager()
+    risk.daily_start_value = 10_000.0
+    risk.halted = False
+    _save_risk_state(db, risk)
+    row = db.execute(
+        "SELECT value FROM risk_state WHERE key='trading_halted_date'"
+    ).fetchone()
+    assert row is None or row[0] == ""
