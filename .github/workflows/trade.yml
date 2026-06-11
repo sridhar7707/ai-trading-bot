@@ -108,26 +108,6 @@ jobs:
           import subprocess, time, datetime, os, sys
           from zoneinfo import ZoneInfo
 
-          # Hardcoded fallback — Alpaca API is authoritative (see market_open below)
-          US_MARKET_HOLIDAYS = {
-              # 2025
-              "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18",
-              "2025-05-26", "2025-06-19", "2025-07-04", "2025-09-01",
-              "2025-11-27", "2025-12-25",
-              # 2026
-              "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
-              "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
-              "2026-11-26", "2026-12-25",
-              # 2027
-              "2027-01-01", "2027-01-18", "2027-02-15", "2027-04-02",
-              "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06",
-              "2027-11-25", "2027-12-24",
-              # 2028
-              "2027-12-31", "2028-01-17", "2028-02-21", "2028-04-14",
-              "2028-05-29", "2028-06-19", "2028-07-04", "2028-09-04",
-              "2028-11-23", "2028-12-25",
-          }
-
           def market_open():
               et = datetime.datetime.now(ZoneInfo("America/New_York"))
               if et.weekday() >= 5:
@@ -136,7 +116,8 @@ jobs:
               close_t = et.replace(hour=16, minute=0,  second=0, microsecond=0)
               if not (open_t <= et < close_t):
                   return False
-              # Prefer Alpaca calendar API — authoritative source for holidays
+              # Alpaca calendar API is the authoritative source for holidays/early closes.
+              # If it fails, assume open (bot/main.py has its own independent check).
               today_str = et.strftime("%Y-%m-%d")
               try:
                   import alpaca_trade_api as tradeapi
@@ -147,7 +128,7 @@ jobs:
                   )
                   return len(api.get_calendar(start=today_str, end=today_str)) > 0
               except Exception:
-                  return today_str not in US_MARKET_HOLIDAYS
+                  return True  # fail open — inner bot/main.py will verify independently
 
           def push_hf():
               token = os.environ.get("HF_TOKEN", "")

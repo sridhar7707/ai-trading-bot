@@ -111,13 +111,6 @@ RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5
 # Only open new positions in these regimes — blocks entries in downtrends and high-vol whipsaws
 ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING").split(","))
 
-# --- RL agent ---
-RL_TIMESTEPS = 1_000_000
-RL_LEARNING_RATE = 3e-4
-RL_N_STEPS = 2048
-RL_BATCH_SIZE = 64
-RL_N_EPOCHS = 10
-
 # --- PDT rule ---
 PDT_MAX_DAY_TRADES = 3
 PDT_WINDOW_DAYS = 5

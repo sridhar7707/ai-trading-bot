@@ -5,10 +5,14 @@ import gymnasium as gym
 from gymnasium import spaces
 from stable_baselines3 import PPO
 from loguru import logger
-from config import (
-    MODEL_SAVE_PATH, RL_TIMESTEPS, RL_LEARNING_RATE,
-    RL_N_STEPS, RL_BATCH_SIZE, RL_N_EPOCHS,
-)
+from config import MODEL_SAVE_PATH
+
+# RL hyperparameters — kept local since this agent is not in the active training pipeline
+_RL_TIMESTEPS    = 1_000_000
+_RL_LEARNING_RATE = 3e-4
+_RL_N_STEPS      = 2048
+_RL_BATCH_SIZE   = 64
+_RL_N_EPOCHS     = 10
 from bot.strategy.features import FEATURE_COLS
 
 
@@ -93,13 +97,13 @@ class RLAgent:
         self.model = PPO(
             "MlpPolicy",
             env,
-            learning_rate=RL_LEARNING_RATE,
-            n_steps=RL_N_STEPS,
-            batch_size=RL_BATCH_SIZE,
-            n_epochs=RL_N_EPOCHS,
+            learning_rate=_RL_LEARNING_RATE,
+            n_steps=_RL_N_STEPS,
+            batch_size=_RL_BATCH_SIZE,
+            n_epochs=_RL_N_EPOCHS,
             verbose=1,
         )
-        self.model.learn(total_timesteps=RL_TIMESTEPS)
+        self.model.learn(total_timesteps=_RL_TIMESTEPS)
         self.model.save(MODEL_SAVE_PATH)
         logger.info(f"PPO model trained and saved to {MODEL_SAVE_PATH}")
 
