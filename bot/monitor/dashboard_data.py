@@ -21,8 +21,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import TRADE_DB_PATH, DAILY_LOSS_LIMIT_PCT, WEEKLY_LOSS_LIMIT_PCT
 
 _DB   = TRADE_DB_PATH
-_DARK = "#0f0f0f"
-_CARD = "#1a1a2e"
+
+# ── Unified light theme ───────────────────────────────────────────────────────
+# One palette + font for every custom-rendered surface (charts, HTML cards,
+# tables) so all tabs share the same look and feel as the light Gradio chrome.
+_BG     = "#ffffff"   # figure / card background
+_CARD   = "#f7f8fa"   # subtle inset panel (chart plot area, gauge track)
+_TEXT   = "#111827"   # primary text
+_MUTED  = "#6b7280"   # secondary / labels
+_GRID   = "#e5e7eb"   # gridlines, borders, row dividers
+_ACCENT = "#0891b2"   # primary accent (cyan-700 — readable on white)
+_POS    = "#15803d"   # gains (green)
+_NEG    = "#dc2626"   # losses (red)
+_FONT   = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 # Tracks last pull outcome for display in overview
 _last_sync: dict = {"ok": None, "ts": None, "err": ""}
@@ -182,10 +193,10 @@ def diagnostics() -> dict:
 
 def _ax_style(ax):
     ax.set_facecolor(_CARD)
-    ax.tick_params(colors="white")
+    ax.tick_params(colors=_MUTED)
     for spine in ax.spines.values():
-        spine.set_edgecolor("#333")
-    ax.grid(axis="y", color="#333", linestyle="--", alpha=0.4)
+        spine.set_edgecolor(_GRID)
+    ax.grid(axis="y", color=_GRID, linestyle="--", alpha=0.8)
 
 
 # ── Overview (Subscriber+) ────────────────────────────────────────────────────
@@ -412,10 +423,10 @@ def performance_md(m: dict) -> str:
 
 def portfolio_chart(days: int = 60) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(11, 4))
-    fig.patch.set_facecolor(_DARK); _ax_style(ax)
+    fig.patch.set_facecolor(_BG); _ax_style(ax)
     con = _con()
     if con is None:
-        ax.text(0.5, 0.5, "No data", ha="center", va="center", color="white"); return fig
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", color=_MUTED); return fig
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     # Union trade rows and heartbeat snapshots so the curve is populated even on
     # no-trade days; falls back to trades-only on older DBs lacking the snapshot table.
@@ -434,13 +445,13 @@ def portfolio_chart(days: int = 60) -> plt.Figure:
         )
     con.close()
     if df.empty:
-        ax.text(0.5, 0.5, "No data yet", ha="center", va="center", color="white"); return fig
+        ax.text(0.5, 0.5, "No data yet", ha="center", va="center", color=_MUTED); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.drop_duplicates(subset="timestamp").sort_values("timestamp")
-    ax.plot(df["timestamp"], df["portfolio_value"], color="#00d4ff", lw=1.5, label="Portfolio")
+    ax.plot(df["timestamp"], df["portfolio_value"], color=_ACCENT, lw=1.8, label="Portfolio")
     ax.fill_between(df["timestamp"], df["portfolio_value"], df["portfolio_value"].min() * 0.999,
-                    alpha=0.12, color="#00d4ff")
-    ax.set_title("Portfolio Value", color="white", fontsize=13)
+                    alpha=0.12, color=_ACCENT)
+    ax.set_title("Portfolio Value", color=_TEXT, fontsize=13, fontweight="bold")
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, _: f"${x:,.0f}"))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d"))
     fig.autofmt_xdate(); fig.tight_layout(); return fig
@@ -448,38 +459,38 @@ def portfolio_chart(days: int = 60) -> plt.Figure:
 
 def signals_chart(days: int = 30) -> plt.Figure:
     fig, axes = plt.subplots(2, 2, figsize=(11, 6))
-    fig.patch.set_facecolor(_DARK)
+    fig.patch.set_facecolor(_BG)
     for ax in axes.flatten(): _ax_style(ax)
     con = _con()
     if con is None:
-        axes[0][0].text(0.5, 0.5, "No data", ha="center", va="center", color="white"); return fig
+        axes[0][0].text(0.5, 0.5, "No data", ha="center", va="center", color=_MUTED); return fig
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT xgb_prob, lstm_prob, sentiment_score, ensemble_score FROM trades "
         "WHERE action='BUY' AND timestamp >= ?", con, params=(since,),
     )
     con.close()
-    pairs = [(axes[0][0], "xgb_prob", "XGB Probability", "#4fc3f7"),
-             (axes[0][1], "lstm_prob", "LSTM Probability", "#81c784"),
-             (axes[1][0], "sentiment_score", "Sentiment Score", "#ffb74d"),
-             (axes[1][1], "ensemble_score", "Ensemble Score", "#ce93d8")]
+    pairs = [(axes[0][0], "xgb_prob", "XGB Probability", "#2563eb"),
+             (axes[0][1], "lstm_prob", "LSTM Probability", _POS),
+             (axes[1][0], "sentiment_score", "Sentiment Score", "#d97706"),
+             (axes[1][1], "ensemble_score", "Ensemble Score", "#7c3aed")]
     for ax, col, title, color in pairs:
         data = df[col].dropna() if not df.empty and col in df.columns else pd.Series(dtype=float)
         if data.empty:
-            ax.text(0.5, 0.5, "No BUY data yet", ha="center", va="center", color="grey", fontsize=9)
+            ax.text(0.5, 0.5, "No BUY data yet", ha="center", va="center", color=_MUTED, fontsize=9)
         else:
             ax.hist(data, bins=20, color=color, alpha=0.85, edgecolor="none")
-        ax.set_title(title, color="white", fontsize=10)
-    fig.suptitle("Signal Score Distributions  (BUY entries)", color="white", fontsize=12)
+        ax.set_title(title, color=_TEXT, fontsize=10, fontweight="bold")
+    fig.suptitle("Signal Score Distributions  (BUY entries)", color=_TEXT, fontsize=12, fontweight="bold")
     fig.tight_layout(); return fig
 
 
 def monthly_chart(days: int = 180) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(11, 4))
-    fig.patch.set_facecolor(_DARK); _ax_style(ax)
+    fig.patch.set_facecolor(_BG); _ax_style(ax)
     con = _con()
     if con is None:
-        ax.text(0.5, 0.5, "No data", ha="center", va="center", color="white"); return fig
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", color=_MUTED); return fig
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
@@ -487,17 +498,17 @@ def monthly_chart(days: int = 180) -> plt.Figure:
     )
     con.close()
     if df.empty:
-        ax.text(0.5, 0.5, "No trades yet", ha="center", va="center", color="white"); return fig
+        ax.text(0.5, 0.5, "No trades yet", ha="center", va="center", color=_MUTED); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["month"]     = df["timestamp"].dt.to_period("M")
     m = df.groupby("month")["portfolio_value"].agg(["first", "last"])
     m["ret"] = (m["last"] - m["first"]) / (m["first"] + 1e-8) * 100
-    colors = ["#4caf50" if r >= 0 else "#ef5350" for r in m["ret"]]
+    colors = [_POS if r >= 0 else _NEG for r in m["ret"]]
     ax.bar([str(p) for p in m.index], m["ret"], color=colors, edgecolor="none")
-    ax.axhline(0, color="#555", lw=0.8)
+    ax.axhline(0, color=_MUTED, lw=0.8)
     ax.yaxis.set_major_formatter(mtick.FuncFormatter(lambda x, _: f"{x:.1f}%"))
-    ax.set_title("Monthly Returns", color="white", fontsize=13)
-    ax.tick_params(axis="x", rotation=25, colors="white")
+    ax.set_title("Monthly Returns", color=_TEXT, fontsize=13, fontweight="bold")
+    ax.tick_params(axis="x", rotation=25, colors=_MUTED)
     fig.tight_layout(); return fig
 
 
@@ -576,19 +587,19 @@ def compliance_md(c: dict) -> str:
 
 def compliance_gauges_html(c: dict) -> str:
     if not c:
-        return "<p style='color:#888'>No data.</p>"
+        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No data.</p>"
 
     def _bar(label: str, value_str: str, limit_str: str, pct: float) -> str:
         pct     = min(pct * 100, 100)
-        color   = "#ef5350" if pct >= 100 else "#ff9800" if pct >= 50 else "#4caf50"
+        color   = _NEG if pct >= 100 else "#d97706" if pct >= 50 else _POS
         return (
             f"<div style='margin:14px 0'>"
-            f"<div style='display:flex;justify-content:space-between;color:#ccc;font-size:13px;margin-bottom:4px'>"
+            f"<div style='display:flex;justify-content:space-between;color:{_MUTED};font-size:13px;margin-bottom:4px'>"
             f"<span>{label}</span><span>{value_str} &nbsp;/&nbsp; limit {limit_str}</span></div>"
-            f"<div style='background:#2a2a3e;border-radius:6px;height:18px'>"
+            f"<div style='background:{_GRID};border-radius:6px;height:18px'>"
             f"<div style='background:{color};width:{pct:.1f}%;height:100%;border-radius:6px;"
             f"transition:width .3s;display:flex;align-items:center;padding-left:6px;"
-            f"font-size:11px;color:#000;font-weight:bold'>"
+            f"font-size:11px;color:#fff;font-weight:bold'>"
             f"{'&nbsp;' + f'{pct:.0f}%' if pct > 10 else ''}"
             f"</div></div></div>"
         )
@@ -599,13 +610,13 @@ def compliance_gauges_html(c: dict) -> str:
 
     flags = ""
     if c["daily_warning_sent"]:
-        flags += "<span style='background:#ff9800;color:#000;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px'>⚠ Daily warning sent</span>"
+        flags += f"<span style='background:#d97706;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px'>⚠ Daily warning sent</span>"
     if c["weekly_halt_alerted"]:
-        flags += "<span style='background:#ef5350;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>🔴 Weekly halt alerted</span>"
+        flags += f"<span style='background:{_NEG};color:#fff;padding:2px 8px;border-radius:4px;font-size:12px'>🔴 Weekly halt alerted</span>"
 
     return (
-        f"<div style='background:#1a1a2e;padding:18px;border-radius:10px;font-family:sans-serif'>"
-        f"<h3 style='color:#fff;margin-top:0'>Risk Limit Gauges</h3>"
+        f"<div style='background:{_BG};border:1px solid {_GRID};padding:18px;border-radius:10px;font-family:{_FONT}'>"
+        f"<h3 style='color:{_TEXT};margin-top:0'>Risk Limit Gauges</h3>"
         + _bar("Daily Loss",   f"{c['day_pnl_pct']:+.2%}",  f"-{c['daily_limit_pct']:.0%}",  daily_pct)
         + _bar("Weekly Loss",  f"{c['week_pnl_pct']:+.2%}", f"-{c['weekly_limit_pct']:.0%}", weekly_pct)
         + _bar("PDT Trades",   f"{c['day_trades_used']}/{c['day_trades_limit']}", "3 / 5-day window", pdt_pct)
@@ -630,7 +641,7 @@ _ACTION_COLOR = {
 def trades_html_table(days: int = 30) -> str:
     con = _con()
     if con is None:
-        return "<p style='color:#888'>No trades data.</p>"
+        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades data.</p>"
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct "
@@ -639,35 +650,33 @@ def trades_html_table(days: int = 30) -> str:
     )
     con.close()
     if df.empty:
-        return "<p style='color:#888'>No trades in the selected window.</p>"
+        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades in the selected window.</p>"
 
     rows_html = ""
     for _, row in df.iterrows():
         action  = str(row["action"])
-        color   = _ACTION_COLOR.get(action, "#555")
+        color   = _ACTION_COLOR.get(action, _MUTED)
         ts      = pd.to_datetime(row["timestamp"]).strftime("%m-%d %H:%M")
         pnl_str = f"{row['pnl_pct']:+.2%}" if row["pnl_pct"] else "–"
-        pnl_col = "#4caf50" if row["pnl_pct"] and row["pnl_pct"] > 0 else ("#ef5350" if row["pnl_pct"] and row["pnl_pct"] < 0 else "#888")
+        pnl_col = _POS if row["pnl_pct"] and row["pnl_pct"] > 0 else (_NEG if row["pnl_pct"] and row["pnl_pct"] < 0 else _MUTED)
         notional_str = f"${row['notional']:,.2f}" if row["notional"] else "–"
-        # Dark text on the light dashboard background (the previous #fff symbol
-        # and #ccc cells were invisible / washed out on the white theme).
         rows_html += (
-            f"<tr style='border-bottom:1px solid #e5e7eb'>"
-            f"<td style='color:#555'>{ts}</td>"
-            f"<td style='color:#111;font-weight:bold'>{row['symbol']}</td>"
-            f"<td><span style='background:{color};color:#fff;padding:2px 7px;border-radius:4px;"
+            f"<tr style='border-bottom:1px solid {_GRID}'>"
+            f"<td style='color:{_MUTED};padding:6px'>{ts}</td>"
+            f"<td style='color:{_TEXT};font-weight:bold;padding:6px'>{row['symbol']}</td>"
+            f"<td style='padding:6px'><span style='background:{color};color:#fff;padding:2px 7px;border-radius:4px;"
             f"font-size:11px;white-space:nowrap'>{action}</span></td>"
-            f"<td style='color:#333'>{row['shares']:.4f}</td>"
-            f"<td style='color:#333'>${row['price']:.2f}</td>"
-            f"<td style='color:#333'>{notional_str}</td>"
-            f"<td style='color:{pnl_col};font-weight:bold'>{pnl_str}</td>"
+            f"<td style='color:{_TEXT};padding:6px'>{row['shares']:.4f}</td>"
+            f"<td style='color:{_TEXT};padding:6px'>${row['price']:.2f}</td>"
+            f"<td style='color:{_TEXT};padding:6px'>{notional_str}</td>"
+            f"<td style='color:{pnl_col};font-weight:bold;padding:6px'>{pnl_str}</td>"
             f"</tr>"
         )
 
     return (
         "<div style='overflow-x:auto'>"
-        "<table style='width:100%;border-collapse:collapse;font-family:monospace;font-size:13px'>"
-        "<thead><tr style='color:#555;border-bottom:2px solid #ccc'>"
+        f"<table style='width:100%;border-collapse:collapse;font-family:{_FONT};font-size:13px'>"
+        f"<thead><tr style='color:{_MUTED};border-bottom:2px solid {_GRID}'>"
         "<th style='text-align:left;padding:6px'>Time</th>"
         "<th style='text-align:left;padding:6px'>Symbol</th>"
         "<th style='text-align:left;padding:6px'>Action</th>"
@@ -688,12 +697,12 @@ _HALT_FILE = Path("data/HALT_TRADING")
 
 def halt_status_html() -> str:
     active = _HALT_FILE.exists()
-    color  = "#b71c1c" if active else "#1b5e20"
-    text   = "🔴 HALT ACTIVE — bot is paused" if active else "🟢 BOT RUNNING — no halt file"
+    color  = _NEG if active else _POS
+    text   = "🔴 HALT ACTIVE — trading paused" if active else "🟢 TRADING ENABLED — no halt file"
     btn_label = "▶ Remove Halt &amp; Resume" if active else "⏹ Activate Emergency Halt"
     return (
         f"<div style='background:{color};padding:12px 16px;border-radius:8px;"
-        f"color:#fff;font-size:14px;font-weight:bold'>{text}</div>"
+        f"color:#fff;font-size:14px;font-weight:bold;font-family:{_FONT}'>{text}</div>"
     ), btn_label
 
 

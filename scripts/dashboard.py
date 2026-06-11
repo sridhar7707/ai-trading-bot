@@ -120,8 +120,11 @@ def run_readiness_check() -> str:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _section(label: str) -> str:
-    return (f"<div style='background:#111;color:#aaa;padding:4px 10px;"
-            f"border-left:3px solid #0af;font-size:12px;margin-bottom:6px'>{label}</div>")
+    # Light section header bar — matches the light dashboard theme.
+    return (f"<div style='background:#f1f5f9;color:#475569;padding:6px 12px;"
+            f"border-left:3px solid #0891b2;border-radius:4px;font-size:12px;"
+            f"font-family:system-ui,-apple-system,\"Segoe UI\",Roboto,sans-serif;"
+            f"margin-bottom:6px'>{label}</div>")
 
 
 def _toggle_view(tier: str):
