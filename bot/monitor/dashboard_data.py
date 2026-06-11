@@ -633,36 +633,42 @@ def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
         prices = _live_prices(open_syms)
 
     rows = []
-    for sym, invested, bought_sh, sold_sh, realized, first_buy, last_sell in agg:
-        invested  = float(invested or 0)
-        net_sh    = float(bought_sh or 0) - float(sold_sh or 0)
-        realized  = float(realized or 0)
-        is_open   = net_sh > 1e-6
-
-        unrealized = 0.0
-        entry = float(entries.get(sym) or 0)
-        cur   = prices.get(sym)
-        if is_open and cur is not None and entry > 0:
-            unrealized = net_sh * (cur - entry)
-
-        total_return = realized + unrealized
-        value        = invested + total_return
-        ret_pct      = (total_return / invested) if invested else None
+    for sym, buy_notional, bought_sh, sold_sh, realized, first_buy, last_sell in agg:
+        buy_notional = float(buy_notional or 0)
+        net_sh       = float(bought_sh or 0) - float(sold_sh or 0)
+        realized     = float(realized or 0)
+        is_open      = net_sh > 1e-6
+        entry        = float(entries.get(sym) or 0)
+        cur          = prices.get(sym)
         status       = "🟢 Open" if is_open else "⚪ Sold"
         when         = (first_buy if is_open else last_sell) or first_buy or last_sell
         when_str     = pd.to_datetime(when).strftime("%Y-%m-%d") if when else "–"
 
-        # If open but price is unavailable, the return is only partially known.
-        if is_open and cur is None and net_sh > 1e-6:
-            ret_str = "—"
-            val_disp = "—"
-            tot_disp = "—"
+        if is_open:
+            # Open: use the same entry-price basis as the Positions table so the two
+            # tables agree on a stock's value/return (cost basis = net_sh × entry).
+            if cur is not None and entry > 0:
+                invested     = net_sh * entry
+                total_return = net_sh * (cur - entry) + realized
+                value        = invested + total_return          # = net_sh*cur + realized
+                ret_pct      = total_return / invested if invested else None
+                rows.append([sym, round(invested, 2), round(value, 2),
+                             round(total_return, 2),
+                             f"{ret_pct:+.2%}" if ret_pct is not None else "—",
+                             status, when_str])
+            else:
+                # Price/entry unavailable — show cost basis, leave return unknown.
+                invested = net_sh * entry if entry > 0 else buy_notional
+                rows.append([sym, round(invested, 2), "—", "—", "—", status, when_str])
         else:
-            ret_str  = f"{ret_pct:+.2%}" if ret_pct is not None else "—"
-            val_disp = round(value, 2)
-            tot_disp = round(total_return, 2)
-
-        rows.append([sym, round(invested, 2), val_disp, tot_disp, ret_str, status, when_str])
+            # Sold: cost basis = what was paid; proceeds = invested + realized P&L.
+            invested     = buy_notional
+            total_return = realized
+            value        = invested + realized
+            ret_pct      = (realized / invested) if invested else None
+            rows.append([sym, round(invested, 2), round(value, 2), round(total_return, 2),
+                         f"{ret_pct:+.2%}" if ret_pct is not None else "—",
+                         status, when_str])
 
     # Sort: open first, then by absolute return size
     df = pd.DataFrame(rows, columns=_RETURNS_COLS)
