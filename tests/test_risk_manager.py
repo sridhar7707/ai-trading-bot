@@ -162,3 +162,68 @@ def test_approve_sell_always_returns_true(risk):
     # Sells must never be blocked — exits must always be possible.
     assert risk.approve_sell("AAPL", -0.10, 9_000) is True
     assert risk.approve_sell("AAPL",  0.05, 10_500) is True
+
+
+# --- update_portfolio_high ---
+
+def test_update_portfolio_high_sets_initial_value():
+    rm = RiskManager()
+    rm.update_portfolio_high(10_000.0)
+    assert rm.portfolio_high == 10_000.0
+
+
+def test_update_portfolio_high_tracks_peak():
+    rm = RiskManager()
+    rm.update_portfolio_high(10_000.0)
+    rm.update_portfolio_high(12_000.0)
+    rm.update_portfolio_high(11_000.0)  # retreat — peak should stay at 12k
+    assert rm.portfolio_high == 12_000.0
+
+
+def test_update_portfolio_high_initialised_from_constructor():
+    rm = RiskManager(portfolio_high=15_000.0)
+    rm.update_portfolio_high(14_000.0)  # below existing high
+    assert rm.portfolio_high == 15_000.0
+
+
+# --- check_portfolio_drawdown ---
+
+def test_portfolio_drawdown_passes_within_limit():
+    rm = RiskManager(portfolio_high=10_000.0)
+    # 15% below peak — limit is 20%
+    assert rm.check_portfolio_drawdown(8_500.0) is True
+
+
+def test_portfolio_drawdown_blocks_at_limit():
+    rm = RiskManager(portfolio_high=10_000.0)
+    # Exactly 20% below peak
+    assert rm.check_portfolio_drawdown(8_000.0) is False
+
+
+def test_portfolio_drawdown_blocks_below_limit():
+    rm = RiskManager(portfolio_high=10_000.0)
+    # 25% below peak
+    assert rm.check_portfolio_drawdown(7_500.0) is False
+
+
+def test_portfolio_drawdown_passes_when_no_high():
+    rm = RiskManager()
+    assert rm.check_portfolio_drawdown(5_000.0) is True
+
+
+def test_portfolio_drawdown_passes_when_high_is_zero():
+    rm = RiskManager(portfolio_high=0.0)
+    assert rm.check_portfolio_drawdown(5_000.0) is True
+
+
+def test_approve_buy_blocked_by_portfolio_drawdown(risk):
+    risk.portfolio_high = 10_000.0
+    # 25% below all-time high — should block
+    assert risk.approve_buy("AAPL", 500, 10_000, 7_500.0, {}) is False
+
+
+def test_approve_buy_passes_with_acceptable_drawdown(risk):
+    # Set high above daily start so a ~10% drawdown from peak stays within daily loss limit
+    risk.portfolio_high = 11_000.0
+    # current=9_900: 10% below peak (within 20% limit), 1% below daily_start (within 5% limit)
+    assert risk.approve_buy("AAPL", 500, 10_000, 9_900.0, {}) is True

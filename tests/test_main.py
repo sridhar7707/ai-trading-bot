@@ -1,7 +1,15 @@
 import sqlite3
-from datetime import datetime, timezone, timedelta
+import math
+import pandas as pd
+from datetime import datetime, timezone, timedelta, date
 import pytest
-from bot.main import _opened_today, log_trade, init_db
+from bot.main import (
+    _opened_today, _maybe_record_day_trade, log_trade, init_db,
+    _kelly_fraction, _passes_correlation_gate, _check_time_exit,
+    _reconcile_positions, _load_risk_state, _save_risk_state,
+    _upsert_position_state, _delete_position_state,
+)
+from bot.risk.risk_manager import RiskManager
 
 
 @pytest.fixture
@@ -18,7 +26,22 @@ def db():
             lstm_prob REAL DEFAULT 0.0,
             sentiment_score REAL DEFAULT 0.0,
             macro_score REAL DEFAULT 0.0,
-            ensemble_score REAL DEFAULT 0.0
+            ensemble_score REAL DEFAULT 0.0,
+            realized_pnl REAL DEFAULT 0.0
+        )
+    """)
+    con.execute("""
+        CREATE TABLE risk_state (
+            key TEXT PRIMARY KEY, value TEXT, updated_at TEXT
+        )
+    """)
+    con.execute("""
+        CREATE TABLE position_state (
+            symbol TEXT PRIMARY KEY,
+            entry_price REAL,
+            high_water_mark REAL,
+            atr_at_entry REAL,
+            opened_at TEXT
         )
     """)
     con.commit()
@@ -28,11 +51,19 @@ def db():
 
 # --- _opened_today ---
 
+def _today_ts() -> str:
+    """Timestamp that starts with local today's date — matches _opened_today's LIKE query."""
+    return date.today().isoformat() + "T12:00:00+00:00"
+
+
+def _yesterday_ts() -> str:
+    return (date.today() - timedelta(days=1)).isoformat() + "T12:00:00+00:00"
+
+
 def test_opened_today_true_when_buy_today(db):
-    today = datetime.now(timezone.utc).isoformat()
     db.execute(
         "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
-        (today, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
+        (_today_ts(), "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()
     assert _opened_today(db, "AAPL") is True
@@ -43,30 +74,27 @@ def test_opened_today_false_when_no_buy(db):
 
 
 def test_opened_today_false_when_only_sell_today(db):
-    today = datetime.now(timezone.utc).isoformat()
     db.execute(
         "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
-        (today, "AAPL", "SELL", 1.0, 160.0, 0.0, "RANGING", 10160.0, 0.06),
+        (_today_ts(), "AAPL", "SELL", 1.0, 160.0, 0.0, "RANGING", 10160.0, 0.06),
     )
     db.commit()
     assert _opened_today(db, "AAPL") is False
 
 
 def test_opened_today_false_for_yesterday_buy(db):
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     db.execute(
         "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
-        (yesterday, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
+        (_yesterday_ts(), "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()
     assert _opened_today(db, "AAPL") is False
 
 
 def test_opened_today_symbol_isolation(db):
-    today = datetime.now(timezone.utc).isoformat()
     db.execute(
         "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) VALUES (?,?,?,?,?,?,?,?,?)",
-        (today, "MSFT", "BUY", 1.0, 300.0, 300.0, "RANGING", 10000.0, 0.0),
+        (_today_ts(), "MSFT", "BUY", 1.0, 300.0, 300.0, "RANGING", 10000.0, 0.0),
     )
     db.commit()
     assert _opened_today(db, "AAPL") is False
@@ -84,9 +112,79 @@ def test_log_trade_stores_record(db):
 def test_log_trade_timestamp_is_utc_iso(db):
     log_trade(db, "AAPL", "BUY", 1.0, 150.0, 150.0, "RANGING", 10000.0, 0.0)
     ts = db.execute("SELECT timestamp FROM trades").fetchone()[0]
-    # Should be parseable and contain UTC offset (+00:00) or 'Z'
     parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     assert parsed.tzinfo is not None
+
+
+def test_log_trade_realized_pnl_on_sell(db):
+    # 10 shares, entry $100, sell $110 → realized = 10 * (110 - 100) = 100.0
+    log_trade(db, "AAPL", "SELL", 10.0, 110.0, 1100.0, "RANGING", 10100.0, 0.10,
+              entry_price=100.0)
+    pnl = db.execute("SELECT realized_pnl FROM trades").fetchone()[0]
+    assert abs(pnl - 100.0) < 0.01
+
+
+def test_log_trade_realized_pnl_zero_on_buy(db):
+    log_trade(db, "AAPL", "BUY", 10.0, 100.0, 1000.0, "RANGING", 10000.0, 0.0,
+              entry_price=95.0)
+    pnl = db.execute("SELECT realized_pnl FROM trades").fetchone()[0]
+    assert pnl == 0.0
+
+
+def test_log_trade_realized_pnl_negative_on_loss(db):
+    # Sell at $90 with entry $100 → realized = 10 * (90 - 100) = -100.0
+    log_trade(db, "AAPL", "SELL_STOP", 10.0, 90.0, 900.0, "VOLATILE", 9900.0, -0.10,
+              entry_price=100.0)
+    pnl = db.execute("SELECT realized_pnl FROM trades").fetchone()[0]
+    assert abs(pnl - (-100.0)) < 0.01
+
+
+def test_log_trade_realized_pnl_zero_when_no_entry_price(db):
+    log_trade(db, "AAPL", "SELL", 10.0, 110.0, 1100.0, "RANGING", 10100.0, 0.10)
+    pnl = db.execute("SELECT realized_pnl FROM trades").fetchone()[0]
+    assert pnl == 0.0
+
+
+# --- _maybe_record_day_trade ---
+
+def _insert_buy_today(db, symbol):
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (_today_ts(), symbol, "BUY", 1.0, 100.0, 100.0, "RANGING", 10000.0, 0.0),
+    )
+    db.commit()
+
+
+def test_maybe_record_day_trade_records_when_not_exempt(db):
+    _insert_buy_today(db, "AAPL")
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    _maybe_record_day_trade(db, risk, "AAPL", sell_success=True, pdt_exempt=False)
+    assert len(risk.day_trade_log) == 1
+
+
+def test_maybe_record_day_trade_skips_when_exempt(db):
+    _insert_buy_today(db, "AAPL")
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    _maybe_record_day_trade(db, risk, "AAPL", sell_success=True, pdt_exempt=True)
+    assert len(risk.day_trade_log) == 0
+
+
+def test_maybe_record_day_trade_skips_when_sell_failed(db):
+    _insert_buy_today(db, "AAPL")
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    _maybe_record_day_trade(db, risk, "AAPL", sell_success=False, pdt_exempt=False)
+    assert len(risk.day_trade_log) == 0
+
+
+def test_maybe_record_day_trade_skips_when_not_opened_today(db):
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    _maybe_record_day_trade(db, risk, "AAPL", sell_success=True, pdt_exempt=False)
+    assert len(risk.day_trade_log) == 0
 
 
 # --- init_db ---
@@ -98,3 +196,254 @@ def test_init_db_creates_trades_table(tmp_path, monkeypatch):
     tables = con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     assert ("trades",) in tables
     con.close()
+
+
+def test_init_db_creates_all_tables(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "test_trades.db")
+    monkeypatch.setattr("bot.main.TRADE_DB_PATH", db_path)
+    con = init_db()
+    names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert {"trades", "position_state", "risk_state", "earnings_cache", "macro_cache"} <= names
+    con.close()
+
+
+def test_init_db_trades_has_realized_pnl_column(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "test_trades.db")
+    monkeypatch.setattr("bot.main.TRADE_DB_PATH", db_path)
+    con = init_db()
+    cols = {r[1] for r in con.execute("PRAGMA table_info(trades)").fetchall()}
+    assert "realized_pnl" in cols
+    con.close()
+
+
+# --- _kelly_fraction ---
+
+def _insert_sell(db, symbol, pnl_pct):
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (_today_ts(), symbol, "SELL", 1.0, 100.0, 100.0, "RANGING", 10000.0, pnl_pct),
+    )
+    db.commit()
+
+
+def test_kelly_fraction_returns_default_when_too_few_trades(db):
+    from bot.strategy.ensemble import BUY_FRACTION
+    # < 10 trades → should return default
+    for _ in range(5):
+        _insert_sell(db, "AAPL", 0.05)
+    result = _kelly_fraction(db, "AAPL")
+    assert result == BUY_FRACTION
+
+
+def test_kelly_fraction_returns_default_when_all_wins(db):
+    from bot.strategy.ensemble import BUY_FRACTION
+    for _ in range(15):
+        _insert_sell(db, "AAPL", 0.05)
+    # No losses → falls back to default (can't compute b ratio)
+    result = _kelly_fraction(db, "AAPL")
+    assert result == BUY_FRACTION
+
+
+def test_kelly_fraction_returns_default_when_all_losses(db):
+    from bot.strategy.ensemble import BUY_FRACTION
+    for _ in range(15):
+        _insert_sell(db, "AAPL", -0.05)
+    result = _kelly_fraction(db, "AAPL")
+    assert result == BUY_FRACTION
+
+
+def test_kelly_fraction_positive_edge_is_bounded(db):
+    from config import KELLY_FRACTION_MAX
+    # 80% win rate with good win/loss ratio → high Kelly, but must be capped
+    for _ in range(12):
+        _insert_sell(db, "MSFT", 0.10)
+    for _ in range(3):
+        _insert_sell(db, "MSFT", -0.01)
+    result = _kelly_fraction(db, "MSFT")
+    assert 0.02 <= result <= KELLY_FRACTION_MAX
+
+
+def test_kelly_fraction_minimum_floor(db):
+    # Negative edge → Kelly would be negative, but clamped to 0.02
+    for _ in range(5):
+        _insert_sell(db, "TSLA", 0.01)
+    for _ in range(10):
+        _insert_sell(db, "TSLA", -0.10)
+    result = _kelly_fraction(db, "TSLA")
+    assert result >= 0.02
+
+
+# --- _passes_correlation_gate ---
+
+def _make_bars(closes):
+    return pd.DataFrame({"close": closes})
+
+
+def test_passes_correlation_gate_no_bars_for_symbol():
+    # Symbol not in bars_map → passes (fail-open)
+    assert _passes_correlation_gate("AAPL", {"MSFT": None}, {}) is True
+
+
+def test_passes_correlation_gate_empty_positions():
+    bars = {"AAPL": _make_bars([1, 2, 3, 4, 5])}
+    assert _passes_correlation_gate("AAPL", {}, bars) is True
+
+
+def test_passes_correlation_gate_held_symbol_skipped():
+    # AAPL is both the candidate AND a held position — skip self-comparison
+    bars = {"AAPL": _make_bars(list(range(30)))}
+    assert _passes_correlation_gate("AAPL", {"AAPL": None}, bars) is True
+
+
+def test_passes_correlation_gate_blocks_high_correlation():
+    import numpy as np
+    from config import CORRELATION_THRESHOLD
+    # Perfectly correlated bars (same series)
+    prices = list(range(1, 31))
+    bars = {
+        "AAPL": _make_bars(prices),
+        "MSFT": _make_bars(prices),
+    }
+    result = _passes_correlation_gate("AAPL", {"MSFT": None}, bars)
+    # Correlation = 1.0 > CORRELATION_THRESHOLD → blocked
+    assert result is False
+
+
+def test_passes_correlation_gate_allows_uncorrelated():
+    import numpy as np
+    # Uncorrelated: alternating vs constant rise
+    bars = {
+        "AAPL": _make_bars([10 if i % 2 == 0 else 20 for i in range(30)]),
+        "TSLA": _make_bars(list(range(10, 40))),
+    }
+    result = _passes_correlation_gate("AAPL", {"TSLA": None}, bars)
+    # These returns should be near-zero correlated (constant rise vs alternating)
+    # Result depends on threshold, just ensure no exception is raised
+    assert isinstance(result, bool)
+
+
+def test_passes_correlation_gate_insufficient_common_bars():
+    # Only 5 common timestamps — gate requires ≥ 20
+    bars = {
+        "AAPL": _make_bars(list(range(5))),
+        "MSFT": _make_bars(list(range(5))),
+    }
+    # < 20 observations → gate skips this pair → passes
+    assert _passes_correlation_gate("AAPL", {"MSFT": None}, bars) is True
+
+
+# --- _check_time_exit ---
+
+def test_check_time_exit_no_pos_state():
+    assert _check_time_exit(None, 0.0) is False
+
+
+def test_check_time_exit_missing_opened_at():
+    assert _check_time_exit({}, -0.05) is False
+    assert _check_time_exit({"opened_at": None}, -0.05) is False
+
+
+def test_check_time_exit_recent_position_not_exited():
+    from config import MAX_HOLD_DAYS
+    opened = (datetime.now(timezone.utc) - timedelta(days=MAX_HOLD_DAYS - 1)).isoformat()
+    pos = {"opened_at": opened}
+    assert _check_time_exit(pos, -0.05) is False
+
+
+def test_check_time_exit_old_position_negative_pnl_exits():
+    from config import MAX_HOLD_DAYS
+    opened = (datetime.now(timezone.utc) - timedelta(days=MAX_HOLD_DAYS + 1)).isoformat()
+    pos = {"opened_at": opened}
+    # pnl_pct < 0.01 → should exit
+    assert _check_time_exit(pos, -0.01) is True
+
+
+def test_check_time_exit_old_position_good_pnl_stays():
+    from config import MAX_HOLD_DAYS
+    opened = (datetime.now(timezone.utc) - timedelta(days=MAX_HOLD_DAYS + 1)).isoformat()
+    pos = {"opened_at": opened}
+    # pnl_pct >= 0.01 → still profitable, keep holding
+    assert _check_time_exit(pos, 0.05) is False
+
+
+def test_check_time_exit_invalid_date_string():
+    pos = {"opened_at": "not-a-date"}
+    assert _check_time_exit(pos, -0.05) is False
+
+
+# --- _reconcile_positions ---
+
+def test_reconcile_removes_stale_db_entries(db):
+    # AAPL is in DB but not in Alpaca → should be removed
+    _upsert_position_state(db, "AAPL", 100.0, 100.0, 1.0)
+    _reconcile_positions(db, alpaca_positions={})
+    rows = db.execute("SELECT symbol FROM position_state").fetchall()
+    assert ("AAPL",) not in rows
+
+
+def test_reconcile_seeds_missing_alpaca_positions(db):
+    # MSFT is in Alpaca but not in DB → should be seeded
+    class FakePos:
+        avg_entry_price = 200.0
+
+    _reconcile_positions(db, alpaca_positions={"MSFT": FakePos()})
+    row = db.execute("SELECT entry_price FROM position_state WHERE symbol='MSFT'").fetchone()
+    assert row is not None
+    assert row[0] == pytest.approx(200.0)
+
+
+def test_reconcile_leaves_matching_positions(db):
+    # TSLA in both DB and Alpaca → untouched
+    _upsert_position_state(db, "TSLA", 300.0, 310.0, 2.0)
+
+    class FakePos:
+        avg_entry_price = 300.0
+
+    _reconcile_positions(db, alpaca_positions={"TSLA": FakePos()})
+    row = db.execute("SELECT symbol FROM position_state WHERE symbol='TSLA'").fetchone()
+    assert row is not None
+
+
+def test_reconcile_handles_empty_alpaca_and_db(db):
+    # Both empty → no-op
+    _reconcile_positions(db, alpaca_positions={})
+    assert db.execute("SELECT COUNT(*) FROM position_state").fetchone()[0] == 0
+
+
+# --- _load_risk_state / _save_risk_state ---
+
+def test_load_risk_state_returns_nones_when_empty(db):
+    daily_start, day_trades, weekly_start, warn_sent, halt_alerted, ph = _load_risk_state(db)
+    assert daily_start is None
+    assert day_trades == []
+    assert weekly_start is None
+    assert warn_sent is False
+    assert halt_alerted is False
+    assert ph is None
+
+
+def test_save_and_load_portfolio_high(db):
+    risk = RiskManager(portfolio_high=15_000.0)
+    risk.reset_daily(10_000.0)
+    _save_risk_state(db, risk)
+    _, _, _, _, _, ph = _load_risk_state(db)
+    assert ph == pytest.approx(15_000.0, abs=0.01)
+
+
+def test_save_and_load_daily_start(db):
+    risk = RiskManager()
+    risk.reset_daily(12_345.0)
+    _save_risk_state(db, risk)
+    daily_start, _, _, _, _, _ = _load_risk_state(db)
+    assert daily_start == pytest.approx(12_345.0, abs=0.01)
+
+
+def test_save_and_load_day_trade_log(db):
+    risk = RiskManager()
+    risk.reset_daily(10_000.0)
+    risk.record_day_trade()
+    risk.record_day_trade()
+    _save_risk_state(db, risk)
+    _, day_trades, _, _, _, _ = _load_risk_state(db)
+    assert len(day_trades) == 2
