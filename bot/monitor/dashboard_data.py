@@ -376,46 +376,91 @@ def get_trades_df(days: int = 30) -> pd.DataFrame:
 
 # ── Performance metrics (Pro+) ────────────────────────────────────────────────
 
+# Minimum 5-min-bar return observations before an annualized Sharpe is meaningful.
+_MIN_SHARPE_OBS = 20
+
+
 def get_performance_metrics(days: int = 60) -> dict:
     con = _con()
     if con is None:
         return {}
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    rows = con.execute(
-        "SELECT action, pnl_pct, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
-        (since,),
+    _empty = {"sharpe": None, "win_rate": 0.0, "max_drawdown": 0.0,
+              "total_return": 0.0, "trade_count": 0, "closed_trades": 0}
+
+    # Portfolio-value trajectory: union trade rows AND heartbeat snapshots, ordered
+    # by time — same source as Overview and the equity chart. Using trades alone
+    # showed 0% return whenever the only trade rows shared one portfolio_value
+    # (e.g. legacy rows all at the starting balance), ignoring the account's real
+    # growth captured by snapshots. Falls back to trades-only on older DBs.
+    try:
+        pv_rows = con.execute(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? "
+            "UNION ALL "
+            "SELECT timestamp, portfolio_value FROM portfolio_snapshots WHERE timestamp >= ? "
+            "ORDER BY timestamp",
+            (since, since),
+        ).fetchall()
+    except Exception:
+        pv_rows = con.execute(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
+            (since,),
+        ).fetchall()
+
+    # Win rate is over CLOSED trades only (SELL rows) — open BUYs have no outcome yet.
+    sells = con.execute(
+        "SELECT pnl_pct FROM trades WHERE action LIKE 'SELL%' AND timestamp >= ?", (since,)
     ).fetchall()
+    trade_count = con.execute(
+        "SELECT COUNT(*) FROM trades WHERE timestamp >= ?", (since,)
+    ).fetchone()[0]
     con.close()
-    if not rows:
-        return {"sharpe": 0.0, "win_rate": 0.0, "max_drawdown": 0.0, "total_return": 0.0}
-    vals    = np.array([r[2] for r in rows])
-    rets    = np.diff(vals) / (vals[:-1] + 1e-8)
-    sharpe  = float(np.mean(rets) / (np.std(rets) + 1e-8) * np.sqrt(252 * 78)) if len(rets) > 1 else 0.0
+
+    if not pv_rows:
+        return _empty
+    vals = np.array([r[1] for r in pv_rows if r[1] is not None], dtype=float)
+    if len(vals) == 0:
+        return _empty
+    rets   = np.diff(vals) / (vals[:-1] + 1e-8)
+    # Annualized Sharpe assumes ~uniform 5-min bar returns (sqrt(252*78)). With only
+    # a handful of irregular points it produces absurd values (e.g. 39), so report
+    # None until there's enough history to be meaningful.
+    if len(rets) >= _MIN_SHARPE_OBS and np.std(rets) > 0:
+        sharpe = float(np.mean(rets) / np.std(rets) * np.sqrt(252 * 78))
+    else:
+        sharpe = None
     peak = vals[0]; max_dd = 0.0
     for v in vals:
-        peak  = max(peak, v)
+        peak   = max(peak, v)
         max_dd = max(max_dd, (peak - v) / (peak + 1e-8))
-    sells    = [r for r in rows if r[0].startswith("SELL")]
-    win_rate = sum(1 for r in sells if r[1] > 0) / len(sells) if sells else 0.0
+    closed   = len(sells)
+    wins     = sum(1 for r in sells if r[0] is not None and r[0] > 0)
+    win_rate = wins / closed if closed else 0.0
     return {
-        "sharpe":       round(sharpe, 2),
-        "win_rate":     round(win_rate, 4),
-        "max_drawdown": round(max_dd, 4),
-        "total_return": round((vals[-1] - vals[0]) / (vals[0] + 1e-8), 4),
-        "trade_count":  len(rows),
+        "sharpe":        round(sharpe, 2) if sharpe is not None else None,
+        "win_rate":      round(win_rate, 4),
+        "max_drawdown":  round(max_dd, 4),
+        "total_return":  round((vals[-1] - vals[0]) / (vals[0] + 1e-8), 4),
+        "trade_count":   trade_count,
+        "closed_trades": closed,
     }
 
 
 def performance_md(m: dict) -> str:
     if not m:
         return "No data."
+    closed = m.get("closed_trades", 0)
+    # 0% win rate with no closed trades isn't "losing" — make that explicit.
+    win_str = f"{m['win_rate']:.1%}" if closed else "n/a (no closed trades yet)"
+    # Sharpe is None until there's enough history to annualize meaningfully.
+    sharpe_str = f"{m['sharpe']:.2f}" if m.get("sharpe") is not None else "n/a (need more history)"
     return (
         f"| Metric | Value |\n|--------|-------|\n"
-        f"| Sharpe Ratio | **{m['sharpe']:.2f}** |\n"
-        f"| Win Rate | **{m['win_rate']:.1%}** |\n"
+        f"| Sharpe Ratio | **{sharpe_str}** |\n"
+        f"| Win Rate | **{win_str}** |\n"
         f"| Max Drawdown | **{m['max_drawdown']:.1%}** |\n"
         f"| Total Return | **{m['total_return']:+.2%}** |\n"
-        f"| Trades Analysed | {m['trade_count']} |"
+        f"| Trades Analysed | {m['trade_count']} ({closed} closed) |"
     )
 
 
