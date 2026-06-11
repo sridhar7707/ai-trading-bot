@@ -8,7 +8,7 @@ from bot.main import (
     _kelly_fraction, _passes_correlation_gate, _check_time_exit,
     _reconcile_positions, _load_risk_state, _save_risk_state,
     _upsert_position_state, _delete_position_state, _is_wash_sale_risk,
-    _record_snapshot, _anchor_daily_start, _apply_sim_capital,
+    _record_snapshot, _anchor_daily_start,
 )
 from bot.risk.risk_manager import RiskManager
 
@@ -726,29 +726,6 @@ def test_anchor_daily_start_falls_back_to_trade(db):
     val, src = _anchor_daily_start(db)
     assert val == pytest.approx(99_000.0)
     assert "trade" in src
-
-
-def test_apply_sim_capital_disabled_by_default(monkeypatch):
-    monkeypatch.setattr("bot.main.PAPER_SIM_CAPITAL", 0.0)
-    pv, cash, active = _apply_sim_capital(100_000.0, 80_000.0)
-    assert (pv, cash, active) == (100_000.0, 80_000.0, False)
-
-
-def test_apply_sim_capital_caps_equity(monkeypatch):
-    monkeypatch.setattr("bot.main.PAPER_SIM_CAPITAL", 1_000.0)
-    pv, cash, active = _apply_sim_capital(100_000.0, 80_000.0)
-    assert pv == pytest.approx(1_000.0)      # sized as if $1k
-    assert cash == pytest.approx(1_000.0)
-    assert active is True
-
-
-def test_apply_sim_capital_never_exceeds_real_account(monkeypatch):
-    # If the real account is smaller than the sim cap, don't inflate it.
-    monkeypatch.setattr("bot.main.PAPER_SIM_CAPITAL", 1_000.0)
-    pv, cash, active = _apply_sim_capital(500.0, 400.0)
-    assert pv == pytest.approx(500.0)
-    assert cash == pytest.approx(400.0)
-    assert active is True
 
 
 def test_anchor_daily_start_ignores_today_only_data(db):
