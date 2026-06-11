@@ -135,19 +135,28 @@ def _toggle_view(view: str):
 
 # ── Build UI ──────────────────────────────────────────────────────────────────
 
-_theme = gr.themes.Base(primary_hue="cyan", neutral_hue="slate")
+# Explicit font: one real web font + a plain generic fallback. Avoids the woff2
+# 404s Gradio emits when its default theme tries to self-host "system-ui" /
+# "ui-sans-serif" as font files.
+_theme = gr.themes.Base(
+    primary_hue="cyan", neutral_hue="slate",
+    font=[gr.themes.GoogleFont("Inter"), "sans-serif"],
+)
 _gr_major = int(gr.__version__.split(".")[0])
 
-# Mobile-friendly tweaks: tighter padding and smaller, horizontally-scrollable
-# tables on narrow screens so the dashboard is usable on a phone.
+# Mobile-friendly tweaks. IMPORTANT: scope custom table CSS to our own HTML
+# tables only (.cf-table) — a global `table { display:block }` rule breaks
+# Gradio's DataFrame layout and leaves empty gaps. Our custom HTML tables carry
+# their own overflow wrapper, so no global override is needed.
 _CSS = """
 .gradio-container { max-width: 1200px !important; margin: auto !important; }
+.cf-table { overflow-x: auto; }
+.cf-table table { border-collapse: collapse; width: 100%; }
 @media (max-width: 640px) {
   .gradio-container { padding: 4px !important; }
-  table { font-size: 12px !important; }
+  .cf-table table { font-size: 12px !important; }
   h1 { font-size: 1.3rem !important; }
 }
-table { display: block; overflow-x: auto; white-space: nowrap; }
 """
 
 _GLOSSARY = """
@@ -326,6 +335,11 @@ with gr.Blocks(
         d["spy_return"] = spy_return_since(d.get("inception_date"))
         return overview_md(d)
 
+    def _load_positions():
+        # One handler returns both tables → avoids binding two handlers to the
+        # same load/refresh (which triggers Gradio's "too many arguments" warning).
+        return get_positions_df(), get_returns_summary_df()
+
     def _load_ov():
         refresh_db_from_hf()          # on auto-load: respect 5-min cache
         s, b = halt_status_html()
@@ -371,26 +385,22 @@ with gr.Blocks(
     # ── Subscriber wiring ─────────────────────────────────────────────────────
     demo.load(_load_ov,          outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     demo.load(_comp,             outputs=s_risk_gauges, **_kw)
-    demo.load(get_positions_df,  outputs=s_positions, **_kw)
-    demo.load(get_returns_summary_df, outputs=s_returns, **_kw)
+    demo.load(_load_positions,   outputs=[s_positions, s_returns], **_kw)
     demo.load(_s_trades_default, outputs=s_trades_table, **_kw)
     s_refresh_ov.click(_force_refresh_ov, outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     s_refresh_ov.click(_comp,            outputs=s_risk_gauges, **_kw)
     s_halt_btn.click(_do_halt,           outputs=[s_halt_status, s_halt_btn, s_halt_msg], **_kw)
-    s_refresh_pos.click(get_positions_df, outputs=s_positions, **_kw)
-    s_refresh_pos.click(get_returns_summary_df, outputs=s_returns, **_kw)
+    s_refresh_pos.click(_load_positions, outputs=[s_positions, s_returns], **_kw)
     s_refresh_tl.click(_s_trades_slider,  inputs=s_days_slider, outputs=s_trades_table, **_kw)
     s_days_slider.change(_s_trades_slider, inputs=s_days_slider, outputs=s_trades_table, **_kw)
 
     # ── Institutional wiring ──────────────────────────────────────────────────
     demo.load(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
-    demo.load(get_positions_df,  outputs=i_positions, **_kw)
-    demo.load(get_returns_summary_df, outputs=i_returns, **_kw)
+    demo.load(_load_positions,   outputs=[i_positions, i_returns], **_kw)
     demo.load(_i_trades_default, outputs=i_trades_table, **_kw)
     i_refresh_ov.click(_force_refresh_ov,  outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
     i_halt_btn.click(_do_halt,            outputs=[i_halt_status, i_halt_btn, i_halt_msg], **_kw)
-    i_refresh_pos.click(get_positions_df,  outputs=i_positions, **_kw)
-    i_refresh_pos.click(get_returns_summary_df, outputs=i_returns, **_kw)
+    i_refresh_pos.click(_load_positions, outputs=[i_positions, i_returns], **_kw)
     i_refresh_tl.click(_i_trades_slider,   inputs=i_days_slider, outputs=i_trades_table, **_kw)
     i_days_slider.change(_i_trades_slider, inputs=i_days_slider, outputs=i_trades_table, **_kw)
 

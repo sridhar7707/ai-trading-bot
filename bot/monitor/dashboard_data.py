@@ -1073,7 +1073,7 @@ def trades_html_table(days: int = 30) -> str:
         )
 
     return (
-        "<div style='overflow-x:auto'>"
+        "<div class='cf-table' style='overflow-x:auto'>"
         f"<table style='width:100%;border-collapse:collapse;font-family:{_FONT};font-size:13px'>"
         f"<thead><tr style='color:{_MUTED};border-bottom:2px solid {_GRID}'>"
         "<th style='text-align:left;padding:6px'>Time</th>"
