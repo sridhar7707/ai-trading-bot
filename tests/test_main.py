@@ -8,6 +8,7 @@ from bot.main import (
     _kelly_fraction, _passes_correlation_gate, _check_time_exit,
     _reconcile_positions, _load_risk_state, _save_risk_state,
     _upsert_position_state, _delete_position_state, _is_wash_sale_risk,
+    _record_snapshot,
 )
 from bot.risk.risk_manager import RiskManager
 
@@ -44,6 +45,14 @@ def db():
             high_water_mark REAL,
             atr_at_entry REAL,
             opened_at TEXT
+        )
+    """)
+    con.execute("""
+        CREATE TABLE portfolio_snapshots (
+            timestamp TEXT PRIMARY KEY,
+            portfolio_value REAL,
+            available_cash REAL,
+            open_positions INTEGER
         )
     """)
     con.commit()
@@ -205,7 +214,8 @@ def test_init_db_creates_all_tables(tmp_path, monkeypatch):
     monkeypatch.setattr("bot.main.TRADE_DB_PATH", db_path)
     con = init_db()
     names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-    assert {"trades", "position_state", "risk_state", "earnings_cache", "macro_cache"} <= names
+    assert {"trades", "position_state", "risk_state", "earnings_cache",
+            "macro_cache", "portfolio_snapshots"} <= names
     con.close()
 
 
@@ -625,3 +635,82 @@ def test_maybe_record_day_trade_pdt_exceeded_persists_to_db(db):
     assert row is not None
     stored_dates = json.loads(row[0])
     assert len(stored_dates) == PDT_MAX_DAY_TRADES + 1
+
+
+# --- _record_snapshot (per-cycle portfolio heartbeat) ---
+
+def test_record_snapshot_writes_row(db):
+    _record_snapshot(db, 12_500.0, 3_000.0, 2)
+    row = db.execute(
+        "SELECT portfolio_value, available_cash, open_positions FROM portfolio_snapshots"
+    ).fetchone()
+    assert row == (12_500.0, 3_000.0, 2)
+
+
+def test_record_snapshot_dashboard_reads_value_without_any_trade(db):
+    """The whole point: dashboard shows a live portfolio value on a no-trade DB."""
+    from bot.monitor.dashboard_data import _latest_portfolio_value
+    # No trades at all — only a snapshot
+    _record_snapshot(db, 9_876.0, 1_000.0, 0)
+    assert _latest_portfolio_value(db) == 9_876.0
+
+
+def test_latest_portfolio_value_prefers_newer_timestamp(db):
+    """When both a trade and a snapshot exist, the more recent one wins."""
+    from bot.monitor.dashboard_data import _latest_portfolio_value
+    # Older trade row
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-06-10T10:00:00+00:00", "AAPL", "BUY", 1.0, 100.0, 100.0, "RANGING", 10_000.0, 0.0),
+    )
+    # Newer snapshot
+    db.execute(
+        "INSERT INTO portfolio_snapshots (timestamp, portfolio_value, available_cash, open_positions) "
+        "VALUES (?,?,?,?)",
+        ("2026-06-11T10:00:00+00:00", 11_000.0, 500.0, 1),
+    )
+    db.commit()
+    assert _latest_portfolio_value(db) == 11_000.0
+
+
+def test_latest_portfolio_value_prefers_newer_trade(db):
+    """A trade row newer than the snapshot should win."""
+    from bot.monitor.dashboard_data import _latest_portfolio_value
+    db.execute(
+        "INSERT INTO portfolio_snapshots (timestamp, portfolio_value, available_cash, open_positions) "
+        "VALUES (?,?,?,?)",
+        ("2026-06-10T10:00:00+00:00", 9_000.0, 500.0, 1),
+    )
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-06-11T10:00:00+00:00", "AAPL", "SELL", 1.0, 120.0, 120.0, "RANGING", 12_000.0, 0.2),
+    )
+    db.commit()
+    assert _latest_portfolio_value(db) == 12_000.0
+
+
+def test_latest_portfolio_value_zero_when_empty(db):
+    from bot.monitor.dashboard_data import _latest_portfolio_value
+    assert _latest_portfolio_value(db) == 0.0
+
+
+def test_record_snapshot_upserts_same_timestamp(db, monkeypatch):
+    """Two writes in the same cycle (same timestamp) must not duplicate rows."""
+    import bot.main as m
+    fixed = "2026-06-11T12:00:00+00:00"
+
+    class _FixedDT:
+        @staticmethod
+        def now(tz=None):
+            from datetime import datetime as _dt
+            return _dt.fromisoformat(fixed)
+
+    monkeypatch.setattr(m, "datetime", _FixedDT)
+    _record_snapshot(db, 10_000.0, 1_000.0, 1)
+    _record_snapshot(db, 10_050.0, 950.0, 1)
+    n = db.execute("SELECT COUNT(*) FROM portfolio_snapshots").fetchone()[0]
+    assert n == 1
+    val = db.execute("SELECT portfolio_value FROM portfolio_snapshots").fetchone()[0]
+    assert val == 10_050.0  # second write overwrote the first

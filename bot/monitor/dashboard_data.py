@@ -34,6 +34,32 @@ def _con() -> sqlite3.Connection | None:
     return sqlite3.connect(_DB, check_same_thread=False)
 
 
+def _latest_portfolio_value(con) -> float:
+    """Most recent portfolio value from either a trade row or a heartbeat snapshot.
+
+    Snapshots are written every cycle (even with no trade), so this stays live
+    instead of reading $0.00 until the first fill.
+    """
+    candidates: list[tuple[str, float]] = []
+    try:
+        t = con.execute(
+            "SELECT timestamp, portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if t and t[1] is not None:
+            candidates.append((t[0], float(t[1])))
+    except Exception:
+        pass
+    try:
+        s = con.execute(
+            "SELECT timestamp, portfolio_value FROM portfolio_snapshots ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if s and s[1] is not None:
+            candidates.append((s[0], float(s[1])))
+    except Exception:
+        pass
+    return max(candidates, key=lambda r: r[0])[1] if candidates else 0.0
+
+
 def refresh_db_from_hf(force: bool = False) -> None:
     """Pull a fresh trades.db from HF dataset (Space-only, non-blocking)."""
     global _last_sync
@@ -109,7 +135,7 @@ def diagnostics() -> dict:
 
         con = _con()
         if con is not None:
-            for table in ("trades", "position_state", "risk_state", "macro_cache"):
+            for table in ("trades", "position_state", "risk_state", "macro_cache", "portfolio_snapshots"):
                 try:
                     n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                     info[f"rows_{table}"] = n
@@ -165,13 +191,8 @@ def get_overview() -> dict:
     except Exception:
         mc = {}
 
-    try:
-        row = con.execute(
-            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        portfolio = float(row[0]) if row else 0.0
-    except Exception:
-        portfolio = 0.0
+    # Live portfolio value — from latest trade or heartbeat snapshot, whichever newer
+    portfolio = _latest_portfolio_value(con)
 
     daily_start  = float(rs.get("daily_start_value",  0) or 0)
     weekly_start = float(rs.get("weekly_start_value", 0) or 0)
@@ -382,14 +403,26 @@ def portfolio_chart(days: int = 60) -> plt.Figure:
     if con is None:
         ax.text(0.5, 0.5, "No data", ha="center", va="center", color="white"); return fig
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    df = pd.read_sql_query(
-        "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
-        con, params=(since,),
-    )
+    # Union trade rows and heartbeat snapshots so the curve is populated even on
+    # no-trade days; falls back to trades-only on older DBs lacking the snapshot table.
+    try:
+        df = pd.read_sql_query(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? "
+            "UNION ALL "
+            "SELECT timestamp, portfolio_value FROM portfolio_snapshots WHERE timestamp >= ? "
+            "ORDER BY timestamp",
+            con, params=(since, since),
+        )
+    except Exception:
+        df = pd.read_sql_query(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
+            con, params=(since,),
+        )
     con.close()
     if df.empty:
-        ax.text(0.5, 0.5, "No trades yet", ha="center", va="center", color="white"); return fig
+        ax.text(0.5, 0.5, "No data yet", ha="center", va="center", color="white"); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.drop_duplicates(subset="timestamp").sort_values("timestamp")
     ax.plot(df["timestamp"], df["portfolio_value"], color="#00d4ff", lw=1.5, label="Portfolio")
     ax.fill_between(df["timestamp"], df["portfolio_value"], df["portfolio_value"].min() * 0.999,
                     alpha=0.12, color="#00d4ff")
@@ -483,13 +516,7 @@ def get_compliance_state() -> dict:
         rs = {r[0]: r[1] for r in con.execute("SELECT key, value FROM risk_state")}
     except Exception:
         rs = {}
-    try:
-        row = con.execute(
-            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        portfolio = float(row[0]) if row else 0.0
-    except Exception:
-        portfolio = 0.0
+    portfolio = _latest_portfolio_value(con)
     daily_start  = float(rs.get("daily_start_value",  0) or 0)
     weekly_start = float(rs.get("weekly_start_value", 0) or 0)
     try:

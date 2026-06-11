@@ -168,8 +168,37 @@ def init_db():
             key TEXT PRIMARY KEY, value REAL, cached_at TEXT
         )
     """)
+    # Per-cycle account snapshot — lets the dashboard show live portfolio value
+    # even on cycles where no trade executes (otherwise it reads $0.00 until the
+    # first fill, because portfolio value was only ever recorded on trade rows).
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            timestamp TEXT PRIMARY KEY,
+            portfolio_value REAL,
+            available_cash REAL,
+            open_positions INTEGER
+        )
+    """)
     con.commit()
     return con
+
+
+def _record_snapshot(con, portfolio_value: float, available_cash: float, open_positions: int):
+    """Write a heartbeat snapshot of account value for the dashboard.
+
+    Runs every cycle regardless of whether a trade happened, so the dashboard
+    always has a fresh portfolio value to display.
+    """
+    con.execute(
+        "INSERT OR REPLACE INTO portfolio_snapshots "
+        "(timestamp, portfolio_value, available_cash, open_positions) VALUES (?,?,?,?)",
+        (datetime.now(timezone.utc).isoformat(), portfolio_value, available_cash, open_positions),
+    )
+    con.commit()
+    logger.info(
+        f"Snapshot recorded — portfolio=${portfolio_value:,.2f}, cash=${available_cash:,.2f}, "
+        f"open_positions={open_positions}"
+    )
 
 
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
@@ -751,6 +780,8 @@ def run(mode: str = "paper"):
         f"Open positions: {list(positions.keys())} | "
         f"Pending buys: {buy_order_syms} | Pending sells: {sell_order_syms}"
     )
+    # Heartbeat snapshot — keeps the dashboard live even on no-trade cycles
+    _record_snapshot(con, portfolio_value, available_cash, len(positions))
     if sell_order_syms:
         logger.warning(
             f"Open sell orders detected for {len(sell_order_syms)} symbol(s): {sell_order_syms} "
