@@ -348,3 +348,58 @@ def test_halt_status_active_when_file_present(dash_db, tmp_path, monkeypatch):
     monkeypatch.setattr(dd, "_HALT_FILE", halt)
     html, btn = dd.halt_status_html()
     assert "HALT ACTIVE" in html
+
+
+# ── Empty-state guidance ──────────────────────────────────────────────────────
+
+_HINT_FRAGMENT = "market open (9:30 AM ET"
+
+
+@pytest.fixture
+def missing_db(tmp_path, monkeypatch):
+    """Point the dashboard at a non-existent DB so every tab hits its empty state."""
+    monkeypatch.setattr(dd, "_DB", str(tmp_path / "does_not_exist.db"))
+    monkeypatch.delenv("SPACE_ID", raising=False)
+    return None
+
+
+def test_overview_empty_shows_guidance(missing_db):
+    md = dd.overview_md(dd.get_overview())
+    assert _HINT_FRAGMENT in md
+
+
+def test_trade_log_empty_shows_guidance(missing_db):
+    assert _HINT_FRAGMENT in dd.trades_html_table(30)
+
+
+def test_performance_empty_shows_guidance(missing_db):
+    assert _HINT_FRAGMENT in dd.performance_md(dd.get_performance_metrics(60))
+
+
+def test_compliance_empty_shows_guidance(missing_db):
+    c = dd.get_compliance_state()
+    assert _HINT_FRAGMENT in dd.compliance_md(c)
+    assert _HINT_FRAGMENT in dd.compliance_gauges_html(c)
+
+
+@pytest.fixture
+def empty_schema_db(tmp_path, monkeypatch):
+    """Real DB with the full schema but zero rows → df-empty branches."""
+    db_path = str(tmp_path / "empty.db")
+    monkeypatch.setattr("bot.main.TRADE_DB_PATH", db_path)
+    con = init_db()
+    con.close()
+    monkeypatch.setattr(dd, "_DB", db_path)
+    monkeypatch.delenv("SPACE_ID", raising=False)
+    return db_path
+
+
+def test_empty_window_trade_log_message(empty_schema_db):
+    html = dd.trades_html_table(30)
+    assert "No trades in the selected window" in html
+
+
+def test_positions_empty_returns_typed_columns(empty_schema_db):
+    df = dd.get_positions_df(prices={}, portfolio=0.0)
+    assert list(df.columns) == dd._POSITION_COLS
+    assert len(df) == 0

@@ -35,6 +35,11 @@ _POS    = "#15803d"   # gains (green)
 _NEG    = "#dc2626"   # losses (red)
 _FONT   = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
+# Shown when a tab has no data yet — prevents the "is it broken?" confusion by
+# telling the user when data will appear.
+_EMPTY_HINT = ("The bot trades at market open (9:30 AM ET, Mon–Fri). "
+               "Data appears here after the first cycle of the day.")
+
 # Tracks last pull outcome for display in overview
 _last_sync: dict = {"ok": None, "ts": None, "err": ""}
 # Serializes HF pulls so concurrent tab loads don't race the download/copy.
@@ -359,7 +364,7 @@ def _fmt_age(seconds: float | None) -> str:
 
 def overview_md(d: dict) -> str:
     if "_error" in d:
-        return f"⚠️ {d['_error']}"
+        return f"⚠️ {d['_error']}\n\n_{_EMPTY_HINT}_"
 
     status = "🔴 EMERGENCY HALT" if d["emergency_halt"] else (
              "🔴 VIX HALT"        if d["macro_halt"]      else (
@@ -593,7 +598,7 @@ def get_performance_metrics(days: int = 60) -> dict:
 
 def performance_md(m: dict) -> str:
     if not m:
-        return "No data."
+        return f"No performance data yet. {_EMPTY_HINT}"
     closed = m.get("closed_trades", 0)
     # 0% win rate with no closed trades isn't "losing" — make that explicit.
     win_str = f"{m['win_rate']:.1%}" if closed else "n/a (no closed trades yet)"
@@ -635,7 +640,8 @@ def portfolio_chart(days: int = 60) -> plt.Figure:
         )
     con.close()
     if df.empty:
-        ax.text(0.5, 0.5, "No data yet", ha="center", va="center", color=_MUTED); return fig
+        ax.text(0.5, 0.5, f"No data yet\n{_EMPTY_HINT}", ha="center", va="center",
+                color=_MUTED, fontsize=9, wrap=True); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.drop_duplicates(subset="timestamp").sort_values("timestamp")
     ax.plot(df["timestamp"], df["portfolio_value"], color=_ACCENT, lw=1.8, label="Portfolio")
@@ -688,7 +694,8 @@ def monthly_chart(days: int = 180) -> plt.Figure:
     )
     con.close()
     if df.empty:
-        ax.text(0.5, 0.5, "No trades yet", ha="center", va="center", color=_MUTED); return fig
+        ax.text(0.5, 0.5, f"No trades yet\n{_EMPTY_HINT}", ha="center", va="center",
+                color=_MUTED, fontsize=9, wrap=True); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df["month"]     = df["timestamp"].dt.to_period("M")
     m = df.groupby("month")["portfolio_value"].agg(["first", "last"])
@@ -754,7 +761,7 @@ def get_compliance_state() -> dict:
 
 def compliance_md(c: dict) -> str:
     if not c:
-        return "No data."
+        return f"No compliance data yet. {_EMPTY_HINT}"
     daily_used  = abs(c["day_pnl_pct"])  / c["daily_limit_pct"]  * 100
     weekly_used = abs(c["week_pnl_pct"]) / c["weekly_limit_pct"] * 100
     pdt_used    = c["day_trades_used"]   / c["day_trades_limit"]  * 100
@@ -777,7 +784,7 @@ def compliance_md(c: dict) -> str:
 
 def compliance_gauges_html(c: dict) -> str:
     if not c:
-        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No data.</p>"
+        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No compliance data yet. {_EMPTY_HINT}</p>"
 
     def _bar(label: str, value_str: str, limit_str: str, pct: float) -> str:
         pct     = min(pct * 100, 100)
@@ -831,7 +838,7 @@ _ACTION_COLOR = {
 def trades_html_table(days: int = 30) -> str:
     con = _con()
     if con is None:
-        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades data.</p>"
+        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades yet. {_EMPTY_HINT}</p>"
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct "
@@ -840,7 +847,8 @@ def trades_html_table(days: int = 30) -> str:
     )
     con.close()
     if df.empty:
-        return f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades in the selected window.</p>"
+        return (f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades in the selected window. "
+                f"Try a longer range, or check back after the next market session.</p>")
 
     rows_html = ""
     for _, row in df.iterrows():
