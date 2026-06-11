@@ -3,8 +3,12 @@ import numpy as np
 import ta
 
 
+MIN_BARS = 60  # EMA-50 needs 50; keep headroom for dropna
+
 def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add all technical indicators to an OHLCV DataFrame."""
+    if len(df) < MIN_BARS:
+        raise ValueError(f"compute_features requires at least {MIN_BARS} bars, got {len(df)}")
     close  = df["close"]
     high   = df["high"]
     low    = df["low"]

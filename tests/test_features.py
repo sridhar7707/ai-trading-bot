@@ -42,10 +42,10 @@ def test_volume_ratio_inf_replaced_with_nan_then_dropped():
         assert not np.isinf(result["volume_ratio"]).any()
 
 
-@pytest.mark.xfail(reason="compute_features has no guard for short input — tech debt")
 def test_compute_features_raises_on_insufficient_rows():
     df = make_ohlcv(10)
-    compute_features(df)
+    with pytest.raises(ValueError, match="at least"):
+        compute_features(df)
 
 
 def test_feature_values_are_finite_on_valid_data(ohlcv):
