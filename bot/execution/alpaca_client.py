@@ -11,8 +11,16 @@ LIMIT_BUF    = 0.001  # 0.1% aggressive-limit buffer — fills in normal liquid 
 
 class AlpacaClient:
     def __init__(self):
+        if not ALPACA_KEY or not ALPACA_SECRET:
+            logger.error(
+                "ALPACA_KEY/ALPACA_SECRET is EMPTY — Alpaca calls will fail and the account "
+                "value will read $0.00. Set these as environment/Space secrets."
+            )
         self.api = tradeapi.REST(ALPACA_KEY, ALPACA_SECRET, ALPACA_BASE_URL, api_version="v2")
-        logger.info(f"Alpaca connected — mode: {'paper' if 'paper' in ALPACA_BASE_URL else 'live'}")
+        logger.info(
+            f"Alpaca connected — mode: {'paper' if 'paper' in ALPACA_BASE_URL else 'live'}, "
+            f"url={ALPACA_BASE_URL}, key=...{ALPACA_KEY[-4:] if ALPACA_KEY else 'MISSING'}"
+        )
 
     def get_account(self):
         return self.api.get_account()

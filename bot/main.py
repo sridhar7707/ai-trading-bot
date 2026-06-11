@@ -654,6 +654,8 @@ def run(mode: str = "paper"):
 
     client = AlpacaClient()
     if not _is_market_hours(client.api):
+        logger.info("Market is closed — cycle skipped (no trades, no DB write). "
+                    "Dashboard will keep showing the last synced values.")
         return
 
     con = init_db()
@@ -687,6 +689,15 @@ def run(mode: str = "paper"):
     lstm       = LSTMPredictor()
 
     portfolio_value, available_cash = client.get_account_summary()
+    if portfolio_value <= 0:
+        logger.error(
+            f"Alpaca returned portfolio_value=${portfolio_value:.2f} — likely an auth/connection "
+            "failure (check ALPACA_KEY/ALPACA_SECRET). Dashboard would show $0.00. Aborting cycle."
+        )
+        tg._send("🚨 Alpaca account value is $0.00 — check API credentials. Bot cycle aborted.")
+        con.close()
+        return
+    logger.info(f"Alpaca connection OK — account value ${portfolio_value:,.2f}")
     risk.update_portfolio_high(portfolio_value)
 
     # Brokerage compliance: validate account standing before placing any orders
@@ -1075,6 +1086,30 @@ def run(mode: str = "paper"):
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
+
+    # End-of-cycle DB summary — makes "why is the dashboard empty?" obvious from the logs
+    try:
+        n_trades = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+        n_today  = con.execute(
+            "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (date.today().isoformat() + "%",)
+        ).fetchone()[0]
+        n_pos    = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
+        last     = con.execute(
+            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        last_pv  = f"${last[0]:,.2f}" if last else "NONE"
+        logger.info(
+            f"DB summary — trades total={n_trades} (today={n_today}), open_positions={n_pos}, "
+            f"latest portfolio_value={last_pv}"
+        )
+        if n_trades == 0:
+            logger.warning(
+                "trades table is EMPTY — dashboard will show $0.00 because portfolio value is "
+                "derived from the latest trade row. No trade has executed yet (gates blocking, "
+                "no buy signal, or first run). This is expected until the first fill."
+            )
+    except Exception as _e:
+        logger.warning(f"End-of-cycle DB summary failed: {_e}")
 
     logger.info("=== Trading cycle complete ===")
     con.close()

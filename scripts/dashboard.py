@@ -26,6 +26,7 @@ if not hasattr(_hfhub, "HfFolder"):
     _hfhub.HfFolder = _HfFolder
 
 import gradio as gr
+from loguru import logger
 from bot.monitor.dashboard_data import (
     get_overview, overview_md,
     get_positions_df,
@@ -34,8 +35,17 @@ from bot.monitor.dashboard_data import (
     get_audit_df,
     get_compliance_state, compliance_gauges_html,
     halt_status_html, toggle_halt,
-    refresh_db_from_hf,
+    refresh_db_from_hf, diagnostics,
 )
+
+# ── Startup diagnostics ───────────────────────────────────────────────────────
+# Runs once when the Space boots. The log output reveals the common $0.00 causes
+# (missing HF_TOKEN, never-synced DB, empty trades table) immediately.
+logger.info("Dashboard starting — running startup diagnostics…")
+diagnostics()
+# Force an initial pull so the very first render has fresh data (bypasses 5-min cache)
+refresh_db_from_hf(force=True)
+diagnostics()  # second pass shows DB state AFTER the pull
 
 
 # ── Readiness check (Institutional) ──────────────────────────────────────────

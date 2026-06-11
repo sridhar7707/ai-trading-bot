@@ -57,6 +57,89 @@ def refresh_db_from_hf(force: bool = False) -> None:
         logger.error(f"refresh_db_from_hf: exception — {exc}")
 
 
+def diagnostics() -> dict:
+    """Log a full snapshot of the dashboard's environment and DB state.
+
+    Call this once at Space startup. The log output makes the common failure
+    modes (missing HF_TOKEN, empty DB, wrong repo, never-synced) obvious at a
+    glance instead of silently rendering $0.00.
+    """
+    import sys as _sys
+    from config import HF_DB_REPO_ID, HF_TOKEN
+
+    in_space = bool(os.environ.get("SPACE_ID"))
+    token_present = bool(HF_TOKEN or os.environ.get("HF_TOKEN"))
+    db_path = Path(_DB)
+    db_exists = db_path.exists()
+
+    info: dict = {
+        "in_hf_space":   in_space,
+        "space_id":      os.environ.get("SPACE_ID", "—"),
+        "hf_token_set":  token_present,
+        "hf_db_repo":    HF_DB_REPO_ID or "—",
+        "db_path":       str(db_path.resolve()),
+        "db_exists":     db_exists,
+        "python":        _sys.version.split()[0],
+    }
+
+    logger.info("─── DASHBOARD DIAGNOSTICS ───────────────────────────────")
+    logger.info(f"  Running in HF Space : {in_space}  (SPACE_ID={info['space_id']})")
+    logger.info(f"  HF_TOKEN present    : {token_present}")
+    logger.info(f"  HF_DB_REPO_ID       : {info['hf_db_repo']}")
+    logger.info(f"  DB path             : {info['db_path']}")
+    logger.info(f"  DB exists           : {db_exists}")
+
+    if not in_space:
+        logger.warning("  ⚠ SPACE_ID not set — refresh_db_from_hf() will SKIP pulling from HF.")
+    if in_space and not token_present:
+        logger.error("  ⚠ In a Space but HF_TOKEN is MISSING — add it as a Space secret, "
+                     "otherwise the private dataset cannot be pulled and the dashboard stays at $0.00.")
+
+    if db_exists:
+        try:
+            size_kb = db_path.stat().st_size / 1024
+            age_s   = (datetime.now(timezone.utc) -
+                       datetime.fromtimestamp(db_path.stat().st_mtime, tz=timezone.utc)).total_seconds()
+            info["db_size_kb"] = round(size_kb, 1)
+            info["db_age_s"]   = round(age_s)
+            logger.info(f"  DB size             : {size_kb:.1f} KB")
+            logger.info(f"  DB file age         : {_fmt_age(age_s)}")
+        except Exception as exc:
+            logger.warning(f"  Could not stat DB file: {exc}")
+
+        con = _con()
+        if con is not None:
+            for table in ("trades", "position_state", "risk_state", "macro_cache"):
+                try:
+                    n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    info[f"rows_{table}"] = n
+                    logger.info(f"  rows[{table:<14}]: {n}")
+                except Exception as exc:
+                    info[f"rows_{table}"] = f"ERROR: {exc}"
+                    logger.warning(f"  rows[{table:<14}]: table missing/unreadable — {exc}")
+            try:
+                row = con.execute(
+                    "SELECT timestamp, symbol, action, portfolio_value "
+                    "FROM trades ORDER BY timestamp DESC LIMIT 1"
+                ).fetchone()
+                if row:
+                    info["latest_trade"] = row[0]
+                    logger.info(f"  latest trade        : {row[0]} {row[1]} {row[2]} "
+                                f"portfolio=${row[3]:,.2f}")
+                else:
+                    logger.warning("  latest trade        : NONE — trades table is empty, "
+                                   "dashboard will show $0.00 portfolio")
+            except Exception as exc:
+                logger.warning(f"  latest trade        : query failed — {exc}")
+            con.close()
+    else:
+        logger.error("  ⚠ trades.db does NOT exist locally — nothing to display. "
+                     "Either the bot has never run, or the HF pull failed.")
+
+    logger.info("──────────────────────────────────────────────────────────")
+    return info
+
+
 def _ax_style(ax):
     ax.set_facecolor(_CARD)
     ax.tick_params(colors="white")
