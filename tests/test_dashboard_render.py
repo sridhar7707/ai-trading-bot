@@ -146,6 +146,48 @@ def test_overview_md_shows_correct_strings(dash_db):
     assert "0.42" in md              # macro score
 
 
+def test_overview_dollar_pnl(dash_db):
+    d = dd.get_overview()
+    # day: 102000 - 100000 = +2000 ; week: 102000 - 80000 = +22000
+    assert d["day_pnl_dollars"]  == pytest.approx(SNAP_PORTF - DAILY_START)
+    assert d["week_pnl_dollars"] == pytest.approx(SNAP_PORTF - WEEKLY_START)
+    md = dd.overview_md(d)
+    assert "+$2,000.00 (+2.00%)" in md
+    assert "+$22,000.00 (+27.50%)" in md
+
+
+def test_overview_total_return_and_inception(dash_db):
+    d = dd.get_overview()
+    # inception = earliest portfolio_value (the BUY at 100000)
+    assert d["total_return"] == pytest.approx((SNAP_PORTF - 100_000.0) / 100_000.0)
+    assert d["inception_date"] is not None
+
+
+def test_overview_vs_spy_beating(dash_db):
+    d = dd.get_overview()
+    d["spy_return"] = 0.012   # bot +2% beats SPY +1.2%
+    md = dd.overview_md(d)
+    assert "+2.00% vs S&P +1.20%" in md
+    assert "beating the market" in md
+
+
+def test_overview_vs_spy_absent_shows_inception(dash_db):
+    d = dd.get_overview()
+    d["spy_return"] = None
+    assert "since inception" in dd.overview_md(d)
+
+
+def test_spy_return_skipped_off_space(dash_db, monkeypatch):
+    monkeypatch.delenv("SPACE_ID", raising=False)
+    assert dd.spy_return_since("2026-01-01") is None  # no network off-Space
+
+
+def test_money_formatting():
+    assert dd._money(2000.0)  == "+$2,000.00"
+    assert dd._money(-120.5)  == "-$120.50"
+    assert dd._money(0.0)     == "+$0.00"
+
+
 # ── Positions ─────────────────────────────────────────────────────────────────
 
 def test_positions_df_has_both_symbols_and_prices(dash_db):

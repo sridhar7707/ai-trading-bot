@@ -39,6 +39,8 @@ _FONT   = "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-
 _last_sync: dict = {"ok": None, "ts": None, "err": ""}
 # Serializes HF pulls so concurrent tab loads don't race the download/copy.
 _pull_lock = threading.Lock()
+# Caches the daily SPY benchmark return (network) so Overview doesn't refetch per render.
+_spy_cache: dict = {"key": None, "ret": None}
 
 
 def _con() -> sqlite3.Connection | None:
@@ -78,6 +80,56 @@ def _latest_portfolio_value(con) -> float:
     except Exception:
         pass
     return max(candidates, key=lambda r: r[0])[1] if candidates else 0.0
+
+
+def _inception(con) -> tuple[float, str | None]:
+    """Earliest (portfolio_value, timestamp) across trades + snapshots — the
+    starting point for total-return and benchmark comparison."""
+    candidates: list[tuple[str, float]] = []
+    for table in ("trades", "portfolio_snapshots"):
+        try:
+            r = con.execute(
+                f"SELECT timestamp, portfolio_value FROM {table} "
+                f"WHERE portfolio_value IS NOT NULL ORDER BY timestamp LIMIT 1"
+            ).fetchone()
+            if r and r[1] is not None:
+                candidates.append((r[0], float(r[1])))
+        except Exception:
+            pass
+    if not candidates:
+        return 0.0, None
+    ts, val = min(candidates, key=lambda r: r[0])
+    return val, ts
+
+
+def spy_return_since(start_iso: str | None) -> float | None:
+    """S&P 500 (SPY) total return since `start_iso`, best-effort.
+
+    Network call (yfinance) — only attempted inside an HF Space, cached for the
+    day so the Overview can show "you vs the index" without refetching per render.
+    Returns None on any failure so the UI degrades gracefully.
+    """
+    if not start_iso or not os.environ.get("SPACE_ID"):
+        return None
+    global _spy_cache
+    today = date.today().isoformat()
+    key = (today, start_iso)
+    if _spy_cache.get("key") == key:
+        return _spy_cache.get("ret")
+    ret = None
+    try:
+        import yfinance as yf
+        start = start_iso[:10]
+        spy = yf.download("SPY", start=start, progress=False, auto_adjust=True)
+        if spy is not None and len(spy) > 1:
+            first = float(spy["Close"].iloc[0])
+            last  = float(spy["Close"].iloc[-1])
+            if first:
+                ret = (last - first) / first
+    except Exception as exc:
+        logger.warning(f"spy_return_since: yfinance failed — {exc}")
+    _spy_cache = {"key": key, "ret": ret}
+    return ret
 
 
 def refresh_db_from_hf(force: bool = False) -> None:
@@ -226,6 +278,13 @@ def get_overview() -> dict:
 
     day_pnl  = (portfolio - daily_start)  / daily_start  if is_today  and daily_start  else 0.0
     week_pnl = (portfolio - weekly_start) / weekly_start if is_this_week and weekly_start else 0.0
+    # Dollar P&L alongside the percentages — retail users think in dollars.
+    day_pnl_dollars  = (portfolio - daily_start)  if is_today  and daily_start  else 0.0
+    week_pnl_dollars = (portfolio - weekly_start) if is_this_week and weekly_start else 0.0
+
+    # Bot total return since inception (DB-only; benchmark comparison added by caller)
+    inception_value, inception_date = _inception(con)
+    total_return = (portfolio - inception_value) / inception_value if inception_value else 0.0
 
     try:
         day_trade_dates = json.loads(rs.get("day_trade_dates", "[]"))
@@ -263,6 +322,11 @@ def get_overview() -> dict:
         "portfolio":        portfolio,
         "day_pnl":          day_pnl,
         "week_pnl":         week_pnl,
+        "day_pnl_dollars":  day_pnl_dollars,
+        "week_pnl_dollars": week_pnl_dollars,
+        "total_return":     total_return,
+        "inception_date":   inception_date,
+        "spy_return":       None,   # filled in by the caller (network, best-effort)
         "trades_today":     trades_today,
         "open_positions":   open_positions,
         "day_trades_used":  day_trade_dates.count(today),
@@ -276,6 +340,11 @@ def get_overview() -> dict:
         "sync_err":         _last_sync.get("err", ""),
         "db_age_s":         db_mtime_s,
     }
+
+
+def _money(x: float) -> str:
+    """Signed dollar amount, e.g. +$480.00 / -$120.50."""
+    return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
 
 
 def _fmt_age(seconds: float | None) -> str:
@@ -309,12 +378,26 @@ def overview_md(d: dict) -> str:
     else:
         sync_line = f"⚪ DB not yet synced · file last updated {_fmt_age(db_age)}"
 
+    # Dollar + percent together (retail users think in dollars)
+    day_str  = f"{_money(d.get('day_pnl_dollars', 0))} ({d['day_pnl']:+.2%})"
+    week_str = f"{_money(d.get('week_pnl_dollars', 0))} ({d['week_pnl']:+.2%})"
+
+    # Bot return vs the S&P 500 — the single most meaningful comparison
+    bot_ret = d.get("total_return", 0.0)
+    spy_ret = d.get("spy_return")
+    if spy_ret is not None:
+        verdict = "🟢 beating" if bot_ret > spy_ret else "🔴 trailing"
+        vs_spy  = f"{bot_ret:+.2%} vs S&P {spy_ret:+.2%} — {verdict} the market"
+    else:
+        vs_spy  = f"{bot_ret:+.2%} since inception"
+
     return (
         f"### Bot Status: {status}\n\n"
         f"| Metric | Value |\n|--------|-------|\n"
         f"| Portfolio Value | **${d['portfolio']:,.2f}** |\n"
-        f"| Day P&L | **{d['day_pnl']:+.2%}** |\n"
-        f"| Week P&L | **{d['week_pnl']:+.2%}** |\n"
+        f"| Day P&L | **{day_str}** |\n"
+        f"| Week P&L | **{week_str}** |\n"
+        f"| Return vs S&P 500 | **{vs_spy}** |\n"
         f"| Trades Today | {d['trades_today']} |\n"
         f"| Open Positions | {d['open_positions']} |\n"
         f"| Day Trades Used | {d['day_trades_used']}/3 (PDT) |\n"

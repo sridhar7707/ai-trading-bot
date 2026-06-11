@@ -35,7 +35,7 @@ from bot.monitor.dashboard_data import (
     get_audit_df,
     get_compliance_state, compliance_gauges_html,
     halt_status_html, toggle_halt,
-    refresh_db_from_hf, diagnostics,
+    refresh_db_from_hf, diagnostics, spy_return_since,
 )
 
 # ── Startup diagnostics ───────────────────────────────────────────────────────
@@ -279,15 +279,21 @@ with gr.Blocks(
                 i_refresh_cp  = gr.Button("🔄 Refresh", size="sm")
 
     # ── Named helpers (no lambdas — Gradio 5.x lambda API conflicts) ─────────────
+    def _overview_with_benchmark():
+        d = get_overview()
+        # Best-effort S&P comparison (network, Space-only, cached daily)
+        d["spy_return"] = spy_return_since(d.get("inception_date"))
+        return overview_md(d)
+
     def _load_ov():
         refresh_db_from_hf()          # on auto-load: respect 5-min cache
         s, b = halt_status_html()
-        return overview_md(get_overview()), s, b
+        return _overview_with_benchmark(), s, b
 
     def _force_refresh_ov():
         refresh_db_from_hf(force=True)  # on manual Refresh: bypass cache, always re-pull
         s, b = halt_status_html()
-        return overview_md(get_overview()), s, b
+        return _overview_with_benchmark(), s, b
 
     def _do_halt():
         s, b, msg = toggle_halt()
