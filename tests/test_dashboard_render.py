@@ -219,6 +219,43 @@ def test_positions_unrealized_pnl_math(dash_db):
     assert za["% Port"] == "0.2%"
 
 
+def test_returns_summary_open_position_math(dash_db):
+    # ZZZA: BUY 1 @150 (invested 150), open, current 165 → unrealized +15 → +10%
+    df = dd.get_returns_summary_df(prices={"ZZZA": 165.0})
+    za = df[df["Symbol"] == "ZZZA"].iloc[0]
+    assert za["Invested $"] == pytest.approx(150.0)
+    assert za["Return $"]  == pytest.approx(15.0)     # 1 * (165 - 150)
+    assert za["Value $"]   == pytest.approx(165.0)    # invested + return
+    assert za["Return %"]  == "+10.00%"
+    assert "Open" in za["Status"]
+
+
+def test_returns_summary_sold_position_uses_realized(dash_db):
+    # ZZZB: one SELL with realized_pnl +10, fully exited → Sold, return = +10
+    df = dd.get_returns_summary_df(prices={})
+    zb = df[df["Symbol"] == "ZZZB"].iloc[0]
+    assert zb["Return $"] == pytest.approx(10.0)
+    assert "Sold" in zb["Status"]
+    # ZZZC: realized -10 (a loss)
+    zc = df[df["Symbol"] == "ZZZC"].iloc[0]
+    assert zc["Return $"] == pytest.approx(-10.0)
+    assert "Sold" in zc["Status"]
+
+
+def test_returns_summary_open_without_price_shows_dash(dash_db):
+    # Open position but no live price → return unknown, shown as "—" (no fake number)
+    df = dd.get_returns_summary_df(prices={})
+    za = df[df["Symbol"] == "ZZZA"].iloc[0]
+    assert za["Return %"] == "—"
+    assert za["Invested $"] == pytest.approx(150.0)   # invested is always known
+
+
+def test_returns_summary_columns_and_empty(empty_schema_db):
+    df = dd.get_returns_summary_df(prices={})
+    assert list(df.columns) == dd._RETURNS_COLS
+    assert len(df) == 0
+
+
 def test_positions_price_unavailable_shows_dash(dash_db):
     # No prices (off-Space) → current/unrealized/%port show em-dash, no crash.
     df = dd.get_positions_df(prices={}, portfolio=102_000.0)

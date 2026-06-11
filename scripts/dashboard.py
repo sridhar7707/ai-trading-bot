@@ -29,7 +29,7 @@ import gradio as gr
 from loguru import logger
 from bot.monitor.dashboard_data import (
     get_overview, overview_md,
-    get_positions_df,
+    get_positions_df, get_returns_summary_df,
     trades_html_table,
     get_performance_metrics, performance_md, portfolio_chart, signals_chart, monthly_chart,
     get_audit_df,
@@ -218,8 +218,10 @@ with gr.Blocks(
 
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
-                gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
+                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
                 s_positions = gr.DataFrame(interactive=False)
+                gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
+                s_returns = gr.DataFrame(interactive=False)
                 s_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -261,8 +263,10 @@ with gr.Blocks(
 
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
-                gr.HTML(_section("Currently held positions — entry price, high-water mark, hold duration"))
+                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
                 i_positions   = gr.DataFrame(interactive=False)
+                gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
+                i_returns     = gr.DataFrame(interactive=False)
                 i_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -368,21 +372,25 @@ with gr.Blocks(
     demo.load(_load_ov,          outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     demo.load(_comp,             outputs=s_risk_gauges, **_kw)
     demo.load(get_positions_df,  outputs=s_positions, **_kw)
+    demo.load(get_returns_summary_df, outputs=s_returns, **_kw)
     demo.load(_s_trades_default, outputs=s_trades_table, **_kw)
     s_refresh_ov.click(_force_refresh_ov, outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
     s_refresh_ov.click(_comp,            outputs=s_risk_gauges, **_kw)
     s_halt_btn.click(_do_halt,           outputs=[s_halt_status, s_halt_btn, s_halt_msg], **_kw)
     s_refresh_pos.click(get_positions_df, outputs=s_positions, **_kw)
+    s_refresh_pos.click(get_returns_summary_df, outputs=s_returns, **_kw)
     s_refresh_tl.click(_s_trades_slider,  inputs=s_days_slider, outputs=s_trades_table, **_kw)
     s_days_slider.change(_s_trades_slider, inputs=s_days_slider, outputs=s_trades_table, **_kw)
 
     # ── Institutional wiring ──────────────────────────────────────────────────
     demo.load(_load_ov,          outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
     demo.load(get_positions_df,  outputs=i_positions, **_kw)
+    demo.load(get_returns_summary_df, outputs=i_returns, **_kw)
     demo.load(_i_trades_default, outputs=i_trades_table, **_kw)
     i_refresh_ov.click(_force_refresh_ov,  outputs=[i_overview, i_halt_status, i_halt_btn], **_kw)
     i_halt_btn.click(_do_halt,            outputs=[i_halt_status, i_halt_btn, i_halt_msg], **_kw)
     i_refresh_pos.click(get_positions_df,  outputs=i_positions, **_kw)
+    i_refresh_pos.click(get_returns_summary_df, outputs=i_returns, **_kw)
     i_refresh_tl.click(_i_trades_slider,   inputs=i_days_slider, outputs=i_trades_table, **_kw)
     i_days_slider.change(_i_trades_slider, inputs=i_days_slider, outputs=i_trades_table, **_kw)
 

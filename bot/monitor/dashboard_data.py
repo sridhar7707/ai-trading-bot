@@ -588,6 +588,87 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
     return pd.DataFrame(rows, columns=_POSITION_COLS)
 
 
+# ── Holdings & Returns (open + sold in one table for easy comparison) ──────────
+
+_RETURNS_COLS = ["Symbol", "Invested $", "Value $", "Return $", "Return %",
+                 "Status", "Since / Sold"]
+
+
+def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
+    """Per-stock investment vs total return, covering BOTH open and sold positions.
+
+    For each symbol the bot has traded:
+      Invested $   = total spent buying (cost basis)
+      Return $     = realized P&L (from sells) + unrealized P&L (open shares)
+      Value $      = Invested + Return  (current worth incl. realized gains)
+      Return %     = Return / Invested
+      Status       = Open (still holding) or Sold (fully exited)
+      Since / Sold = first buy date (open) or last sell date (sold)
+    """
+    con = _con()
+    if con is None:
+        return pd.DataFrame(columns=_RETURNS_COLS)
+    try:
+        agg = con.execute(
+            "SELECT symbol, "
+            " SUM(CASE WHEN action='BUY' THEN notional ELSE 0 END)        AS invested, "
+            " SUM(CASE WHEN action='BUY' THEN shares ELSE 0 END)          AS bought_sh, "
+            " SUM(CASE WHEN action LIKE 'SELL%' THEN shares ELSE 0 END)    AS sold_sh, "
+            " COALESCE(SUM(realized_pnl), 0)                               AS realized, "
+            " MIN(CASE WHEN action='BUY' THEN timestamp END)              AS first_buy, "
+            " MAX(CASE WHEN action LIKE 'SELL%' THEN timestamp END)        AS last_sell "
+            "FROM trades GROUP BY symbol"
+        ).fetchall()
+        entries = dict(con.execute("SELECT symbol, entry_price FROM position_state").fetchall())
+    except Exception:
+        con.close()
+        return pd.DataFrame(columns=_RETURNS_COLS)
+    con.close()
+    if not agg:
+        return pd.DataFrame(columns=_RETURNS_COLS)
+
+    # Live prices only needed for symbols still open
+    open_syms = [r[0] for r in agg if (float(r[2] or 0) - float(r[3] or 0)) > 1e-6]
+    if prices is None:
+        prices = _live_prices(open_syms)
+
+    rows = []
+    for sym, invested, bought_sh, sold_sh, realized, first_buy, last_sell in agg:
+        invested  = float(invested or 0)
+        net_sh    = float(bought_sh or 0) - float(sold_sh or 0)
+        realized  = float(realized or 0)
+        is_open   = net_sh > 1e-6
+
+        unrealized = 0.0
+        entry = float(entries.get(sym) or 0)
+        cur   = prices.get(sym)
+        if is_open and cur is not None and entry > 0:
+            unrealized = net_sh * (cur - entry)
+
+        total_return = realized + unrealized
+        value        = invested + total_return
+        ret_pct      = (total_return / invested) if invested else None
+        status       = "🟢 Open" if is_open else "⚪ Sold"
+        when         = (first_buy if is_open else last_sell) or first_buy or last_sell
+        when_str     = pd.to_datetime(when).strftime("%Y-%m-%d") if when else "–"
+
+        # If open but price is unavailable, the return is only partially known.
+        if is_open and cur is None and net_sh > 1e-6:
+            ret_str = "—"
+            val_disp = "—"
+            tot_disp = "—"
+        else:
+            ret_str  = f"{ret_pct:+.2%}" if ret_pct is not None else "—"
+            val_disp = round(value, 2)
+            tot_disp = round(total_return, 2)
+
+        rows.append([sym, round(invested, 2), val_disp, tot_disp, ret_str, status, when_str])
+
+    # Sort: open first, then by absolute return size
+    df = pd.DataFrame(rows, columns=_RETURNS_COLS)
+    return df
+
+
 # ── Trade Log (Subscriber+) ───────────────────────────────────────────────────
 
 def get_trades_df(days: int = 30) -> pd.DataFrame:
