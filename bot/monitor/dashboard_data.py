@@ -408,8 +408,43 @@ def overview_md(d: dict) -> str:
 
 # ── Positions (Subscriber+) ───────────────────────────────────────────────────
 
-def get_positions_df() -> pd.DataFrame:
-    _empty = pd.DataFrame(columns=["Symbol", "Entry $", "HWM $", "ATR", "Opened At", "Days"])
+_POSITION_COLS = ["Symbol", "Shares", "Entry $", "Current $", "Unrealized %",
+                  "Value $", "% Port", "Days"]
+
+
+def _live_prices(symbols: list[str]) -> dict:
+    """Latest prices for `symbols` via yfinance — Space-only, best-effort.
+
+    Returns {} off-Space (tests/local) or on any failure so callers degrade to
+    showing '—' instead of breaking or blocking on the network.
+    """
+    if not symbols or not os.environ.get("SPACE_ID"):
+        return {}
+    try:
+        import yfinance as yf
+        data = yf.download(" ".join(symbols), period="1d", progress=False, auto_adjust=True)
+        out: dict = {}
+        if "Close" in data:
+            close = data["Close"]
+            if hasattr(close, "columns"):              # multiple symbols → DataFrame
+                for s in symbols:
+                    try:
+                        out[s] = float(close[s].dropna().iloc[-1])
+                    except Exception:
+                        pass
+            else:                                       # single symbol → Series
+                try:
+                    out[symbols[0]] = float(close.dropna().iloc[-1])
+                except Exception:
+                    pass
+        return out
+    except Exception as exc:
+        logger.warning(f"_live_prices: yfinance failed — {exc}")
+        return {}
+
+
+def get_positions_df(prices: dict | None = None, portfolio: float | None = None) -> pd.DataFrame:
+    _empty = pd.DataFrame(columns=_POSITION_COLS)
     con = _con()
     if con is None:
         return _empty
@@ -417,21 +452,48 @@ def get_positions_df() -> pd.DataFrame:
         df = pd.read_sql_query(
             "SELECT symbol, entry_price, high_water_mark, atr_at_entry, opened_at FROM position_state", con
         )
+        # Net shares held = total bought − total sold per symbol (position_state has no qty).
+        net = dict(con.execute(
+            "SELECT symbol, "
+            "SUM(CASE WHEN action='BUY' THEN shares WHEN action LIKE 'SELL%' THEN -shares ELSE 0 END) "
+            "FROM trades GROUP BY symbol"
+        ).fetchall())
+        if portfolio is None:
+            portfolio = _latest_portfolio_value(con)
     except Exception:
         con.close()
         return _empty
     con.close()
     if df.empty:
-        return df.rename(columns={"symbol":"Symbol","entry_price":"Entry $",
-                                   "high_water_mark":"HWM $","atr_at_entry":"ATR","opened_at":"Opened At"})
+        return _empty
+
+    symbols = list(df["symbol"])
+    if prices is None:
+        prices = _live_prices(symbols)
+
     now = datetime.now(timezone.utc)
-    df["opened_at"] = pd.to_datetime(df["opened_at"], utc=True, errors="coerce")
-    df["days"]      = df["opened_at"].apply(
-        lambda t: f"{(now - t).total_seconds() / 86400:.1f}d" if pd.notna(t) else "–"
-    )
-    df["opened_at"] = df["opened_at"].dt.strftime("%m-%d %H:%M")
-    df.columns = ["Symbol", "Entry $", "HWM $", "ATR", "Opened At", "Days"]
-    return df
+    opened = pd.to_datetime(df["opened_at"], utc=True, errors="coerce")
+
+    rows = []
+    for i, r in df.iterrows():
+        sym   = r["symbol"]
+        entry = float(r["entry_price"] or 0)
+        shares = float(net.get(sym) or 0)
+        cur   = prices.get(sym)
+        days  = f"{(now - opened[i]).total_seconds()/86400:.1f}d" if pd.notna(opened[i]) else "–"
+        if cur is not None and entry > 0:
+            unreal_pct = (cur - entry) / entry
+            value      = shares * cur
+            pct_port   = (value / portfolio) if portfolio else 0.0
+            rows.append([sym, round(shares, 3), round(entry, 2), round(cur, 2),
+                         f"{unreal_pct:+.2%}", round(value, 2),
+                         f"{pct_port:.1%}", days])
+        else:
+            # Price unavailable (off-Space or fetch failed) — show what we have.
+            value = shares * entry if entry > 0 else 0.0
+            rows.append([sym, round(shares, 3), round(entry, 2), "—", "—",
+                         round(value, 2) if value else "—", "—", days])
+    return pd.DataFrame(rows, columns=_POSITION_COLS)
 
 
 # ── Trade Log (Subscriber+) ───────────────────────────────────────────────────

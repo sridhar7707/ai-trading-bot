@@ -191,13 +191,45 @@ def test_money_formatting():
 # ── Positions ─────────────────────────────────────────────────────────────────
 
 def test_positions_df_has_both_symbols_and_prices(dash_db):
-    df = dd.get_positions_df()
+    df = dd.get_positions_df(prices={}, portfolio=102_000.0)
     assert len(df) == 2
     syms = set(df["Symbol"])
     assert {"ZZZA", "ZZZD"} == syms
     entries = dict(zip(df["Symbol"], df["Entry $"]))
     assert entries["ZZZA"] == pytest.approx(150.0)
     assert entries["ZZZD"] == pytest.approx(200.0)
+
+
+def test_positions_shares_derived_from_trades(dash_db):
+    # ZZZA has one BUY of 1.0 share; ZZZD has no trades → 0 shares.
+    df = dd.get_positions_df(prices={}, portfolio=102_000.0)
+    shares = dict(zip(df["Symbol"], df["Shares"]))
+    assert shares["ZZZA"] == pytest.approx(1.0)
+    assert shares["ZZZD"] == pytest.approx(0.0)
+
+
+def test_positions_unrealized_pnl_math(dash_db):
+    # ZZZA entry 150, current 165 → +10.00% ; value = 1 share * 165 = 165
+    df = dd.get_positions_df(prices={"ZZZA": 165.0, "ZZZD": 220.0}, portfolio=102_000.0)
+    za = df[df["Symbol"] == "ZZZA"].iloc[0]
+    assert za["Current $"] == pytest.approx(165.0)
+    assert za["Unrealized %"] == "+10.00%"
+    assert za["Value $"] == pytest.approx(165.0)
+    # % portfolio = 165 / 102000 = 0.16% → "0.2%"
+    assert za["% Port"] == "0.2%"
+
+
+def test_positions_price_unavailable_shows_dash(dash_db):
+    # No prices (off-Space) → current/unrealized/%port show em-dash, no crash.
+    df = dd.get_positions_df(prices={}, portfolio=102_000.0)
+    za = df[df["Symbol"] == "ZZZA"].iloc[0]
+    assert za["Current $"] == "—"
+    assert za["Unrealized %"] == "—"
+
+
+def test_live_prices_skipped_off_space(dash_db, monkeypatch):
+    monkeypatch.delenv("SPACE_ID", raising=False)
+    assert dd._live_prices(["ZZZA"]) == {}   # no network off-Space
 
 
 # ── Trade Log (HTML) ──────────────────────────────────────────────────────────
