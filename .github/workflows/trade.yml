@@ -130,25 +130,13 @@ jobs:
               except Exception:
                   return True  # fail open — inner bot/main.py will verify independently
 
-          def push_hf():
-              token = os.environ.get("HF_TOKEN", "")
-              repo = os.environ.get("HF_REPO_ID", "")
-              if not token or not repo or not os.path.exists("trades.db"):
-                  return
-              try:
-                  from huggingface_hub import HfApi, CommitOperationAdd
-                  HfApi(token=token).create_commit(
-                      repo_id=repo, repo_type="model",
-                      operations=[CommitOperationAdd(path_in_repo="trades.db", path_or_fileobj="trades.db")],
-                      commit_message="update trades.db",
-                  )
-                  print("trades.db pushed to HuggingFace", flush=True)
-              except Exception as e:
-                  print(f"HF push skipped: {e}", flush=True)
+          # NOTE: trades.db is synced to HuggingFace by bot/main.py itself at the end
+          # of every cycle (sync_db.push_db() → HF_DB_REPO_ID dataset, which is the
+          # repo the dashboard reads). The previous push_hf() here wrote to a
+          # different repo (HF_REPO_ID, repo_type="model") that nothing reads — it
+          # was redundant and confusing, so it has been removed.
 
           cycle = 0
-          last_hf_push = 0
-          HF_PUSH_INTERVAL = 30 * 60  # push at most every 30 min (~13 commits/day vs 78)
           while market_open():
               cycle += 1
               et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
@@ -167,10 +155,6 @@ jobs:
                               timeout=5)
                   except Exception:
                       pass
-              now = time.time()
-              if now - last_hf_push >= HF_PUSH_INTERVAL:
-                  push_hf()
-                  last_hf_push = now
               # Sleep in 30s chunks so market-close is detected promptly
               for _ in range(10):
                   time.sleep(30)
@@ -179,12 +163,12 @@ jobs:
 
           print("\nMarket closed — trading loop complete.", flush=True)
 
-          # Send end-of-day Telegram summary
+          # Send end-of-day Telegram summary. The final trades.db state was already
+          # pushed by the last run() cycle's push_db() before market-close was detected.
           print("Sending end-of-day summary...", flush=True)
           r = subprocess.run([sys.executable, "bot/main.py", "--summary"])
           if r.returncode != 0:
               print(f"::warning::End-of-day summary exited with code {r.returncode}", flush=True)
-          push_hf()
           PYEOF
 
       - name: Save trade database
