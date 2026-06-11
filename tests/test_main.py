@@ -8,7 +8,7 @@ from bot.main import (
     _kelly_fraction, _passes_correlation_gate, _check_time_exit,
     _reconcile_positions, _load_risk_state, _save_risk_state,
     _upsert_position_state, _delete_position_state, _is_wash_sale_risk,
-    _record_snapshot,
+    _record_snapshot, _anchor_daily_start,
 )
 from bot.risk.risk_manager import RiskManager
 
@@ -689,6 +689,56 @@ def test_latest_portfolio_value_prefers_newer_trade(db):
     )
     db.commit()
     assert _latest_portfolio_value(db) == 12_000.0
+
+
+def _yesterday_iso(hour=20):
+    return (date.today() - timedelta(days=1)).isoformat() + f"T{hour:02d}:00:00+00:00"
+
+
+def test_anchor_daily_start_prefers_prior_day_snapshot(db):
+    """Day P&L baseline = yesterday's account snapshot, NOT the stale trade cost basis."""
+    # Old trade row at cost basis 100000 (the bug source)
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (_yesterday_iso(10), "AAPL", "BUY", 1.0, 100.0, 100.0, "RANGING", 100_000.0, 0.0),
+    )
+    # Yesterday's closing snapshot reflects real appreciated equity
+    db.execute(
+        "INSERT INTO portfolio_snapshots (timestamp, portfolio_value, available_cash, open_positions) "
+        "VALUES (?,?,?,?)",
+        (_yesterday_iso(20), 100_491.0, 5_000.0, 5),
+    )
+    db.commit()
+    val, src = _anchor_daily_start(db)
+    assert val == pytest.approx(100_491.0)     # snapshot, not 100000
+    assert "snapshot" in src
+
+
+def test_anchor_daily_start_falls_back_to_trade(db):
+    """Older DB with no snapshots → last trade row before today."""
+    db.execute(
+        "INSERT INTO trades (timestamp,symbol,action,shares,price,notional,regime,portfolio_value,pnl_pct) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (_yesterday_iso(10), "AAPL", "BUY", 1.0, 100.0, 100.0, "RANGING", 99_000.0, 0.0),
+    )
+    db.commit()
+    val, src = _anchor_daily_start(db)
+    assert val == pytest.approx(99_000.0)
+    assert "trade" in src
+
+
+def test_anchor_daily_start_ignores_today_only_data(db):
+    """Snapshots/trades only from today (no prior day) → None (nothing to anchor to)."""
+    today_ts = date.today().isoformat() + "T15:00:00+00:00"
+    db.execute(
+        "INSERT INTO portfolio_snapshots (timestamp, portfolio_value, available_cash, open_positions) "
+        "VALUES (?,?,?,?)",
+        (today_ts, 100_500.0, 5_000.0, 5),
+    )
+    db.commit()
+    val, src = _anchor_daily_start(db)
+    assert val is None
 
 
 def test_latest_portfolio_value_zero_when_empty(db):

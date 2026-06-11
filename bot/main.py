@@ -201,6 +201,33 @@ def _record_snapshot(con, portfolio_value: float, available_cash: float, open_po
     )
 
 
+def _anchor_daily_start(con) -> tuple[float | None, str]:
+    """Pick the start-of-day equity baseline for Day P&L.
+
+    Prefers the last account snapshot BEFORE today (yesterday's close — the real
+    equity). Falls back to the last trade row only on older DBs without snapshots.
+    Anchoring to the trade row alone used the cost basis at purchase, which made
+    Day P&L read as gain-since-inception instead of today's gain.
+
+    Returns (value_or_None, source_description).
+    """
+    today_iso = date.today().isoformat()
+    row = con.execute(
+        "SELECT portfolio_value FROM portfolio_snapshots WHERE timestamp < ? "
+        "ORDER BY timestamp DESC LIMIT 1",
+        (today_iso,)
+    ).fetchone()
+    if row and row[0] is not None:
+        return float(row[0]), "snapshot (prior day close)"
+    row = con.execute(
+        "SELECT portfolio_value FROM trades WHERE timestamp < ? ORDER BY timestamp DESC LIMIT 1",
+        (today_iso,)
+    ).fetchone()
+    if row and row[0] is not None:
+        return float(row[0]), "last trade (no prior snapshot)"
+    return None, "none available"
+
+
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
               xgb_prob: float = 0.0, lstm_prob: float = 0.0,
               sentiment_score: float = 0.0, macro_score: float = 0.0,
@@ -697,16 +724,12 @@ def run(mode: str = "paper"):
 
     daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted, portfolio_high = _load_risk_state(con)
 
-    # Anchor daily_start to last known portfolio value before today (not current live price).
-    # Prevents the daily loss gate from using a mid-day restart value on gap-down mornings.
+    # Anchor daily_start to the account's value at yesterday's close (not current
+    # live price), so Day P&L means "today's gain" rather than gain-since-inception.
     if daily_start is None:
-        row = con.execute(
-            "SELECT portfolio_value FROM trades WHERE timestamp < ? ORDER BY timestamp DESC LIMIT 1",
-            (date.today().isoformat(),)
-        ).fetchone()
-        if row:
-            daily_start = float(row[0])
-            logger.info(f"Daily start anchored to last known portfolio value: ${daily_start:.2f}")
+        daily_start, _src = _anchor_daily_start(con)
+        if daily_start is not None:
+            logger.info(f"Daily start anchored to {_src}: ${daily_start:.2f}")
 
     risk = RiskManager(
         daily_start_value=daily_start,
