@@ -232,6 +232,53 @@ def test_live_prices_skipped_off_space(dash_db, monkeypatch):
     assert dd._live_prices(["ZZZA"]) == {}   # no network off-Space
 
 
+def test_live_prices_prefers_alpaca_over_yfinance(monkeypatch):
+    monkeypatch.setenv("SPACE_ID", "x")
+    monkeypatch.setattr(dd, "_prices_alpaca", lambda syms: {"ZZZA": 111.0})
+    monkeypatch.setattr(dd, "_prices_yfinance", lambda syms: {"ZZZA": 999.0})
+    assert dd._live_prices(["ZZZA"]) == {"ZZZA": 111.0}   # Alpaca wins
+
+
+def test_live_prices_falls_back_to_yfinance(monkeypatch):
+    monkeypatch.setenv("SPACE_ID", "x")
+    monkeypatch.setattr(dd, "_prices_alpaca", lambda syms: {})      # Alpaca unavailable
+    monkeypatch.setattr(dd, "_prices_yfinance", lambda syms: {"ZZZA": 222.0})
+    assert dd._live_prices(["ZZZA"]) == {"ZZZA": 222.0}
+
+
+def test_alpaca_headers_none_without_creds(monkeypatch):
+    monkeypatch.setattr(dd, "_alpaca_headers", dd._alpaca_headers)  # ensure real fn
+    monkeypatch.setattr("config.ALPACA_KEY", "", raising=False)
+    monkeypatch.setattr("config.ALPACA_SECRET", "", raising=False)
+    monkeypatch.delenv("ALPACA_KEY", raising=False)
+    monkeypatch.delenv("ALPACA_SECRET", raising=False)
+    assert dd._alpaca_headers() is None
+    # With creds present, headers carry the Alpaca auth fields.
+    monkeypatch.setenv("ALPACA_KEY", "k123")
+    monkeypatch.setenv("ALPACA_SECRET", "s456")
+    monkeypatch.setattr("config.ALPACA_KEY", "", raising=False)
+    monkeypatch.setattr("config.ALPACA_SECRET", "", raising=False)
+    h = dd._alpaca_headers()
+    assert h["APCA-API-KEY-ID"] == "k123"
+    assert h["APCA-API-SECRET-KEY"] == "s456"
+
+
+def test_spy_return_prefers_alpaca(monkeypatch):
+    monkeypatch.setenv("SPACE_ID", "x")
+    dd._spy_cache = {"key": None, "ret": None}
+    monkeypatch.setattr(dd, "_spy_return_alpaca", lambda d: 0.05)
+    monkeypatch.setattr(dd, "_spy_return_yfinance", lambda d: 0.99)
+    assert dd.spy_return_since("2026-01-01") == 0.05
+
+
+def test_spy_return_falls_back_to_yfinance(monkeypatch):
+    monkeypatch.setenv("SPACE_ID", "x")
+    dd._spy_cache = {"key": None, "ret": None}
+    monkeypatch.setattr(dd, "_spy_return_alpaca", lambda d: None)
+    monkeypatch.setattr(dd, "_spy_return_yfinance", lambda d: 0.03)
+    assert dd.spy_return_since("2026-01-01") == 0.03
+
+
 # ── Trade Log (HTML) ──────────────────────────────────────────────────────────
 
 def test_trades_html_shows_every_symbol(dash_db):

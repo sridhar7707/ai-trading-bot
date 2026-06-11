@@ -47,6 +47,23 @@ _pull_lock = threading.Lock()
 # Caches the daily SPY benchmark return (network) so Overview doesn't refetch per render.
 _spy_cache: dict = {"key": None, "ret": None}
 
+# Alpaca market-data API (free IEX feed) — the durable, official price source.
+# yfinance is kept only as a last-resort fallback (unofficial Yahoo scrape).
+_ALPACA_DATA = "https://data.alpaca.markets"
+
+
+def _alpaca_headers() -> dict | None:
+    """Auth headers for the Alpaca data API, or None when credentials are absent."""
+    try:
+        from config import ALPACA_KEY, ALPACA_SECRET
+    except Exception:
+        ALPACA_KEY = ALPACA_SECRET = ""
+    key = ALPACA_KEY or os.environ.get("ALPACA_KEY", "")
+    sec = ALPACA_SECRET or os.environ.get("ALPACA_SECRET", "")
+    if not key or not sec:
+        return None
+    return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": sec}
+
 
 def _con() -> sqlite3.Connection | None:
     # Every read goes through here, so pull the latest DB first. This is the one
@@ -107,12 +124,51 @@ def _inception(con) -> tuple[float, str | None]:
     return val, ts
 
 
+def _spy_return_alpaca(start_day: str) -> float | None:
+    """SPY return from Alpaca daily bars (official). None on failure."""
+    headers = _alpaca_headers()
+    if headers is None:
+        return None
+    try:
+        import requests
+        r = requests.get(
+            f"{_ALPACA_DATA}/v2/stocks/SPY/bars",
+            params={"timeframe": "1Day", "start": f"{start_day}T00:00:00Z",
+                    "adjustment": "all", "limit": 10000},
+            headers=headers, timeout=8,
+        )
+        if r.status_code != 200:
+            logger.warning(f"_spy_return_alpaca: HTTP {r.status_code}")
+            return None
+        bars = r.json().get("bars", []) or []
+        if len(bars) >= 2:
+            first, last = float(bars[0]["c"]), float(bars[-1]["c"])
+            return (last - first) / first if first else None
+    except Exception as exc:
+        logger.warning(f"_spy_return_alpaca: {exc}")
+    return None
+
+
+def _spy_return_yfinance(start_day: str) -> float | None:
+    """SPY return from yfinance (unofficial fallback). None on failure."""
+    try:
+        import yfinance as yf
+        spy = yf.download("SPY", start=start_day, progress=False, auto_adjust=True)
+        if spy is not None and len(spy) > 1:
+            first = float(spy["Close"].iloc[0])
+            last  = float(spy["Close"].iloc[-1])
+            return (last - first) / first if first else None
+    except Exception as exc:
+        logger.warning(f"_spy_return_yfinance: {exc}")
+    return None
+
+
 def spy_return_since(start_iso: str | None) -> float | None:
     """S&P 500 (SPY) total return since `start_iso`, best-effort.
 
-    Network call (yfinance) — only attempted inside an HF Space, cached for the
-    day so the Overview can show "you vs the index" without refetching per render.
-    Returns None on any failure so the UI degrades gracefully.
+    Prefers Alpaca's official data API; falls back to yfinance. Space-only and
+    cached for the day so Overview doesn't refetch per render. Returns None on
+    failure so the UI degrades gracefully.
     """
     if not start_iso or not os.environ.get("SPACE_ID"):
         return None
@@ -121,18 +177,10 @@ def spy_return_since(start_iso: str | None) -> float | None:
     key = (today, start_iso)
     if _spy_cache.get("key") == key:
         return _spy_cache.get("ret")
-    ret = None
-    try:
-        import yfinance as yf
-        start = start_iso[:10]
-        spy = yf.download("SPY", start=start, progress=False, auto_adjust=True)
-        if spy is not None and len(spy) > 1:
-            first = float(spy["Close"].iloc[0])
-            last  = float(spy["Close"].iloc[-1])
-            if first:
-                ret = (last - first) / first
-    except Exception as exc:
-        logger.warning(f"spy_return_since: yfinance failed — {exc}")
+    start_day = start_iso[:10]
+    ret = _spy_return_alpaca(start_day)
+    if ret is None:
+        ret = _spy_return_yfinance(start_day)
     _spy_cache = {"key": key, "ret": ret}
     return ret
 
@@ -417,14 +465,39 @@ _POSITION_COLS = ["Symbol", "Shares", "Entry $", "Current $", "Unrealized %",
                   "Value $", "% Port", "Days"]
 
 
-def _live_prices(symbols: list[str]) -> dict:
-    """Latest prices for `symbols` via yfinance — Space-only, best-effort.
-
-    Returns {} off-Space (tests/local) or on any failure so callers degrade to
-    showing '—' instead of breaking or blocking on the network.
-    """
-    if not symbols or not os.environ.get("SPACE_ID"):
+def _prices_alpaca(symbols: list[str]) -> dict:
+    """Latest prices from Alpaca snapshots (official IEX feed). {} on failure."""
+    headers = _alpaca_headers()
+    if headers is None:
         return {}
+    try:
+        import requests
+        r = requests.get(
+            f"{_ALPACA_DATA}/v2/stocks/snapshots",
+            params={"symbols": ",".join(symbols)}, headers=headers, timeout=8,
+        )
+        if r.status_code != 200:
+            logger.warning(f"_prices_alpaca: HTTP {r.status_code}")
+            return {}
+        snaps = r.json() or {}
+        out: dict = {}
+        for sym, snap in snaps.items():
+            if not isinstance(snap, dict):
+                continue
+            # Prefer the latest trade; fall back to the latest daily-bar close.
+            p = ((snap.get("latestTrade") or {}).get("p")
+                 or (snap.get("dailyBar") or {}).get("c")
+                 or (snap.get("minuteBar") or {}).get("c"))
+            if p:
+                out[sym] = float(p)
+        return out
+    except Exception as exc:
+        logger.warning(f"_prices_alpaca: {exc}")
+        return {}
+
+
+def _prices_yfinance(symbols: list[str]) -> dict:
+    """Latest prices from yfinance (unofficial fallback). {} on failure."""
     try:
         import yfinance as yf
         data = yf.download(" ".join(symbols), period="1d", progress=False, auto_adjust=True)
@@ -444,8 +517,22 @@ def _live_prices(symbols: list[str]) -> dict:
                     pass
         return out
     except Exception as exc:
-        logger.warning(f"_live_prices: yfinance failed — {exc}")
+        logger.warning(f"_prices_yfinance: {exc}")
         return {}
+
+
+def _live_prices(symbols: list[str]) -> dict:
+    """Latest prices for `symbols` — Alpaca official feed first, yfinance fallback.
+
+    Space-only and best-effort: returns {} off-Space (tests/local) or on failure
+    so callers degrade to showing '—' instead of breaking or blocking.
+    """
+    if not symbols or not os.environ.get("SPACE_ID"):
+        return {}
+    out = _prices_alpaca(symbols)
+    if not out:
+        out = _prices_yfinance(symbols)
+    return out
 
 
 def get_positions_df(prices: dict | None = None, portfolio: float | None = None) -> pd.DataFrame:

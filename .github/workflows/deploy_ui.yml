@@ -60,6 +60,10 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE_ID: ${{ secrets.HF_SPACE_ID }}
+          # Pushed to the Space as secrets so the dashboard can use Alpaca's
+          # official market-data API for live prices / SPY (instead of yfinance).
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
         run: |
           python - <<'PYEOF'
           import os, sys, shutil
@@ -113,5 +117,17 @@ jobs:
               repo_type="space",
               commit_message="chore: update dashboard from CI",
           )
+
+          # Push Alpaca credentials as Space secrets so the dashboard can use the
+          # official data API for live prices. Skipped cleanly if not provided.
+          for k in ("ALPACA_KEY", "ALPACA_SECRET"):
+              v = os.environ.get(k, "")
+              if v:
+                  try:
+                      api.add_space_secret(repo_id=space_id, key=k, value=v)
+                      print(f"Set Space secret {k}")
+                  except Exception as e:
+                      print(f"::warning::could not set Space secret {k}: {e}")
+
           print(f"Dashboard deployed → https://huggingface.co/spaces/{space_id}")
           PYEOF
