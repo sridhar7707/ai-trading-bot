@@ -177,6 +177,8 @@ with gr.Blocks(
                             "<span style='color:#666;font-size:11px'>"
                             "Creates/removes `data/HALT_TRADING`. Bot checks this file at each cycle.</span>"
                         )
+                gr.HTML(_section("Your safety rails — how close trading is to the daily/weekly loss limits"))
+                s_risk_gauges = gr.HTML("*Loading...*")
                 s_refresh_ov = gr.Button("🔄 Refresh", size="sm")
 
             # ── Positions ─────────────────────────────────────────────────────
@@ -329,9 +331,11 @@ with gr.Blocks(
 
     # ── Subscriber wiring ─────────────────────────────────────────────────────
     demo.load(_load_ov,          outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+    demo.load(_comp,             outputs=s_risk_gauges, **_kw)
     demo.load(get_positions_df,  outputs=s_positions, **_kw)
     demo.load(_s_trades_default, outputs=s_trades_table, **_kw)
     s_refresh_ov.click(_force_refresh_ov, outputs=[s_overview, s_halt_status, s_halt_btn], **_kw)
+    s_refresh_ov.click(_comp,            outputs=s_risk_gauges, **_kw)
     s_halt_btn.click(_do_halt,           outputs=[s_halt_status, s_halt_btn, s_halt_msg], **_kw)
     s_refresh_pos.click(get_positions_df, outputs=s_positions, **_kw)
     s_refresh_tl.click(_s_trades_slider,  inputs=s_days_slider, outputs=s_trades_table, **_kw)
