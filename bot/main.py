@@ -46,7 +46,7 @@ from config import (
     EARNINGS_WINDOW_DAYS,
     MAX_HOLD_DAYS, KELLY_LOOKBACK_TRADES, KELLY_FRACTION_MAX,
     CORRELATION_THRESHOLD, RS_LOOKBACK_BARS, ENTRY_REGIMES,
-    PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS,
+    PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS, PAPER_SIM_CAPITAL,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -199,6 +199,18 @@ def _record_snapshot(con, portfolio_value: float, available_cash: float, open_po
         f"Snapshot recorded — portfolio=${portfolio_value:,.2f}, cash=${available_cash:,.2f}, "
         f"open_positions={open_positions}"
     )
+
+
+def _apply_sim_capital(portfolio_value: float, available_cash: float) -> tuple[float, float, bool]:
+    """If PAPER_SIM_CAPITAL > 0, cap the equity the bot sizes/risk-checks against so
+    it behaves as if the (paper) account were that small — for dry-running
+    small-account mechanics (tiny positions, min-notional, PDT) before going live.
+    Returns (portfolio_value, available_cash, sim_active)."""
+    if PAPER_SIM_CAPITAL and PAPER_SIM_CAPITAL > 0:
+        return (min(portfolio_value, PAPER_SIM_CAPITAL),
+                min(available_cash, PAPER_SIM_CAPITAL),
+                True)
+    return portfolio_value, available_cash, False
 
 
 def _anchor_daily_start(con) -> tuple[float | None, str]:
@@ -754,6 +766,13 @@ def run(mode: str = "paper"):
         con.close()
         return
     logger.info(f"Alpaca connection OK — account value ${portfolio_value:,.2f}")
+    # Paper sim-capital: size/risk-check as if the account were small (dry-run).
+    portfolio_value, available_cash, _sim_capital = _apply_sim_capital(portfolio_value, available_cash)
+    if _sim_capital:
+        logger.warning(
+            f"PAPER_SIM_CAPITAL active — sizing & risk as if account = "
+            f"${portfolio_value:,.2f} (real account is larger)"
+        )
     risk.update_portfolio_high(portfolio_value)
 
     # Brokerage compliance: validate account standing before placing any orders
@@ -774,6 +793,10 @@ def run(mode: str = "paper"):
         if getattr(acct, "pattern_day_trader", False):
             logger.warning("Alpaca account is flagged as Pattern Day Trader — PDT limits apply.")
         pdt_equity = float(getattr(acct, "equity", 0) or 0)
+        # Under sim-capital, use the simulated equity so the PDT limit (under $25k)
+        # actually applies — that's a key small-account behaviour to dry-run.
+        if _sim_capital:
+            pdt_equity = min(pdt_equity, PAPER_SIM_CAPITAL)
         pdt_exempt = pdt_equity >= 25_000
         if pdt_exempt:
             logger.info(f"Account equity ${pdt_equity:,.2f} ≥ $25,000 — PDT day-trade limits waived.")
