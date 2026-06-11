@@ -149,12 +149,34 @@ _gr_major = int(gr.__version__.split(".")[0])
 # Gradio's DataFrame layout and leaves empty gaps. Our custom HTML tables carry
 # their own overflow wrapper, so no global override is needed.
 _CSS = """
+/* ── Layout ───────────────────────────────────────────────────────────────── */
 .gradio-container { max-width: 1200px !important; margin: auto !important; }
+
+/* ── Unified table look (markdown tables, Gradio DataFrames, custom HTML) ──── */
+/* Only safe, non-layout properties so component grids aren't broken.           */
+.gradio-container thead th {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: .03em !important;
+  padding: 8px 10px !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+.gradio-container tbody td { padding: 7px 10px !important; border-bottom: 1px solid #eef2f6 !important; }
+.gradio-container tbody tr:nth-child(even) { background: #fafbfc !important; }
+.gradio-container tbody tr:hover { background: #eef6fb !important; }
+
+/* Numeric data grids: right-align everything except the first (label) column. */
+.num-table td:not(:first-child), .num-table th:not(:first-child) { text-align: right !important; }
+
+/* Custom HTML tables carry their own horizontal-scroll wrapper. */
 .cf-table { overflow-x: auto; }
-.cf-table table { border-collapse: collapse; width: 100%; }
+
 @media (max-width: 640px) {
   .gradio-container { padding: 4px !important; }
-  .cf-table table { font-size: 12px !important; }
+  .gradio-container table { font-size: 12px !important; }
   h1 { font-size: 1.3rem !important; }
 }
 """
@@ -228,9 +250,9 @@ with gr.Blocks(
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
                 gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
-                s_positions = gr.DataFrame(interactive=False)
+                s_positions = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
-                s_returns = gr.DataFrame(interactive=False)
+                s_returns = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 s_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -273,9 +295,9 @@ with gr.Blocks(
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
                 gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
-                i_positions   = gr.DataFrame(interactive=False)
+                i_positions   = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
-                i_returns     = gr.DataFrame(interactive=False)
+                i_returns     = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 i_refresh_pos = gr.Button("🔄 Refresh", size="sm")
 
             # ── Trade Log ─────────────────────────────────────────────────────
@@ -318,7 +340,7 @@ with gr.Blocks(
             with gr.TabItem("🗂 Audit Trail"):
                 gr.HTML(_section("Full signal audit per trade — XGB · LSTM · Sentiment · Macro · Ensemble"))
                 i_audit_days  = gr.Slider(7, 90, value=60, step=7, label="Days back")
-                i_audit_table = gr.DataFrame(interactive=False)
+                i_audit_table = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 i_audit_dl    = gr.DownloadButton("⬇ Export CSV", visible=False)
                 i_refresh_au  = gr.Button("🔄 Refresh", size="sm")
 
