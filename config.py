@@ -73,6 +73,9 @@ WEEKLY_LOSS_LIMIT_PCT = float(os.getenv("WEEKLY_LOSS_LIMIT_PCT", 0.10))  # 10% w
 PORTFOLIO_DRAWDOWN_LIMIT_PCT = float(os.getenv("PORTFOLIO_DRAWDOWN_LIMIT_PCT", 0.12))  # 12% from all-time high
 MACRO_HALT_VIX = float(os.getenv("MACRO_HALT_VIX", 28.0))    # halt all new buys above this VIX level
 MAX_RISK_PER_TRADE_PCT = float(os.getenv("MAX_RISK_PER_TRADE_PCT", 0.015))  # max 1.5% of portfolio at risk per trade
+MIN_RR_RATIO   = float(os.getenv("MIN_RR_RATIO", 1.5))    # skip trade if TP target < 1.5× the stop distance
+MIN_TP_PCT     = float(os.getenv("MIN_TP_PCT", 0.03))      # skip trade if TP ceiling < 3% (not worth the risk)
+RANGING_SIZE_FACTOR = float(os.getenv("RANGING_SIZE_FACTOR", 0.75))  # reduce position by 25% in sideways markets
 MAX_POSITIONS = 8
 MAX_SECTOR_POSITIONS = 2                                        # max open positions per sector
 

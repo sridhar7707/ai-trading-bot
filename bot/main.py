@@ -87,6 +87,7 @@ from config import (
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS, PAPER_SIM_CAPITAL,
     MAX_RISK_PER_TRADE_PCT,
     ATR_STOP_MULTIPLIER, ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT, STOP_LOSS_PCT,
+    MIN_RR_RATIO, MIN_TP_PCT, RANGING_SIZE_FACTOR,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -1339,8 +1340,27 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             if current_atr and current_atr > 0 and current_price > 0:
                 stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT,
                                (ATR_STOP_MULTIPLIER * current_atr) / current_price))
+                tp_target_pct = max(0.06, min(0.08, (3 * current_atr) / current_price))
             else:
                 stop_pct = STOP_LOSS_PCT
+                tp_target_pct = 0.06
+
+            # Gate 8a — Minimum absolute profit target: not worth entering if upside < MIN_TP_PCT
+            if tp_target_pct < MIN_TP_PCT:
+                logger.info(
+                    f"BUY {symbol} skipped — TP target {tp_target_pct:.1%} < min {MIN_TP_PCT:.1%}"
+                )
+                continue
+
+            # Gate 8b — Minimum risk/reward: require TP ≥ MIN_RR_RATIO × stop distance
+            rr_ratio = tp_target_pct / stop_pct
+            if rr_ratio < MIN_RR_RATIO:
+                logger.info(
+                    f"BUY {symbol} skipped — R:R {rr_ratio:.2f} < min {MIN_RR_RATIO} "
+                    f"(TP={tp_target_pct:.1%}, stop={stop_pct:.1%})"
+                )
+                continue
+
             max_risk_notional = (portfolio_value * MAX_RISK_PER_TRADE_PCT) / stop_pct
             if notional > max_risk_notional:
                 logger.info(
@@ -1348,6 +1368,11 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     f"(stop_pct={stop_pct:.1%}, max_risk={MAX_RISK_PER_TRADE_PCT:.1%})"
                 )
                 notional = max_risk_notional
+
+            # Gate 8c — Reduce position by RANGING_SIZE_FACTOR in sideways markets (lower conviction)
+            if regime_name == "RANGING":
+                notional *= RANGING_SIZE_FACTOR
+                logger.debug(f"BUY {symbol}: RANGING regime — size reduced to ${notional:.0f}")
 
             if notional > available_cash * 0.95:
                 logger.warning(
