@@ -1457,20 +1457,52 @@ def run_loop(mode: str = "paper"):
 
 
 def _do_reset_daily_start():
-    """Clear the stale daily-start anchor from risk_state.
+    """Clear the stale daily-start anchor and restore the correct weekly baseline.
 
-    The next bot cycle will call _anchor_daily_start (returns None when no
-    prior-business-day data exists), then reset_daily(current_portfolio_value)
-    — setting Day P&L = $0 at today's session open.  Run this step before
-    the trading loop via workflow_dispatch reset_daily_start=true.
+    Daily: deletes daily_start_value/date so the next bot cycle calls
+    _anchor_daily_start (returns None when no prior-business-day data exists),
+    then reset_daily(current_portfolio_value) — Day P&L = $0 at session open.
+
+    Weekly: restores weekly_start to the FIRST portfolio value seen this ISO week
+    (e.g. Monday's $100,000) rather than today's restart value, so Week P&L
+    correctly shows Mon-to-now gain instead of just today's intraday move.
     """
     con = init_db()
+    # Clear stale daily anchor
     con.execute(
         "DELETE FROM risk_state WHERE key IN ('daily_start_value', 'daily_start_date')"
     )
+    # Restore weekly_start to the first portfolio value of the current ISO week
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())   # Monday of this ISO week
+    mon_iso = monday.isoformat()
+    wk = _week_key()
+    row = con.execute(
+        "SELECT portfolio_value FROM portfolio_snapshots "
+        "WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT 1",
+        (mon_iso,),
+    ).fetchone()
+    if row is None or row[0] is None:
+        row = con.execute(
+            "SELECT portfolio_value FROM trades "
+            "WHERE timestamp >= ? AND portfolio_value IS NOT NULL "
+            "ORDER BY timestamp ASC LIMIT 1",
+            (mon_iso,),
+        ).fetchone()
+    if row and row[0] is not None:
+        weekly_val = float(row[0])
+        ts = datetime.now(timezone.utc).isoformat()
+        for k, v in [("weekly_start_value", str(weekly_val)), ("weekly_start_week", wk)]:
+            con.execute(
+                "INSERT OR REPLACE INTO risk_state (key, value, updated_at) VALUES (?,?,?)",
+                (k, v, ts),
+            )
+        logger.info(f"weekly_start restored to {weekly_val:.2f} (first value from {mon_iso})")
+    else:
+        logger.warning(f"No portfolio data found from {mon_iso} — weekly_start unchanged")
     con.commit()
     con.close()
-    logger.info("daily_start cleared from risk_state — next bot cycle will re-anchor to today's open.")
+    logger.info("daily_start cleared — next bot cycle will re-anchor Day P&L to today's open.")
 
 
 if __name__ == "__main__":
