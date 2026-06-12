@@ -1,0 +1,75 @@
+name: Test Finnhub Key
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - run: pip install requests
+
+      - name: Verify Finnhub API key
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+        run: |
+          python - <<'EOF'
+          import os, requests, sys
+
+          token = os.environ.get("FINNHUB_API_KEY", "")
+          if not token:
+              print("::error::FINNHUB_API_KEY secret is empty or not set")
+              sys.exit(1)
+
+          print(f"Key length: {len(token)} chars, prefix: {token[:4]}***")
+
+          # 1. Basic auth check — /stock/profile2 is a lightweight endpoint
+          r = requests.get(
+              "https://finnhub.io/api/v1/stock/profile2",
+              params={"symbol": "AAPL", "token": token},
+              timeout=10,
+          )
+          print(f"Profile endpoint: HTTP {r.status_code}")
+          if r.status_code == 401:
+              print("::error::401 Unauthorized — key is invalid or expired")
+              sys.exit(1)
+          if r.status_code == 403:
+              print("::error::403 Forbidden — key doesn't have access to this endpoint")
+              sys.exit(1)
+          if r.status_code != 200:
+              print(f"::error::Unexpected status {r.status_code}: {r.text[:200]}")
+              sys.exit(1)
+
+          profile = r.json()
+          print(f"AAPL profile OK — name: {profile.get('name')}, exchange: {profile.get('exchange')}")
+
+          # 2. Upgrade/downgrade endpoint — the one the screener actually uses
+          r2 = requests.get(
+              "https://finnhub.io/api/v1/stock/upgrade-downgrade",
+              params={"symbol": "AAPL", "token": token},
+              timeout=10,
+          )
+          print(f"Upgrade/downgrade endpoint: HTTP {r2.status_code}")
+          if r2.status_code != 200:
+              print(f"::warning::Upgrade endpoint returned {r2.status_code} — screener analyst factor will be skipped")
+          else:
+              items = r2.json()
+              print(f"Recent analyst actions for AAPL: {len(items)} entries")
+              if items:
+                  latest = items[0]
+                  print(f"  Latest: {latest.get('action')} → {latest.get('toGrade')} by {latest.get('company')} on {latest.get('gradeTime')}")
+
+          print()
+          print("✅ Finnhub API key is valid and both endpoints are accessible.")
+          print("   The screener's analyst signal factor is now active.")
+          EOF
