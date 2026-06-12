@@ -21,6 +21,11 @@ on:
         required: false
         default: false
         type: boolean
+      clean_start:
+        description: 'FULL RESET — wipe all bot data (reset Alpaca paper account first!)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -155,8 +160,15 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python scripts/prefetch_sentiment.py
 
+      - name: Clean start — wipe all bot data (if requested)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.clean_start == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_DB_REPO_ID }}
+        run: python bot/main.py --clean-db
+
       - name: Reset Day P&L baseline (if requested)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.reset_daily_start == 'true'
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.reset_daily_start == 'true' && github.event.inputs.clean_start != 'true'
         run: python bot/main.py --reset-daily-start
 
       - name: Run trading loop (market open to close)

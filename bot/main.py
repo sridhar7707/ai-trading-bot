@@ -1505,6 +1505,35 @@ def _do_reset_daily_start():
     logger.info("daily_start cleared — next bot cycle will re-anchor Day P&L to today's open.")
 
 
+def _do_clean_db():
+    """Wipe all trading history and push a fresh empty DB to HuggingFace.
+
+    Run AFTER resetting the Alpaca paper account to $100,000 via the Alpaca
+    dashboard (https://app.alpaca.markets → Paper Trading → Reset account).
+    The next bot cycle starts with clean books — all P&L, Holdings, and
+    Signals metrics will be accurate from day one with no stale data.
+    """
+    con = init_db()
+    tables = ("trades", "position_state", "risk_state",
+              "portfolio_snapshots", "signal_log", "screener_log")
+    for table in tables:
+        try:
+            n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            con.execute(f"DELETE FROM {table}")
+            logger.info(f"clean_db: cleared {n} rows from {table}")
+        except Exception as exc:
+            logger.warning(f"clean_db: could not clear {table} — {exc}")
+    con.commit()
+    con.close()
+    logger.info("clean_db: all trading data wiped — pushing fresh DB to HuggingFace…")
+    from bot.monitor.sync_db import push_db
+    if push_db():
+        logger.info("clean_db: empty DB pushed to HuggingFace — ready for clean start.")
+    else:
+        logger.warning("clean_db: DB cleared locally but HF push failed — "
+                       "the dashboard will still show old data until the next successful push.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",    default="paper", choices=["paper", "live"])
@@ -1514,9 +1543,13 @@ if __name__ == "__main__":
                         help="Long-running mode: load models once, loop until market close")
     parser.add_argument("--reset-daily-start", action="store_true",
                         help="Clear stale daily_start anchor so Day P&L resets on next cycle")
+    parser.add_argument("--clean-db", action="store_true",
+                        help="Wipe all bot data for a clean start (reset Alpaca paper account first)")
     args = parser.parse_args()
     try:
-        if args.reset_daily_start:
+        if args.clean_db:
+            _do_clean_db()
+        elif args.reset_daily_start:
             _do_reset_daily_start()
         elif args.summary:
             end_of_day_summary()
