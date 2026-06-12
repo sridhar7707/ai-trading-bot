@@ -1123,6 +1123,63 @@ def trades_html_table(days: int = 30) -> str:
     )
 
 
+# ── Live signal feed (all symbols, latest cycle) ──────────────────────────────
+
+# Maps ensemble action string to a display colour for the signal table.
+_ACTION_BADGE: dict[str, str] = {
+    "STRONG_BUY":  _POS,
+    "BUY":         "#15803d",
+    "HOLD":        _MUTED,
+    "SELL":        _NEG,
+    "STRONG_SELL": "#7f1d1d",
+}
+
+
+def get_latest_signals_df() -> pd.DataFrame:
+    """Return the most recent signal log row per symbol (latest cycle).
+
+    Pulls from signal_log table written every bot cycle for all 18 symbols,
+    so this stays current even when no trade fires.
+    """
+    con = _con()
+    if con is None:
+        return pd.DataFrame()
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT s.symbol, s.timestamp, s.ensemble_action, s.ensemble_score,
+                   s.xgb_prob, s.lstm_prob, s.sentiment_score, s.macro_score, s.regime
+            FROM signal_log s
+            INNER JOIN (
+                SELECT symbol, MAX(timestamp) AS ts FROM signal_log GROUP BY symbol
+            ) latest ON s.symbol = latest.symbol AND s.timestamp = latest.ts
+            ORDER BY s.ensemble_score DESC
+            """,
+            con,
+        )
+    except Exception:
+        con.close()
+        return pd.DataFrame()
+    con.close()
+    if df.empty:
+        return df
+    df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%m-%d %H:%M")
+    df = df.rename(columns={
+        "symbol":         "Symbol",
+        "timestamp":      "As Of",
+        "ensemble_action": "Signal",
+        "ensemble_score": "Score",
+        "xgb_prob":       "XGB",
+        "lstm_prob":      "LSTM",
+        "sentiment_score": "Sentiment",
+        "macro_score":    "Macro",
+        "regime":         "Regime",
+    })
+    for col in ("Score", "XGB", "LSTM", "Sentiment", "Macro"):
+        df[col] = df[col].round(3)
+    return df
+
+
 # ── Emergency halt toggle ─────────────────────────────────────────────────────
 
 _HALT_FILE = Path("data/HALT_TRADING")

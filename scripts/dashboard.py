@@ -32,7 +32,7 @@ from bot.monitor.dashboard_data import (
     get_positions_df, get_returns_summary_df,
     trades_html_table,
     get_performance_metrics, performance_md, portfolio_chart, signals_chart, monthly_chart,
-    get_audit_df,
+    get_audit_df, get_latest_signals_df,
     get_compliance_state, compliance_gauges_html,
     halt_status_html, toggle_halt,
     refresh_db_from_hf, diagnostics, spy_return_since,
@@ -349,10 +349,15 @@ with gr.Blocks(
 
             # ── Signal Analysis ───────────────────────────────────────────────
             with gr.TabItem("🔬 Signals"):
+                gr.HTML(_section("Live model output for all 18 symbols · Updated every bot cycle"))
+                i_sig_live  = gr.DataFrame(
+                    label="Latest signals (most recent cycle per symbol)",
+                    interactive=False, elem_classes=["num-table"],
+                )
+                i_refresh_sg = gr.Button("🔄 Refresh", size="sm")
                 gr.HTML(_section("XGB · LSTM · Sentiment · Ensemble score distributions for BUY entries"))
                 i_sig_days  = gr.Slider(7, 90, value=30, step=7, label="Days back")
                 i_sig_chart = gr.Plot()
-                i_refresh_sg = gr.Button("🔄 Refresh", size="sm")
 
             # ── Go-Live Check ─────────────────────────────────────────────────
             with gr.TabItem("🚀 Go-Live Check"):
@@ -410,6 +415,7 @@ with gr.Blocks(
         return performance_md(get_performance_metrics(d)), portfolio_chart(d), monthly_chart(d * 3)
 
     def _perf_default():        return _perf(60)
+    def _sig_live():             return get_latest_signals_df()
     def _sig_default():         return signals_chart(30)
     def _sig_slider(d):         return signals_chart(int(d))
 
@@ -454,9 +460,11 @@ with gr.Blocks(
     i_refresh_pf.click(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
     i_perf_days.change(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
 
+    demo.load(_sig_live,     outputs=i_sig_live,  **_kw)
     demo.load(_sig_default,  outputs=i_sig_chart, **_kw)
-    i_refresh_sg.click(_sig_slider, inputs=i_sig_days, outputs=i_sig_chart, **_kw)
-    i_sig_days.change(_sig_slider,  inputs=i_sig_days, outputs=i_sig_chart, **_kw)
+    i_refresh_sg.click(_sig_live,    outputs=i_sig_live,  **_kw)
+    i_refresh_sg.click(_sig_slider,  inputs=i_sig_days, outputs=i_sig_chart, **_kw)
+    i_sig_days.change(_sig_slider,   inputs=i_sig_days, outputs=i_sig_chart, **_kw)
 
     i_run_check_btn.click(run_readiness_check, outputs=i_readiness_md, **_kw)
 

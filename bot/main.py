@@ -179,6 +179,23 @@ def init_db():
             open_positions INTEGER
         )
     """)
+    # Per-cycle signal log — records model output for every symbol evaluated,
+    # including cycles where no trade fires. Lets the dashboard show live signals
+    # rather than freezing at the last trade date.
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS signal_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            xgb_prob REAL,
+            lstm_prob REAL,
+            sentiment_score REAL,
+            macro_score REAL,
+            ensemble_score REAL,
+            ensemble_action TEXT,
+            regime TEXT
+        )
+    """)
     con.commit()
     return con
 
@@ -199,6 +216,35 @@ def _record_snapshot(con, portfolio_value: float, available_cash: float, open_po
         f"Snapshot recorded — portfolio=${portfolio_value:,.2f}, cash=${available_cash:,.2f}, "
         f"open_positions={open_positions}"
     )
+
+
+def _log_signal(
+    con, symbol: str,
+    xgb_prob: float, lstm_prob: float, sentiment_score: float,
+    macro_score: float, regime: str, ensemble_action: str,
+):
+    """Record model output for every symbol evaluated each cycle.
+
+    Runs regardless of whether a trade fires, so the dashboard Signals tab
+    always shows live data even during hold-only cycles.
+    """
+    from bot.strategy.ensemble import WEIGHTS
+    sent_norm     = (sentiment_score + 1.0) / 2.0
+    ensemble_score = (
+        WEIGHTS["xgb"]       * xgb_prob +
+        WEIGHTS["lstm"]      * lstm_prob +
+        WEIGHTS["sentiment"] * sent_norm +
+        WEIGHTS["macro"]     * macro_score
+    )
+    con.execute(
+        "INSERT INTO signal_log "
+        "(timestamp, symbol, xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, ensemble_action, regime) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (datetime.now(timezone.utc).isoformat(), symbol,
+         round(xgb_prob, 4), round(lstm_prob, 4), round(sentiment_score, 4),
+         round(macro_score, 4), round(ensemble_score, 4), ensemble_action, regime),
+    )
+    con.commit()
 
 
 def _apply_sim_capital(portfolio_value: float, available_cash: float) -> tuple[float, float, bool]:
@@ -942,6 +988,11 @@ def run(mode: str = "paper"):
             )
             action = action_to_int(action_str)
 
+            # Log every evaluated signal so the dashboard can show live model
+            # output even on cycles where no trade fires.
+            _log_signal(con, symbol, xgb_prob, lstm_prob, sentiment,
+                        macro_score, regime_name, action_str)
+
             # ── Exit / management for held positions ──────────────────────────
             if symbol in positions:
                 # Brokerage guard: skip exit processing entirely when a sell order is already
@@ -1191,6 +1242,18 @@ def run(mode: str = "paper"):
             )
     except Exception as _e:
         logger.warning(f"End-of-cycle DB summary failed: {_e}")
+
+    # Prune old signal_log rows (keep last 7 days) to cap DB growth
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        deleted = con.execute(
+            "DELETE FROM signal_log WHERE timestamp < ?", (cutoff,)
+        ).rowcount
+        con.commit()
+        if deleted:
+            logger.debug(f"signal_log: pruned {deleted} rows older than 7 days")
+    except Exception as _e:
+        logger.warning(f"signal_log prune failed: {_e}")
 
     logger.info("=== Trading cycle complete ===")
     con.close()
