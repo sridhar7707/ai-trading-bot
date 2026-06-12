@@ -311,7 +311,7 @@ with gr.Blocks(
                             "<span style='color:#666;font-size:11px'>"
                             "Creates/removes `data/HALT_TRADING`. Bot checks this file at each cycle.</span>"
                         )
-                gr.HTML(_section("Your safety rails — how close trading is to the daily/weekly loss limits"))
+                gr.HTML(_section("Safety limits — how much of the daily/weekly loss budget has been used (green = safe)"))
                 s_risk_gauges = gr.HTML("*Loading...*")
                 s_refresh_ov = gr.Button("🔄 Refresh", size="sm")
 

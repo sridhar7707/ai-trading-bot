@@ -440,17 +440,18 @@ def overview_md(d: dict) -> str:
              "🔴 DAILY LIMIT HIT" if d["daily_limit_hit"] else (
              "🟡 WEEKLY LIMIT"    if d["weekly_limit_hit"] else "🟢 ACTIVE")))
 
-    # DB sync status line
+    # Data freshness line (subscriber-friendly: no "DB" jargon)
     sync_ok  = d.get("sync_ok")
     db_age   = d.get("db_age_s")
     sync_err = d.get("sync_err", "")
+    age_str  = _fmt_age(db_age)
     if sync_ok is True:
-        sync_line = f"🟢 DB synced {_fmt_age(d.get('sync_age_s'))} · file updated {_fmt_age(db_age)}"
+        sync_line = f"🟢 Data last updated {age_str}"
     elif sync_ok is False:
-        err_hint = f" — {sync_err}" if sync_err else ""
-        sync_line = f"🔴 DB sync FAILED{err_hint} · file last updated {_fmt_age(db_age)}"
+        err_hint = f" ({sync_err})" if sync_err else ""
+        sync_line = f"🔴 Data update failed{err_hint} · last updated {age_str}"
     else:
-        sync_line = f"⚪ DB not yet synced · file last updated {_fmt_age(db_age)}"
+        sync_line = f"⚪ Data freshness unknown · last updated {age_str}"
 
     # Dollar + percent together (retail users think in dollars)
     day_str  = f"{_money(d.get('day_pnl_dollars', 0))} ({d['day_pnl']:+.2%})"
@@ -463,7 +464,20 @@ def overview_md(d: dict) -> str:
         verdict = "🟢 beating" if bot_ret > spy_ret else "🔴 trailing"
         vs_spy  = f"{bot_ret:+.2%} vs S&P {spy_ret:+.2%} — {verdict} the market"
     else:
-        vs_spy  = f"{bot_ret:+.2%} since inception"
+        # Include the inception date so "since inception" has meaning for a subscriber
+        inc_date = d.get("inception_date")
+        inc_str  = ""
+        if inc_date:
+            try:
+                inc_str = " since " + pd.to_datetime(inc_date).strftime("%b %d, %Y")
+            except Exception:
+                pass
+        vs_spy = f"{bot_ret:+.2%}{inc_str}"
+
+    # Macro score with plain-language tier so subscribers know what 0.52 means
+    macro = d['macro_score']
+    macro_label = "favorable" if macro >= 0.65 else ("cautious" if macro <= 0.35 else "neutral")
+    macro_str = f"{macro:.2f} — {macro_label}"
 
     return (
         f"### Bot Status: {status}\n\n"
@@ -474,8 +488,8 @@ def overview_md(d: dict) -> str:
         f"| Return vs S&P 500 | **{vs_spy}** |\n"
         f"| Trades Today | {d['trades_today']} |\n"
         f"| Open Positions | {d['open_positions']} |\n"
-        f"| Day Trades Used | {d['day_trades_used']}/3 (PDT) |\n"
-        f"| Macro Score | {d['macro_score']:.2f} |\n\n"
+        f"| Day Trades | {d['day_trades_used']}/3 |\n"
+        f"| Market Conditions | {macro_str} |\n\n"
         f"{_provenance_line(d)}\n\n"
         f"*{sync_line}*\n\n"
         f"> 💡 **Day/Week P&L** = total account change since today's/Monday's open. "
@@ -486,8 +500,8 @@ def overview_md(d: dict) -> str:
 
 # ── Positions (Subscriber+) ───────────────────────────────────────────────────
 
-_POSITION_COLS = ["Symbol", "Shares", "Entry $", "Current $",
-                  "Unrealized $", "Unrealized %", "Value $", "% Port", "Days"]
+_POSITION_COLS = ["Symbol", "Shares", "Avg Cost $", "Current $",
+                  "Unrealized $", "Unrealized %", "Value $", "% of Portfolio", "Days Held"]
 
 
 def _prices_alpaca(symbols: list[str]) -> dict:
@@ -597,7 +611,10 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
         entry = float(r["entry_price"] or 0)
         shares = float(net.get(sym) or 0)
         cur   = prices.get(sym)
-        days  = f"{(now - opened[i]).total_seconds()/86400:.1f}d" if pd.notna(opened[i]) else "–"
+        d_held = (now - opened[i]).total_seconds() / 86400 if pd.notna(opened[i]) else None
+        days   = (f"{int(d_held)}d" if d_held is not None and d_held >= 1
+                  else f"{int(d_held * 24)}h" if d_held is not None
+                  else "–")
         if cur is not None and entry > 0:
             unreal_usd = shares * (cur - entry)
             unreal_pct = (cur - entry) / entry
@@ -618,7 +635,7 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
 # ── Holdings & Returns (open + sold in one table for easy comparison) ──────────
 
 _RETURNS_COLS = ["Symbol", "Invested $", "Value $", "Return $", "Return %",
-                 "Status", "Since / Sold"]
+                 "Status", "Date"]
 
 
 def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
@@ -627,10 +644,10 @@ def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
     For each symbol the bot has traded:
       Invested $   = total spent buying (cost basis)
       Return $     = realized P&L (from sells) + unrealized P&L (open shares)
-      Value $      = Invested + Return  (current worth incl. realized gains)
+      Value $      = market value if open; total proceeds if sold
       Return %     = Return / Invested
       Status       = Open (still holding) or Sold (fully exited)
-      Since / Sold = first buy date (open) or last sell date (sold)
+      Date         = "Opened Jun 09" for open, "Closed Jun 12" for sold
     """
     con = _con()
     if con is None:
@@ -669,7 +686,12 @@ def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
         cur          = prices.get(sym)
         status       = "🟢 Open" if is_open else "⚪ Sold"
         when         = (first_buy if is_open else last_sell) or first_buy or last_sell
-        when_str     = pd.to_datetime(when).strftime("%Y-%m-%d") if when else "–"
+        # Subscriber-friendly date: "Opened Jun 09" / "Closed Jun 12"
+        try:
+            when_dt  = pd.to_datetime(when)
+            when_str = ("Opened " if is_open else "Closed ") + when_dt.strftime("%b %d")
+        except Exception:
+            when_str = "–"
 
         if is_open:
             # Open: use the same entry-price basis as the Positions table so the two
@@ -689,11 +711,13 @@ def get_returns_summary_df(prices: dict | None = None) -> pd.DataFrame:
                 rows.append([sym, round(invested, 2), "—", "—", "—", status, when_str])
         else:
             # Sold: cost basis = what was paid; proceeds = invested + realized P&L.
+            # Label Value $ as "proceeds" so subscribers don't think position is still live.
             invested     = buy_notional
             total_return = realized
-            value        = invested + realized
+            proceeds     = invested + realized
             ret_pct      = (realized / invested) if invested else None
-            rows.append([sym, round(invested, 2), round(value, 2), round(total_return, 2),
+            rows.append([sym, round(invested, 2), f"${proceeds:,.2f} (proceeds)",
+                         round(total_return, 2),
                          f"{ret_pct:+.2%}" if ret_pct is not None else "—",
                          status, when_str])
 
@@ -1040,7 +1064,7 @@ def compliance_gauges_html(c: dict) -> str:
         f"<h3 style='color:{_TEXT};margin-top:0'>Risk Limit Gauges</h3>"
         + _bar("Daily Loss",   f"{c['day_pnl_pct']:+.2%}",  f"-{c['daily_limit_pct']:.0%}",  daily_pct)
         + _bar("Weekly Loss",  f"{c['week_pnl_pct']:+.2%}", f"-{c['weekly_limit_pct']:.0%}", weekly_pct)
-        + _bar("PDT Trades",   f"{c['day_trades_used']}/{c['day_trades_limit']}", "3 / rolling 5 business days", pdt_pct)
+        + _bar("Day Trades",   f"{c['day_trades_used']}/{c['day_trades_limit']}", "3 max / rolling 5 business days", pdt_pct)
         + (f"<div style='margin-top:12px'>{flags}</div>" if flags else "")
         + "</div>"
     )
@@ -1070,21 +1094,34 @@ _SELL_REASON = {
 
 
 def _trade_rationale(row) -> str:
-    """One-line 'why' for a trade: exit reason for sells, top signal drivers for buys."""
+    """One-line 'why' for a trade.
+
+    Exit rows: plain-English reason (already stored as the action type).
+    Entry rows: subscriber-friendly signal summary — avoids raw model names
+    (XGB/LSTM) that mean nothing to a non-technical user.
+    """
     action = str(row["action"])
     if action.startswith("SELL"):
         return _SELL_REASON.get(action, "Exit")
+    # Buy: summarise signal strength in plain language + market regime
     xgb    = float(row.get("xgb_prob")        or 0)
     lstm   = float(row.get("lstm_prob")       or 0)
     sent   = float(row.get("sentiment_score") or 0)
     regime = str(row.get("regime") or "").strip()
-    parts = []
-    if xgb:  parts.append(f"XGB {xgb:.2f}")
-    if lstm: parts.append(f"LSTM {lstm:.2f}")
-    if sent: parts.append(f"news {sent:+.2f}")
+    avg_model = (xgb + lstm) / 2 if (xgb or lstm) else 0
+    if avg_model >= 0.75:
+        strength = "Strong buy signal"
+    elif avg_model >= 0.55:
+        strength = "Buy signal"
+    else:
+        strength = "AI signal"
+    if sent > 0.15:
+        strength += " · positive news"
+    elif sent < -0.15:
+        strength += " · negative news"
     if regime and regime not in ("", "Unknown"):
-        parts.append(regime.replace("_", " ").title())
-    return " · ".join(parts) if parts else "—"
+        strength += f" · {regime.replace('_', ' ').title()}"
+    return strength
 
 
 def trades_html_table(days: int = 30) -> str:
@@ -1103,13 +1140,26 @@ def trades_html_table(days: int = 30) -> str:
         return (f"<p style='color:{_MUTED};font-family:{_FONT}'>No trades in the selected window. "
                 f"Try a longer range, or check back after the next market session.</p>")
 
+    # Subscriber-friendly display names for action codes
+    _ACTION_DISPLAY = {
+        "BUY":                "BUY",
+        "SELL":               "SELL",
+        "SELL_TAKE_PROFIT":   "SELL",
+        "SELL_TRAILING_STOP": "SELL",
+        "SELL_TIME_EXIT":     "SELL",
+        "SELL_STOP":          "SELL",
+        "SELL_GAP_DOWN":      "SELL",
+    }
+
     rows_html = ""
     for _, row in df.iterrows():
         action  = str(row["action"])
         color   = _ACTION_COLOR.get(action, _MUTED)
+        # Show clean "BUY" / "SELL" label — the Why column explains the specific reason
+        display_action = _ACTION_DISPLAY.get(action, action)
         # Glyph makes buy/sell distinguishable without relying on colour (colourblind-safe).
         glyph   = "▲" if action == "BUY" else "▼"
-        ts      = pd.to_datetime(row["timestamp"]).strftime("%m-%d %H:%M")
+        ts      = pd.to_datetime(row["timestamp"]).strftime("%m-%d %H:%M ET")
         # Show realized P&L as "$X.XX (Y.Y%)" on exits; "–" on entries (not yet closed).
         rlz_pct = row.get("pnl_pct")
         rlz_usd = row.get("realized_pnl")
@@ -1128,7 +1178,7 @@ def trades_html_table(days: int = 30) -> str:
             f"<td style='color:{_MUTED};padding:6px'>{ts}</td>"
             f"<td style='color:{_TEXT};font-weight:bold;padding:6px'>{row['symbol']}</td>"
             f"<td style='padding:6px'><span style='background:{color};color:#fff;padding:2px 7px;border-radius:4px;"
-            f"font-size:11px;white-space:nowrap'>{glyph} {action}</span></td>"
+            f"font-size:11px;white-space:nowrap'>{glyph} {display_action}</span></td>"
             f"<td style='color:{_TEXT};padding:6px'>{row['shares']:.3f}</td>"
             f"<td style='color:{_TEXT};padding:6px'>${row['price']:.2f}</td>"
             f"<td style='color:{_TEXT};padding:6px'>{notional_str}</td>"
@@ -1146,7 +1196,7 @@ def trades_html_table(days: int = 30) -> str:
         "<th style='text-align:left;padding:6px'>Action</th>"
         "<th style='text-align:left;padding:6px'>Shares</th>"
         "<th style='text-align:left;padding:6px'>Price</th>"
-        "<th style='text-align:left;padding:6px'>Notional</th>"
+        "<th style='text-align:left;padding:6px'>Amount $</th>"
         "<th style='text-align:left;padding:6px'>Realized P&amp;L</th>"
         "<th style='text-align:left;padding:6px'>Why</th>"
         "</tr></thead>"
