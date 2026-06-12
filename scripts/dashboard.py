@@ -230,7 +230,7 @@ _GLOSSARY = """
 **Regime** — the detected market state: Trending Up/Down, Ranging, or Volatile.
 **Sharpe Ratio** — return earned per unit of risk; higher is better (above 1 is good). Shows "n/a" until there's enough history.
 **Max Drawdown** — the largest peak-to-trough drop, i.e. how bad it got at the worst point.
-**PDT (Pattern Day Trader)** — a FINRA rule limiting day trades for accounts under $25k; the bot caps itself at 3 in any 5 business days.
+**PDT (Pattern Day Trader)** — a FINRA rule: no more than 3 day trades in any rolling 5-business-day window for accounts under $25k. The "Day Trades Used" counter shows your total in the current 5-day window, not just today.
 **Stop-loss / Trailing stop / Take-profit** — automatic exit rules that protect capital and lock in gains.
 **ATR** — a measure of a stock's volatility, used to size the stop-loss distance.
 """
@@ -317,7 +317,7 @@ with gr.Blocks(
 
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
-                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
+                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized $ and %"))
                 s_positions = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
                 s_returns = gr.DataFrame(interactive=False, elem_classes=["num-table"])
@@ -362,7 +362,7 @@ with gr.Blocks(
 
             # ── Positions ─────────────────────────────────────────────────────
             with gr.TabItem("📂 Positions"):
-                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized P&L"))
+                gr.HTML(_section("Currently held positions — shares, entry, live price, unrealized $ and %"))
                 i_positions   = gr.DataFrame(interactive=False, elem_classes=["num-table"])
                 gr.HTML(_section("Holdings & Returns — invested vs total return for every stock, open and sold"))
                 i_returns     = gr.DataFrame(interactive=False, elem_classes=["num-table"])
@@ -393,12 +393,22 @@ with gr.Blocks(
 
             # ── Signal Analysis ───────────────────────────────────────────────
             with gr.TabItem("🔬 Signals"):
-                gr.HTML(_section("Pre-market screener picks · Finnhub analyst signal + ETF momentum"))
+                gr.HTML(_section(
+                    "Pre-market screener picks · "
+                    "<b>Score</b>: composite factor rank 0–1 (higher = better) · "
+                    "<b>Analyst</b>: Finnhub upgrade/downgrade signal −1 to +1 · "
+                    "<b>ETF Mom</b>: sector ETF vs 20-day SMA"
+                ))
                 i_screener = gr.DataFrame(
                     label="Today's screened universe (ranked by composite score)",
                     interactive=False, elem_classes=["num-table"],
                 )
-                gr.HTML(_section("Live model output · Updated every bot cycle"))
+                gr.HTML(_section(
+                    "Live model output · Updated every bot cycle · "
+                    "<b>XGB / LSTM / Score</b>: 0–1 probability &nbsp;|&nbsp; "
+                    "<b>Sentiment</b>: −1 (negative) to +1 (positive) · "
+                    "<b>Macro</b>: 0–1 market-condition score"
+                ))
                 i_sig_live  = gr.DataFrame(
                     label="Latest signals (most recent cycle per symbol)",
                     interactive=False, elem_classes=["num-table"],

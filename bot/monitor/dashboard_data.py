@@ -486,8 +486,8 @@ def overview_md(d: dict) -> str:
 
 # ── Positions (Subscriber+) ───────────────────────────────────────────────────
 
-_POSITION_COLS = ["Symbol", "Shares", "Entry $", "Current $", "Unrealized %",
-                  "Value $", "% Port", "Days"]
+_POSITION_COLS = ["Symbol", "Shares", "Entry $", "Current $",
+                  "Unrealized $", "Unrealized %", "Value $", "% Port", "Days"]
 
 
 def _prices_alpaca(symbols: list[str]) -> dict:
@@ -599,16 +599,18 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
         cur   = prices.get(sym)
         days  = f"{(now - opened[i]).total_seconds()/86400:.1f}d" if pd.notna(opened[i]) else "–"
         if cur is not None and entry > 0:
+            unreal_usd = shares * (cur - entry)
             unreal_pct = (cur - entry) / entry
             value      = shares * cur
             pct_port   = (value / portfolio) if portfolio else 0.0
             rows.append([sym, round(shares, 3), round(entry, 2), round(cur, 2),
+                         f"{'+' if unreal_usd >= 0 else '-'}${abs(unreal_usd):,.2f}",
                          f"{unreal_pct:+.2%}", round(value, 2),
                          f"{pct_port:.1%}", days])
         else:
             # Price unavailable (off-Space or fetch failed) — show what we have.
             value = shares * entry if entry > 0 else 0.0
-            rows.append([sym, round(shares, 3), round(entry, 2), "—", "—",
+            rows.append([sym, round(shares, 3), round(entry, 2), "—", "—", "—",
                          round(value, 2) if value else "—", "—", days])
     return pd.DataFrame(rows, columns=_POSITION_COLS)
 
@@ -892,15 +894,25 @@ def monthly_chart(days: int = 180) -> plt.Figure:
     if con is None:
         ax.text(0.5, 0.5, "No data", ha="center", va="center", color=_MUTED); return fig
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    df = pd.read_sql_query(
-        "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
-        con, params=(since,),
-    )
+    try:
+        df = pd.read_sql_query(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? "
+            "UNION ALL "
+            "SELECT timestamp, portfolio_value FROM portfolio_snapshots WHERE timestamp >= ? "
+            "ORDER BY timestamp",
+            con, params=(since, since),
+        )
+    except Exception:
+        df = pd.read_sql_query(
+            "SELECT timestamp, portfolio_value FROM trades WHERE timestamp >= ? ORDER BY timestamp",
+            con, params=(since,),
+        )
     con.close()
     if df.empty:
         ax.text(0.5, 0.5, f"No trades yet\n{_EMPTY_HINT}", ha="center", va="center",
                 color=_MUTED, fontsize=9, wrap=True); return fig
     df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.drop_duplicates(subset="timestamp").sort_values("timestamp")
     df["month"]     = df["timestamp"].dt.to_period("M")
     m = df.groupby("month")["portfolio_value"].agg(["first", "last"])
     m["ret"] = (m["last"] - m["first"]) / (m["first"] + 1e-8) * 100
@@ -1012,9 +1024,10 @@ def compliance_gauges_html(c: dict) -> str:
             f"</div></div></div>"
         )
 
-    daily_pct  = abs(c["day_pnl_pct"])  / (c["daily_limit_pct"]  or 1)
-    weekly_pct = abs(c["week_pnl_pct"]) / (c["weekly_limit_pct"] or 1)
-    pdt_pct    = c["day_trades_used"]   / (c["day_trades_limit"]  or 1)
+    # Gauges fill toward the limit only when LOSING — gains don't consume the limit
+    daily_pct  = max(0.0, -c["day_pnl_pct"])  / (c["daily_limit_pct"]  or 1)
+    weekly_pct = max(0.0, -c["week_pnl_pct"]) / (c["weekly_limit_pct"] or 1)
+    pdt_pct    = c["day_trades_used"]          / (c["day_trades_limit"]  or 1)
 
     flags = ""
     if c["daily_warning_sent"]:
@@ -1027,7 +1040,7 @@ def compliance_gauges_html(c: dict) -> str:
         f"<h3 style='color:{_TEXT};margin-top:0'>Risk Limit Gauges</h3>"
         + _bar("Daily Loss",   f"{c['day_pnl_pct']:+.2%}",  f"-{c['daily_limit_pct']:.0%}",  daily_pct)
         + _bar("Weekly Loss",  f"{c['week_pnl_pct']:+.2%}", f"-{c['weekly_limit_pct']:.0%}", weekly_pct)
-        + _bar("PDT Trades",   f"{c['day_trades_used']}/{c['day_trades_limit']}", "3 / 5-day window", pdt_pct)
+        + _bar("PDT Trades",   f"{c['day_trades_used']}/{c['day_trades_limit']}", "3 / rolling 5 business days", pdt_pct)
         + (f"<div style='margin-top:12px'>{flags}</div>" if flags else "")
         + "</div>"
     )
@@ -1081,7 +1094,7 @@ def trades_html_table(days: int = 30) -> str:
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct, "
-        "xgb_prob, lstm_prob, sentiment_score, regime "
+        "realized_pnl, xgb_prob, lstm_prob, sentiment_score, regime "
         "FROM trades WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 200",
         con, params=(since,),
     )
@@ -1097,8 +1110,17 @@ def trades_html_table(days: int = 30) -> str:
         # Glyph makes buy/sell distinguishable without relying on colour (colourblind-safe).
         glyph   = "▲" if action == "BUY" else "▼"
         ts      = pd.to_datetime(row["timestamp"]).strftime("%m-%d %H:%M")
-        pnl_str = f"{row['pnl_pct']:+.2%}" if row["pnl_pct"] else "–"
-        pnl_col = _POS if row["pnl_pct"] and row["pnl_pct"] > 0 else (_NEG if row["pnl_pct"] and row["pnl_pct"] < 0 else _MUTED)
+        # Show realized P&L as "$X.XX (Y.Y%)" on exits; "–" on entries (not yet closed).
+        rlz_pct = row.get("pnl_pct")
+        rlz_usd = row.get("realized_pnl")
+        if action.startswith("SELL") and (rlz_pct or rlz_usd):
+            pnl_usd_str = f"${rlz_usd:+,.2f}" if rlz_usd else ""
+            pnl_pct_str = f"{rlz_pct:+.2%}"   if rlz_pct else ""
+            pnl_str = f"{pnl_usd_str} ({pnl_pct_str})" if pnl_usd_str and pnl_pct_str else pnl_usd_str or pnl_pct_str
+            pnl_col = _POS if (rlz_usd or rlz_pct or 0) > 0 else _NEG
+        else:
+            pnl_str = "–"
+            pnl_col = _MUTED
         notional_str = f"${row['notional']:,.2f}" if row["notional"] else "–"
         why = _trade_rationale(row)
         rows_html += (
@@ -1265,7 +1287,9 @@ def get_screener_df() -> pd.DataFrame:
             return f"{v:.2f} ▼"
         return f"{v:.2f}"
     df["analyst_signal"] = df["analyst_signal"].apply(_fmt_analyst)
-    df["etf_momentum"] = df["etf_momentum"].round(2)
+    df["etf_momentum"] = df["etf_momentum"].apply(
+        lambda v: "↑ Above SMA" if v is not None and v >= 0.5 else ("↓ Below SMA" if v is not None else "—")
+    )
     df["composite_score"] = df["composite_score"].round(3)
     df = df.rename(columns={
         "rank":            "Rank",
