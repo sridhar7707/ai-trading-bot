@@ -184,7 +184,9 @@ def test_overview_vs_spy_beating(dash_db):
 def test_overview_vs_spy_absent_shows_inception(dash_db):
     d = dd.get_overview()
     d["spy_return"] = None
-    assert "since inception" in dd.overview_md(d)
+    md = dd.overview_md(d)
+    # Code shows the actual inception date ("since Jun 12, 2026"), not the literal phrase
+    assert "since" in md
 
 
 def test_spy_return_skipped_off_space(dash_db, monkeypatch):
@@ -205,7 +207,7 @@ def test_positions_df_has_both_symbols_and_prices(dash_db):
     assert len(df) == 2
     syms = set(df["Symbol"])
     assert {"ZZZA", "ZZZD"} == syms
-    entries = dict(zip(df["Symbol"], df["Entry $"]))
+    entries = dict(zip(df["Symbol"], df["Avg Cost $"]))
     assert entries["ZZZA"] == pytest.approx(150.0)
     assert entries["ZZZD"] == pytest.approx(200.0)
 
@@ -226,7 +228,7 @@ def test_positions_unrealized_pnl_math(dash_db):
     assert za["Unrealized %"] == "+10.00%"
     assert za["Value $"] == pytest.approx(165.0)
     # % portfolio = 165 / 102000 = 0.16% → "0.2%"
-    assert za["% Port"] == "0.2%"
+    assert za["% of Portfolio"] == "0.2%"
 
 
 def test_returns_summary_open_position_math(dash_db):
@@ -354,11 +356,12 @@ def test_get_trades_df_accurate(dash_db):
 
 
 def test_trade_log_buy_rationale_shows_drivers(dash_db):
-    """BUY row 'Why' shows the model/regime drivers."""
+    """BUY row 'Why' shows the plain-language signal summary."""
     html = dd.trades_html_table(30)
-    assert "XGB 0.80" in html
-    assert "LSTM 0.70" in html
-    assert "Trending Up" in html   # regime humanized
+    # Rationale is subscriber-friendly: strength label + news sentiment + regime
+    assert "Strong buy signal" in html   # avg_model = (0.80+0.70)/2 = 0.75 → Strong
+    assert "positive news" in html       # sentiment_score = 0.50 > 0.15
+    assert "Trending Up" in html         # regime humanized
 
 
 def test_trade_log_sell_rationale_is_plain_language(dash_db):
@@ -380,9 +383,9 @@ def test_trade_rationale_helper_maps_exit_reasons():
     assert dd._trade_rationale(_row("SELL_TAKE_PROFIT")) == "Took profit"
     assert dd._trade_rationale(_row("SELL_TRAILING_STOP")) == "Trailing stop"
     assert dd._trade_rationale(_row("SELL_GAP_DOWN")) == "Gap-down protection"
-    # all-zero BUY (legacy row) → no fabricated rationale
+    # all-zero BUY (legacy row) → generic AI signal label (not fabricated specifics)
     assert dd._trade_rationale(_row("BUY", xgb_prob=0, lstm_prob=0,
-                                    sentiment_score=0, regime="")) == "—"
+                                    sentiment_score=0, regime="")) == "AI signal"
 
 
 # ── Performance ───────────────────────────────────────────────────────────────

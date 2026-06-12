@@ -28,8 +28,9 @@ def test_approve_buy_blocked_over_position_size(risk):
 
 
 def test_approve_buy_blocked_max_positions(risk):
-    # MAX_POSITIONS = 5; dict must have 5 entries to hit the limit
-    full = {"A": None, "B": None, "C": None, "D": None, "E": None}
+    # MAX_POSITIONS = 8; dict must have 8 entries to hit the limit
+    full = {"A": None, "B": None, "C": None, "D": None, "E": None,
+            "F": None, "G": None, "H": None}
     assert risk.approve_buy("AAPL", 500, 10_000, 10_000, full) is False
 
 
