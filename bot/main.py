@@ -196,6 +196,19 @@ def init_db():
             regime TEXT
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS screener_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            screened_at TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            rank INTEGER,
+            composite_score REAL,
+            analyst_signal REAL,
+            etf_momentum REAL,
+            regime TEXT,
+            sector TEXT
+        )
+    """)
     con.commit()
     return con
 

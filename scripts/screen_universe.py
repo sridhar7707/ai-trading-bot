@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import time
 from collections import defaultdict
@@ -363,7 +364,7 @@ def screen(
     min_price: float = DEFAULT_MIN_PRICE,
     min_adv: float = DEFAULT_MIN_ADV,
     min_history: int = DEFAULT_MIN_HISTORY,
-) -> list[str]:
+) -> tuple[list[str], pd.DataFrame, str]:
     finnhub_token = os.environ.get("FINNHUB_API_KEY", "")
 
     candidates = list(dict.fromkeys(CANDIDATE_UNIVERSE))
@@ -561,14 +562,71 @@ def screen(
     if "SPY" not in selected:
         selected.append("SPY")
 
-    return selected
+    return selected, score_df, regime
+
+
+_TRADE_DB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "trades.db")
+
+
+def _save_screener_to_db(
+    selected: list[str],
+    score_df: pd.DataFrame,
+    regime: str,
+    screened_at: str,
+) -> None:
+    """Persist screener picks + factor scores to trades.db for dashboard display."""
+    try:
+        con = sqlite3.connect(_TRADE_DB)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS screener_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                screened_at TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                rank INTEGER,
+                composite_score REAL,
+                analyst_signal REAL,
+                etf_momentum REAL,
+                regime TEXT,
+                sector TEXT
+            )
+        """)
+        # Prune runs older than 7 days
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        con.execute("DELETE FROM screener_log WHERE screened_at < ?", (cutoff,))
+        # Write selected symbols (excluding always-added SPY) in rank order
+        rows = []
+        rank = 1
+        for sym in selected:
+            if sym == "SPY":
+                continue
+            row = score_df.loc[sym] if sym in score_df.index else None
+            rows.append((
+                screened_at, sym, rank,
+                round(float(row["composite"]), 4) if row is not None and "composite" in score_df.columns else None,
+                round(float(row["analyst_signal"]), 4) if row is not None and "analyst_signal" in score_df.columns else 0.0,
+                round(float(row["etf_momentum"]), 4) if row is not None and "etf_momentum" in score_df.columns else None,
+                regime,
+                _sector(sym),
+            ))
+            rank += 1
+        con.executemany(
+            "INSERT INTO screener_log (screened_at,symbol,rank,composite_score,analyst_signal,etf_momentum,regime,sector) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.commit()
+        con.close()
+        logger.info(f"screener_log: saved {len(rows)} symbols to trades.db")
+    except Exception as exc:
+        logger.warning(f"screener_log write failed (non-fatal): {exc}")
 
 
 def main(args: argparse.Namespace) -> None:
     os.makedirs("data", exist_ok=True)
+    screened_at = datetime.now(timezone.utc).isoformat()
 
     try:
-        symbols = screen(
+        symbols, score_df, regime = screen(
             max_symbols=args.max,
             max_per_sector=args.max_per_sector,
             min_price=args.min_price,
@@ -577,11 +635,13 @@ def main(args: argparse.Namespace) -> None:
         )
     except Exception as exc:
         logger.error(f"Screener failed: {exc} — falling back to config.SYMBOLS")
-        symbols = list(SYMBOLS)
+        symbols, score_df, regime = list(SYMBOLS), pd.DataFrame(), "BULL"
+
+    _save_screener_to_db(symbols, score_df, regime, screened_at)
 
     payload = {
         "date": date.today().isoformat(),
-        "screened_at": datetime.now(timezone.utc).isoformat(),
+        "screened_at": screened_at,
         "symbols": symbols,
         "count": len(symbols),
     }

@@ -1135,15 +1135,38 @@ _ACTION_BADGE: dict[str, str] = {
 }
 
 
+_SIGNAL_COLS = ["Symbol", "As Of", "Signal", "Score", "XGB", "LSTM", "Sentiment", "Macro", "Regime"]
+
+
+def _empty_signals_df() -> pd.DataFrame:
+    """Typed empty DataFrame so Gradio renders column headers instead of 'undefined'."""
+    return pd.DataFrame(columns=_SIGNAL_COLS)
+
+
 def get_latest_signals_df() -> pd.DataFrame:
     """Return the most recent signal log row per symbol (latest cycle).
 
-    Pulls from signal_log table written every bot cycle for all 18 symbols,
+    Pulls from signal_log table written every bot cycle for all evaluated symbols,
     so this stays current even when no trade fires.
     """
     con = _con()
     if con is None:
-        return pd.DataFrame()
+        return _empty_signals_df()
+    # Ensure the table exists — it may be missing on older DBs pulled from HF
+    # before the migration landed. CREATE IF NOT EXISTS is a safe no-op otherwise.
+    try:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS signal_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL, symbol TEXT NOT NULL,
+                xgb_prob REAL, lstm_prob REAL, sentiment_score REAL,
+                macro_score REAL, ensemble_score REAL,
+                ensemble_action TEXT, regime TEXT
+            )
+        """)
+        con.commit()
+    except Exception:
+        pass
     try:
         df = pd.read_sql_query(
             """
@@ -1159,24 +1182,91 @@ def get_latest_signals_df() -> pd.DataFrame:
         )
     except Exception:
         con.close()
-        return pd.DataFrame()
+        return _empty_signals_df()
     con.close()
     if df.empty:
-        return df
+        return _empty_signals_df()
     df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%m-%d %H:%M")
     df = df.rename(columns={
-        "symbol":         "Symbol",
-        "timestamp":      "As Of",
+        "symbol":          "Symbol",
+        "timestamp":       "As Of",
         "ensemble_action": "Signal",
-        "ensemble_score": "Score",
-        "xgb_prob":       "XGB",
-        "lstm_prob":      "LSTM",
+        "ensemble_score":  "Score",
+        "xgb_prob":        "XGB",
+        "lstm_prob":       "LSTM",
         "sentiment_score": "Sentiment",
-        "macro_score":    "Macro",
-        "regime":         "Regime",
+        "macro_score":     "Macro",
+        "regime":          "Regime",
     })
     for col in ("Score", "XGB", "LSTM", "Sentiment", "Macro"):
         df[col] = df[col].round(3)
+    return df
+
+
+_SCREENER_COLS = ["Rank", "Symbol", "Sector", "Score", "Analyst", "ETF Mom", "Regime", "Screened At"]
+
+
+def _empty_screener_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=_SCREENER_COLS)
+
+
+def get_screener_df() -> pd.DataFrame:
+    """Return today's screener picks with factor scores, sorted by rank."""
+    con = _con()
+    if con is None:
+        return _empty_screener_df()
+    try:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS screener_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                screened_at TEXT NOT NULL, symbol TEXT NOT NULL,
+                rank INTEGER, composite_score REAL, analyst_signal REAL,
+                etf_momentum REAL, regime TEXT, sector TEXT
+            )
+        """)
+        con.commit()
+    except Exception:
+        pass
+    try:
+        # Most recent screener run only
+        df = pd.read_sql_query("""
+            SELECT s.rank, s.symbol, s.sector, s.composite_score,
+                   s.analyst_signal, s.etf_momentum, s.regime, s.screened_at
+            FROM screener_log s
+            INNER JOIN (
+                SELECT MAX(screened_at) AS latest FROM screener_log
+            ) r ON s.screened_at = r.latest
+            ORDER BY s.rank
+        """, con)
+    except Exception:
+        con.close()
+        return _empty_screener_df()
+    con.close()
+    if df.empty:
+        return _empty_screener_df()
+    df["screened_at"] = pd.to_datetime(df["screened_at"]).dt.strftime("%m-%d %H:%M")
+    # Format analyst signal as readable label
+    def _fmt_analyst(v):
+        if v is None or v != v:
+            return "—"
+        if v > 0.1:
+            return f"+{v:.2f} ▲"
+        if v < -0.1:
+            return f"{v:.2f} ▼"
+        return f"{v:.2f}"
+    df["analyst_signal"] = df["analyst_signal"].apply(_fmt_analyst)
+    df["etf_momentum"] = df["etf_momentum"].round(2)
+    df["composite_score"] = df["composite_score"].round(3)
+    df = df.rename(columns={
+        "rank":            "Rank",
+        "symbol":          "Symbol",
+        "sector":          "Sector",
+        "composite_score": "Score",
+        "analyst_signal":  "Analyst",
+        "etf_momentum":    "ETF Mom",
+        "regime":          "Regime",
+        "screened_at":     "Screened At",
+    })
     return df
 
 

@@ -32,7 +32,7 @@ from bot.monitor.dashboard_data import (
     get_positions_df, get_returns_summary_df,
     trades_html_table,
     get_performance_metrics, performance_md, portfolio_chart, signals_chart, monthly_chart,
-    get_audit_df, get_latest_signals_df,
+    get_audit_df, get_latest_signals_df, get_screener_df,
     get_compliance_state, compliance_gauges_html,
     halt_status_html, toggle_halt,
     refresh_db_from_hf, diagnostics, spy_return_since,
@@ -349,7 +349,12 @@ with gr.Blocks(
 
             # ── Signal Analysis ───────────────────────────────────────────────
             with gr.TabItem("🔬 Signals"):
-                gr.HTML(_section("Live model output for all 18 symbols · Updated every bot cycle"))
+                gr.HTML(_section("Pre-market screener picks · Finnhub analyst signal + ETF momentum"))
+                i_screener = gr.DataFrame(
+                    label="Today's screened universe (ranked by composite score)",
+                    interactive=False, elem_classes=["num-table"],
+                )
+                gr.HTML(_section("Live model output · Updated every bot cycle"))
                 i_sig_live  = gr.DataFrame(
                     label="Latest signals (most recent cycle per symbol)",
                     interactive=False, elem_classes=["num-table"],
@@ -416,6 +421,7 @@ with gr.Blocks(
 
     def _perf_default():        return _perf(60)
     def _sig_live():             return get_latest_signals_df()
+    def _screener():            return get_screener_df()
     def _sig_default():         return signals_chart(30)
     def _sig_slider(d):         return signals_chart(int(d))
 
@@ -460,8 +466,10 @@ with gr.Blocks(
     i_refresh_pf.click(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
     i_perf_days.change(_perf, inputs=i_perf_days, outputs=[i_perf_metrics, i_perf_chart, i_monthly_plot], **_kw)
 
+    demo.load(_screener,     outputs=i_screener,  **_kw)
     demo.load(_sig_live,     outputs=i_sig_live,  **_kw)
     demo.load(_sig_default,  outputs=i_sig_chart, **_kw)
+    i_refresh_sg.click(_screener,     outputs=i_screener,  **_kw)
     i_refresh_sg.click(_sig_live,    outputs=i_sig_live,  **_kw)
     i_refresh_sg.click(_sig_slider,  inputs=i_sig_days, outputs=i_sig_chart, **_kw)
     i_sig_days.change(_sig_slider,   inputs=i_sig_days, outputs=i_sig_chart, **_kw)
