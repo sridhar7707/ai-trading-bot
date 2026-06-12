@@ -35,6 +35,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Notify workflow started
+        continue-on-error: true
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not set — skipping startup alert."
+          else
+            SLOT=$(TZ=America/New_York date '+%H:%M ET')
+            RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d parse_mode="HTML" \
+              --data-urlencode text="🟢 <b>Trading Bot workflow started</b> — triggered at ${SLOT}. ${RUN_URL}" \
+              >/dev/null && echo "Startup alert sent." || echo "Startup alert failed."
+          fi
+
       - name: Restore trade database
         uses: actions/cache/restore@v4
         with:
@@ -149,7 +167,25 @@ jobs:
           # different repo (HF_REPO_ID, repo_type="model") that nothing reads — it
           # was redundant and confusing, so it has been removed.
 
+          def send_telegram(tok, cid, text):
+              try:
+                  import requests as _req
+                  _req.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                      json={"chat_id": cid, "parse_mode": "HTML", "text": text},
+                      timeout=5)
+              except Exception:
+                  pass
+
           cycle = 0
+          if not market_open():
+              tok = os.environ.get("TELEGRAM_TOKEN", "")
+              cid = os.environ.get("TELEGRAM_CHAT_ID", "")
+              et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
+              print(f"Market is closed at {et_str} — trading loop skipped.", flush=True)
+              if tok and cid:
+                  send_telegram(tok, cid,
+                      f"⚠️ <b>Trading Bot fired but market is closed</b> ({et_str}). "
+                      f"Check cron schedule or holiday calendar.")
           while market_open():
               cycle += 1
               et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
@@ -157,17 +193,12 @@ jobs:
               r = subprocess.run([sys.executable, "bot/main.py", "--mode", "paper"])
               if r.returncode != 0:
                   print(f"::warning::Cycle {cycle} exited with code {r.returncode}", flush=True)
-                  try:
-                      import requests as _req
-                      _tok = os.environ.get("TELEGRAM_TOKEN", "")
-                      _cid = os.environ.get("TELEGRAM_CHAT_ID", "")
-                      if _tok and _cid:
-                          _req.post(f"https://api.telegram.org/bot{_tok}/sendMessage",
-                              json={"chat_id": _cid, "parse_mode": "HTML",
-                                    "text": f"⚠️ <b>CYCLE {cycle} FAILED</b> — exit code {r.returncode}. Check GitHub Actions log."},
-                              timeout=5)
-                  except Exception:
-                      pass
+                  tok = os.environ.get("TELEGRAM_TOKEN", "")
+                  cid = os.environ.get("TELEGRAM_CHAT_ID", "")
+                  run_url = f"{os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
+                  if tok and cid:
+                      send_telegram(tok, cid,
+                          f"⚠️ <b>CYCLE {cycle} FAILED</b> — exit code {r.returncode}. {run_url}")
               # Sleep in 30s chunks so market-close is detected promptly
               for _ in range(10):
                   time.sleep(30)
