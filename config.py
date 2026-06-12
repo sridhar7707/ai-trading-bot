@@ -72,10 +72,13 @@ DAILY_LOSS_WARNING_PCT = DAILY_LOSS_LIMIT_PCT * 0.50          # warn at 50% of d
 WEEKLY_LOSS_LIMIT_PCT = float(os.getenv("WEEKLY_LOSS_LIMIT_PCT", 0.10))  # 10% weekly circuit breaker
 PORTFOLIO_DRAWDOWN_LIMIT_PCT = float(os.getenv("PORTFOLIO_DRAWDOWN_LIMIT_PCT", 0.12))  # 12% from all-time high
 MACRO_HALT_VIX = float(os.getenv("MACRO_HALT_VIX", 28.0))    # halt all new buys above this VIX level
-MAX_RISK_PER_TRADE_PCT = float(os.getenv("MAX_RISK_PER_TRADE_PCT", 0.015))  # max 1.5% of portfolio at risk per trade
-MIN_RR_RATIO   = float(os.getenv("MIN_RR_RATIO", 1.5))    # skip trade if TP target < 1.5× the stop distance
-MIN_TP_PCT     = float(os.getenv("MIN_TP_PCT", 0.03))      # skip trade if TP ceiling < 3% (not worth the risk)
-RANGING_SIZE_FACTOR = float(os.getenv("RANGING_SIZE_FACTOR", 0.75))  # reduce position by 25% in sideways markets
+MAX_RISK_PER_TRADE_PCT  = float(os.getenv("MAX_RISK_PER_TRADE_PCT",  0.015))  # max 1.5% of portfolio at risk per trade
+MIN_RR_RATIO            = float(os.getenv("MIN_RR_RATIO",            1.5))    # skip trade if TP target < 1.5× the stop distance
+MIN_TP_PCT              = float(os.getenv("MIN_TP_PCT",              0.03))   # skip trade if TP ceiling < 3%
+RANGING_SIZE_FACTOR     = float(os.getenv("RANGING_SIZE_FACTOR",     0.75))   # reduce position by 25% in sideways markets
+MAX_SECTOR_EXPOSURE_PCT = float(os.getenv("MAX_SECTOR_EXPOSURE_PCT", 0.30))   # max 30% of portfolio in any one sector
+MAX_POSITION_DRIFT_PCT  = float(os.getenv("MAX_POSITION_DRIFT_PCT",  0.25))   # trim position back if it drifts above 25%
+MIN_CASH_RESERVE_PCT    = float(os.getenv("MIN_CASH_RESERVE_PCT",    0.10))   # always keep 10% cash uninvested
 MAX_POSITIONS = 8
 MAX_SECTOR_POSITIONS = 2                                        # max open positions per sector
 
@@ -93,25 +96,32 @@ MARKET_CLOSE_BUFFER_MINS = int(os.getenv("MARKET_CLOSE_BUFFER_MINS", 10))
 # MAX_SECTOR_POSITIONS=2 means at most 2 open positions per sector at any time.
 SECTOR_MAP: dict[str, str] = {
     # Technology
-    "AAPL": "Technology",    "MSFT": "Technology",    "NVDA": "Technology",
-    "QQQ":  "Technology",    "XLK":  "Technology",    "ARKK": "Technology",
+    "AAPL": "Technology",  "MSFT": "Technology",  "NVDA": "Technology",
+    "AMD":  "Technology",  "AVGO": "Technology",  "CRM":  "Technology",
+    "QQQ":  "Technology",  "XLK":  "Technology",  "ARKK": "Technology",
     # Communication Services
-    "GOOGL": "Comm_Services", "META": "Comm_Services", "XLC": "Comm_Services",
+    "GOOGL": "Comm_Services", "META": "Comm_Services", "NFLX": "Comm_Services",
+    "XLC":   "Comm_Services",
     # Consumer Discretionary
-    "AMZN": "Consumer_Disc",  "TSLA": "Consumer_Disc", "XLY": "Consumer_Disc",
+    "AMZN": "Consumer_Disc", "TSLA": "Consumer_Disc",
+    "NKE":  "Consumer_Disc", "MCD":  "Consumer_Disc", "XLY":  "Consumer_Disc",
     # Consumer Staples
-    "WMT":  "Consumer_Staples", "XLP": "Consumer_Staples",
+    "WMT":  "Consumer_Staples", "COST": "Consumer_Staples",
+    "PG":   "Consumer_Staples", "XLP":  "Consumer_Staples",
     # Financials
-    "JPM":  "Financials",    "XLF":  "Financials",    "BRK-B": "Financials",
+    "JPM":   "Financials", "BAC": "Financials", "V":   "Financials",
+    "MA":    "Financials", "XLF": "Financials", "BRK-B": "Financials",
     # Healthcare
-    "JNJ":  "Healthcare",    "XLV":  "Healthcare",
+    "JNJ":  "Healthcare", "UNH":  "Healthcare", "ABBV": "Healthcare",
+    "PFE":  "Healthcare", "XLV":  "Healthcare",
     # Energy
-    "XOM":  "Energy",        "XLE":  "Energy",
+    "XOM":  "Energy", "CVX": "Energy", "XLE": "Energy",
     # Industrials
-    "XLI":  "Industrials",
+    "CAT":  "Industrials", "HON": "Industrials", "XLI": "Industrials",
     # Broad / macro
-    "SPY":  "Broad_ETF",     "VTI":  "Broad_ETF",     "VOO":  "Broad_ETF",
-    "GLD":  "Commodities",   "TLT":  "Bonds",
+    "SPY":  "Broad_ETF", "VTI": "Broad_ETF", "VOO": "Broad_ETF",
+    "IWM":  "Broad_ETF",
+    "GLD":  "Commodities", "TLT": "Bonds",
 }
 
 INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))

@@ -88,6 +88,8 @@ from config import (
     MAX_RISK_PER_TRADE_PCT,
     ATR_STOP_MULTIPLIER, ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT, STOP_LOSS_PCT,
     MIN_RR_RATIO, MIN_TP_PCT, RANGING_SIZE_FACTOR,
+    MAX_SECTOR_EXPOSURE_PCT, MAX_POSITION_DRIFT_PCT, MIN_CASH_RESERVE_PCT,
+    MAX_POSITION_PCT,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -760,6 +762,27 @@ def _reconcile_positions(con, alpaca_positions: dict):
             _upsert_position_state(con, sym, entry, entry, 0.0)
 
 
+def _trim_position(con, client, symbol, trim_qty, current_price,
+                   regime_name, portfolio_value, pnl_pct, entry_price) -> bool:
+    """Partial sell to reduce an oversized position back to MAX_POSITION_PCT.
+    Unlike _signal_sell, does NOT delete position_state — the position still exists.
+    """
+    result = client.sell(symbol, qty=trim_qty, limit_price=current_price)
+    if result:
+        client.wait_for_fill(result["order_id"], timeout_secs=12)
+        trim_notional = trim_qty * current_price
+        log_trade(con, symbol, "SELL_TRIM", trim_qty, current_price, trim_notional,
+                  regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
+                  order_id=result.get("order_id"))
+        tg.alert_sell(symbol, trim_qty, current_price, pnl_pct,
+                      reason="drift-trim", notional=trim_notional)
+        logger.info(f"TRIM {symbol}: sold {trim_qty:.3f} shares @ ${current_price:.2f} "
+                    f"(position drifted above {MAX_POSITION_DRIFT_PCT:.0%} of portfolio)")
+        return True
+    logger.warning(f"TRIM {symbol}: partial sell order failed")
+    return False
+
+
 def _signal_sell(con, client, symbol, pos_qty, current_price,
                  regime_name, portfolio_value, is_from_stop=False,
                  reason="stop-loss", pnl_pct=0.0, entry_price: float = 0.0,
@@ -1244,7 +1267,23 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
-                # ④ Time-based forced exit — free capital from stale positions
+                # ④ Drift trim — partial sell if position has grown above MAX_POSITION_DRIFT_PCT
+                if portfolio_value > 0:
+                    position_pct = (pos_qty * current_price) / portfolio_value
+                    if position_pct > MAX_POSITION_DRIFT_PCT:
+                        target_notional = portfolio_value * MAX_POSITION_PCT
+                        trim_qty = (pos_qty * current_price - target_notional) / current_price
+                        if trim_qty >= 0.001:
+                            logger.info(
+                                f"{symbol} at {position_pct:.1%} of portfolio "
+                                f"(max {MAX_POSITION_DRIFT_PCT:.0%}) — trimming ${trim_qty * current_price:.0f}"
+                            )
+                            _trim_position(con, client, symbol, round(trim_qty, 3),
+                                           current_price, regime_name, portfolio_value,
+                                           pnl_pct, entry_price)
+                            continue  # re-evaluate next cycle with updated qty
+
+                # ⑤ Time-based forced exit — free capital from stale positions
                 if _check_time_exit(pos_state, pnl_pct):
                     success = _signal_sell(
                         con, client, symbol, pos_qty, current_price,
@@ -1374,10 +1413,34 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                 notional *= RANGING_SIZE_FACTOR
                 logger.debug(f"BUY {symbol}: RANGING regime — size reduced to ${notional:.0f}")
 
+            # Gate 8d — Sector exposure cap: total portfolio value in this sector ≤ MAX_SECTOR_EXPOSURE_PCT
+            _sym_sector = SECTOR_MAP.get(symbol, "Unknown")
+            if _sym_sector not in ("Unknown", "Broad_ETF"):
+                _sector_val = sum(
+                    float(getattr(pos, "market_value", 0) or 0)
+                    for sym, pos in positions.items()
+                    if SECTOR_MAP.get(sym, "Unknown") == _sym_sector
+                )
+                _sector_pct = _sector_val / portfolio_value if portfolio_value > 0 else 0
+                if _sector_pct >= MAX_SECTOR_EXPOSURE_PCT:
+                    logger.info(
+                        f"BUY {symbol} skipped — {_sym_sector} sector at "
+                        f"{_sector_pct:.1%} of portfolio (max {MAX_SECTOR_EXPOSURE_PCT:.0%})"
+                    )
+                    continue
+
+            # Gate 8e — Cash reserve: always keep MIN_CASH_RESERVE_PCT uninvested
+            _min_reserve = portfolio_value * MIN_CASH_RESERVE_PCT
             if notional > available_cash * 0.95:
                 logger.warning(
                     f"BUY {symbol} skipped — need ${notional:.2f}, "
                     f"running cash ${available_cash:.2f}"
+                )
+                continue
+            if available_cash - notional < _min_reserve:
+                logger.info(
+                    f"BUY {symbol} skipped — would breach cash reserve "
+                    f"(need ${notional:.0f}, reserve=${_min_reserve:.0f}, cash=${available_cash:.0f})"
                 )
                 continue
             if not risk.approve_buy(symbol, notional, portfolio_value,
