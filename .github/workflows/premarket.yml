@@ -23,16 +23,28 @@ jobs:
         id: date
         run: echo "today=$(date -u '+%Y-%m-%d')" >> $GITHUB_OUTPUT
 
+      # Check cache FIRST — if today's universe already exists (e.g. watchdog re-trigger),
+      # skip Python setup, dep install, and the screener entirely.
+      - name: Check / populate screened universe cache
+        id: cache-universe
+        uses: actions/cache@v4
+        with:
+          path: data/universe_today.json
+          key: universe-${{ steps.date.outputs.today }}
+
       - name: Set up Python
+        if: steps.cache-universe.outputs.cache-hit != 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           cache: pip
 
       - name: Install dependencies
+        if: steps.cache-universe.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt
 
       - name: Run screener
+        if: steps.cache-universe.outputs.cache-hit != 'true'
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
           ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
@@ -42,7 +54,8 @@ jobs:
           mkdir -p data
           python scripts/screen_universe.py --max 25 --max-per-sector 3
 
-      - name: Show selected symbols
+      - name: Verify screener output
+        if: steps.cache-universe.outputs.cache-hit != 'true'
         run: |
           if [ -f data/universe_today.json ]; then
             python3 -c "
@@ -56,12 +69,6 @@ jobs:
             exit 1
           fi
 
-      - name: Cache screened universe
-        uses: actions/cache/save@v4
-        with:
-          path: data/universe_today.json
-          key: universe-${{ steps.date.outputs.today }}
-
       - name: Notify via Telegram
         continue-on-error: true
         env:
@@ -71,16 +78,21 @@ jobs:
           if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "Telegram secrets not set — skipping."
           else
-            COUNT=$(python3 -c "
+            if [ "${{ steps.cache-universe.outputs.cache-hit }}" = "true" ]; then
+              MSG="📋 <b>Pre-market screener skipped</b> — universe already cached for today."
+            else
+              COUNT=$(python3 -c "
           import json
           d = json.load(open('data/universe_today.json'))
           syms = d.get('symbols', d) if isinstance(d, dict) else d
           print(len(syms))
           " 2>/dev/null || echo "?")
-            NOW=$(TZ=America/New_York date '+%H:%M ET')
+              NOW=$(TZ=America/New_York date '+%H:%M ET')
+              MSG="📋 <b>Pre-market screen complete</b> — ${COUNT} symbols selected at ${NOW}. Ready for market open."
+            fi
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
               -d chat_id="${TELEGRAM_CHAT_ID}" \
               -d parse_mode="HTML" \
-              --data-urlencode text="📋 <b>Pre-market screen complete</b> — ${COUNT} symbols selected at ${NOW}. Ready for market open." \
+              --data-urlencode text="${MSG}" \
               >/dev/null
           fi

@@ -477,7 +477,10 @@ def overview_md(d: dict) -> str:
         f"| Day Trades Used | {d['day_trades_used']}/3 (PDT) |\n"
         f"| Macro Score | {d['macro_score']:.2f} |\n\n"
         f"{_provenance_line(d)}\n\n"
-        f"*{sync_line}*\n"
+        f"*{sync_line}*\n\n"
+        f"> 💡 **Day/Week P&L** = total account change since today's/Monday's open. "
+        f"**P&L in the Holdings table** = each position's gain since its entry date — "
+        f"these won't add up to Day P&L because most capital sits in cash.\n"
     )
 
 
@@ -612,7 +615,7 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
 
 # ── Holdings & Returns (open + sold in one table for easy comparison) ──────────
 
-_RETURNS_COLS = ["Symbol", "Invested $", "Value $", "Return $", "Return %",
+_RETURNS_COLS = ["Symbol", "Invested $", "Value $", "P&L $ (since entry)", "P&L % (since entry)",
                  "Status", "Since / Sold"]
 
 

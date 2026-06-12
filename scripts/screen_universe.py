@@ -639,11 +639,34 @@ def main(args: argparse.Namespace) -> None:
 
     _save_screener_to_db(symbols, score_df, regime, screened_at)
 
+    # Build per-symbol pick records so the trading bot can import them into its
+    # own screener_log table.  universe_today.json crosses the GitHub Actions job
+    # boundary via cache; the premarket runner's trades.db does NOT — so this is
+    # the only path for screener data to reach the bot's DB and the dashboard.
+    picks: list[dict] = []
+    rank = 1
+    for sym in symbols:
+        if sym == "SPY":
+            continue
+        row = score_df.loc[sym] if (not score_df.empty and sym in score_df.index) else None
+        picks.append({
+            "symbol":          sym,
+            "rank":            rank,
+            "composite_score": round(float(row["composite"]), 4)      if row is not None and "composite"      in score_df.columns else None,
+            "analyst_signal":  round(float(row["analyst_signal"]), 4) if row is not None and "analyst_signal" in score_df.columns else 0.0,
+            "etf_momentum":    round(float(row["etf_momentum"]), 4)   if row is not None and "etf_momentum"   in score_df.columns else None,
+            "regime":          regime,
+            "sector":          _sector(sym),
+        })
+        rank += 1
+
     payload = {
-        "date": date.today().isoformat(),
+        "date":        date.today().isoformat(),
         "screened_at": screened_at,
-        "symbols": symbols,
-        "count": len(symbols),
+        "regime":      regime,
+        "symbols":     symbols,
+        "count":       len(symbols),
+        "picks":       picks,      # full factor data — imported by bot into screener_log
     }
     with open(OUTPUT_PATH, "w") as f:
         json.dump(payload, f, indent=2)

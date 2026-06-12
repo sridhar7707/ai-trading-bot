@@ -17,25 +17,63 @@ _UNIVERSE_PATH  = "data/universe_today.json"
 _HALT_FILE      = "data/HALT_TRADING"   # create this file to pause the bot without canceling the workflow
 
 
-def _load_today_universe() -> list[str]:
-    """Return today's screened universe if available, else config.SYMBOLS."""
+def _load_today_universe() -> tuple[list[str], dict]:
+    """Return (symbols, payload) for today's screened universe, or (config.SYMBOLS, {})."""
     from config import SYMBOLS as _fallback
     if not os.path.exists(_UNIVERSE_PATH):
-        return list(_fallback)
+        return list(_fallback), {}
     try:
         with open(_UNIVERSE_PATH) as f:
             payload = json.load(f)
         if payload.get("date") != date.today().isoformat():
             logger.info("Universe file is from a prior day — using config.SYMBOLS")
-            return list(_fallback)
+            return list(_fallback), {}
         syms = payload.get("symbols", [])
         if not syms:
-            return list(_fallback)
+            return list(_fallback), {}
         logger.info(f"Loaded screened universe: {len(syms)} symbols ({syms[:5]}...)")
-        return syms
+        return syms, payload
     except Exception as exc:
         logger.warning(f"Failed to load screened universe: {exc} — using config.SYMBOLS")
-        return list(_fallback)
+        return list(_fallback), {}
+
+
+def _import_screener_picks(con, payload: dict) -> None:
+    """Write pre-market screener factor scores from universe_today.json into screener_log.
+
+    Called once per session (first cycle) — subsequent calls are no-ops because we
+    check whether the screened_at timestamp is already present.  This is the only
+    path for screener data to reach the bot's trades.db: the premarket runner's
+    local DB is discarded; only universe_today.json crosses the job boundary via cache.
+    """
+    picks      = payload.get("picks")
+    screened_at = payload.get("screened_at")
+    if not picks or not screened_at:
+        return
+    try:
+        existing = con.execute(
+            "SELECT COUNT(*) FROM screener_log WHERE screened_at = ?", (screened_at,)
+        ).fetchone()[0]
+        if existing:
+            return
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        con.execute("DELETE FROM screener_log WHERE screened_at < ?", (cutoff,))
+        rows = [
+            (screened_at, p["symbol"], p.get("rank"), p.get("composite_score"),
+             p.get("analyst_signal", 0.0), p.get("etf_momentum"),
+             p.get("regime"), p.get("sector"))
+            for p in picks
+        ]
+        con.executemany(
+            "INSERT INTO screener_log "
+            "(screened_at,symbol,rank,composite_score,analyst_signal,etf_momentum,regime,sector) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.commit()
+        logger.info(f"Imported {len(rows)} screener picks into screener_log")
+    except Exception as exc:
+        logger.warning(f"screener_log import failed (non-fatal): {exc}")
 
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
@@ -283,26 +321,40 @@ def _anchor_daily_start(con) -> tuple[float | None, str]:
 
     Prefers the last account snapshot BEFORE today (yesterday's close — the real
     equity). Falls back to the last trade row only on older DBs without snapshots.
-    Anchoring to the trade row alone used the cost basis at purchase, which made
-    Day P&L read as gain-since-inception instead of today's gain.
+
+    Staleness guard: only accepts data from within the last 4 calendar days.
+    This handles Mon←Fri weekends (3-day gap) but rejects values from a multi-day
+    outage — in that case we return None so reset_daily anchors to today's opening
+    value instead (Day P&L = $0 at session start, which is correct for a fresh start).
+
+    Without this guard the anchor would silently pick the oldest available snapshot
+    (e.g. 3 days ago), making Day P&L report "return since last run" rather than
+    "today's gain".
 
     Returns (value_or_None, source_description).
     """
-    today_iso = date.today().isoformat()
+    today_iso  = date.today().isoformat()
+    cutoff_iso = (date.today() - timedelta(days=4)).isoformat()
+
     row = con.execute(
-        "SELECT portfolio_value FROM portfolio_snapshots WHERE timestamp < ? "
+        "SELECT timestamp, portfolio_value FROM portfolio_snapshots "
+        "WHERE timestamp < ? AND timestamp >= ? "
         "ORDER BY timestamp DESC LIMIT 1",
-        (today_iso,)
+        (today_iso, cutoff_iso),
     ).fetchone()
-    if row and row[0] is not None:
-        return float(row[0]), "snapshot (prior day close)"
+    if row and row[1] is not None:
+        return float(row[1]), f"snapshot from {row[0][:10]}"
+
     row = con.execute(
-        "SELECT portfolio_value FROM trades WHERE timestamp < ? ORDER BY timestamp DESC LIMIT 1",
-        (today_iso,)
+        "SELECT timestamp, portfolio_value FROM trades "
+        "WHERE timestamp < ? AND timestamp >= ? "
+        "ORDER BY timestamp DESC LIMIT 1",
+        (today_iso, cutoff_iso),
     ).fetchone()
-    if row and row[0] is not None:
-        return float(row[0]), "last trade (no prior snapshot)"
-    return None, "none available"
+    if row and row[1] is not None:
+        return float(row[1]), f"trade from {row[0][:10]}"
+
+    return None, "no data within 4 days — starting fresh"
 
 
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
@@ -861,7 +913,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
     con = init_db()
 
-    active_symbols = _load_today_universe()
+    active_symbols, _universe_payload = _load_today_universe()
+    _import_screener_picks(con, _universe_payload)
 
     daily_start, day_trade_dates, weekly_start, daily_warning_sent, weekly_halt_alerted, portfolio_high = _load_risk_state(con)
 
@@ -885,22 +938,23 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
     xgb        = _xgb        if _xgb        is not None else XGBPredictor()
     lstm       = _lstm       if _lstm       is not None else LSTMPredictor()
 
-    portfolio_value, available_cash = client.get_account_summary()
-    if portfolio_value <= 0:
+    real_portfolio_value, real_available_cash = client.get_account_summary()
+    if real_portfolio_value <= 0:
         logger.error(
-            f"Alpaca returned portfolio_value=${portfolio_value:.2f} — likely an auth/connection "
+            f"Alpaca returned portfolio_value=${real_portfolio_value:.2f} — likely an auth/connection "
             "failure (check ALPACA_KEY/ALPACA_SECRET). Dashboard would show $0.00. Aborting cycle."
         )
         tg._send("🚨 Alpaca account value is $0.00 — check API credentials. Bot cycle aborted.")
         con.close()
         return
-    logger.info(f"Alpaca connection OK — account value ${portfolio_value:,.2f}")
+    logger.info(f"Alpaca connection OK — account value ${real_portfolio_value:,.2f}")
     # Paper sim-capital: size/risk-check as if the account were small (dry-run).
-    portfolio_value, available_cash, _sim_capital = _apply_sim_capital(portfolio_value, available_cash)
+    # We keep the real values separately so the dashboard always shows the true account equity.
+    portfolio_value, available_cash, _sim_capital = _apply_sim_capital(real_portfolio_value, real_available_cash)
     if _sim_capital:
         logger.warning(
             f"PAPER_SIM_CAPITAL active — sizing & risk as if account = "
-            f"${portfolio_value:,.2f} (real account is larger)"
+            f"${portfolio_value:,.2f} (real account ${real_portfolio_value:,.2f})"
         )
     risk.update_portfolio_high(portfolio_value)
 
@@ -949,18 +1003,22 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
     # First cycle of the day — daily_start was None before reset_daily sets it
     if daily_start is None:
-        tg.alert_bot_started(mode, portfolio_value)
+        tg.alert_bot_started(mode, real_portfolio_value)
 
-    risk.reset_daily(portfolio_value)
+    # Always reset daily using the REAL account value so the dashboard's Day P&L
+    # baseline matches what Alpaca actually shows — not the sim-capped value.
+    risk.reset_daily(real_portfolio_value)
     _save_risk_state(con, risk)
 
     logger.info(
-        f"Portfolio: ${portfolio_value:.2f} | Cash: ${available_cash:.2f} | "
+        f"Portfolio: ${real_portfolio_value:.2f} (sim: ${portfolio_value:.2f}) | "
+        f"Cash: ${real_available_cash:.2f} | "
         f"Open positions: {list(positions.keys())} | "
         f"Pending buys: {buy_order_syms} | Pending sells: {sell_order_syms}"
     )
-    # Heartbeat snapshot — keeps the dashboard live even on no-trade cycles
-    _record_snapshot(con, portfolio_value, available_cash, len(positions))
+    # Heartbeat snapshot — always stores the REAL account value so the dashboard
+    # portfolio total is correct regardless of PAPER_SIM_CAPITAL.
+    _record_snapshot(con, real_portfolio_value, real_available_cash, len(positions))
     if sell_order_syms:
         logger.warning(
             f"Open sell orders detected for {len(sell_order_syms)} symbol(s): {sell_order_syms} "
