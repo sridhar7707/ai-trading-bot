@@ -149,86 +149,22 @@ jobs:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           TRADING_MODE: paper
           PYTHONUNBUFFERED: "1"
-        run: |
-          python - <<'PYEOF'
-          import subprocess, time, datetime, os, sys
-          from zoneinfo import ZoneInfo
+        run: python bot/main.py --mode paper --loop
 
-          def market_open():
-              et = datetime.datetime.now(ZoneInfo("America/New_York"))
-              if et.weekday() >= 5:
-                  return False
-              open_t  = et.replace(hour=9,  minute=30, second=0, microsecond=0)
-              close_t = et.replace(hour=16, minute=0,  second=0, microsecond=0)
-              if not (open_t <= et < close_t):
-                  return False
-              # Alpaca calendar API is the authoritative source for holidays/early closes.
-              # If it fails, assume open (bot/main.py has its own independent check).
-              today_str = et.strftime("%Y-%m-%d")
-              try:
-                  import alpaca_trade_api as tradeapi
-                  api = tradeapi.REST(
-                      os.environ.get("ALPACA_KEY", ""),
-                      os.environ.get("ALPACA_SECRET", ""),
-                      "https://paper-api.alpaca.markets", api_version="v2"
-                  )
-                  return len(api.get_calendar(start=today_str, end=today_str)) > 0
-              except Exception:
-                  return True  # fail open — inner bot/main.py will verify independently
-
-          # NOTE: trades.db is synced to HuggingFace by bot/main.py itself at the end
-          # of every cycle (sync_db.push_db() → HF_DB_REPO_ID dataset, which is the
-          # repo the dashboard reads). The previous push_hf() here wrote to a
-          # different repo (HF_REPO_ID, repo_type="model") that nothing reads — it
-          # was redundant and confusing, so it has been removed.
-
-          def send_telegram(tok, cid, text):
-              try:
-                  import requests as _req
-                  _req.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": cid, "parse_mode": "HTML", "text": text},
-                      timeout=5)
-              except Exception:
-                  pass
-
-          cycle = 0
-          if not market_open():
-              tok = os.environ.get("TELEGRAM_TOKEN", "")
-              cid = os.environ.get("TELEGRAM_CHAT_ID", "")
-              et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
-              print(f"Market is closed at {et_str} — trading loop skipped.", flush=True)
-              if tok and cid:
-                  send_telegram(tok, cid,
-                      f"⚠️ <b>Trading Bot fired but market is closed</b> ({et_str}). "
-                      f"Check cron schedule or holiday calendar.")
-          while market_open():
-              cycle += 1
-              et_str = datetime.datetime.now(ZoneInfo("America/New_York")).strftime("%H:%M ET")
-              print(f"\n=== Cycle {cycle} | {et_str} ===", flush=True)
-              r = subprocess.run([sys.executable, "bot/main.py", "--mode", "paper"])
-              if r.returncode != 0:
-                  print(f"::warning::Cycle {cycle} exited with code {r.returncode}", flush=True)
-                  tok = os.environ.get("TELEGRAM_TOKEN", "")
-                  cid = os.environ.get("TELEGRAM_CHAT_ID", "")
-                  run_url = f"{os.environ.get('GITHUB_SERVER_URL','')}/{os.environ.get('GITHUB_REPOSITORY','')}/actions/runs/{os.environ.get('GITHUB_RUN_ID','')}"
-                  if tok and cid:
-                      send_telegram(tok, cid,
-                          f"⚠️ <b>CYCLE {cycle} FAILED</b> — exit code {r.returncode}. {run_url}")
-              # Sleep in 30s chunks so market-close is detected promptly
-              for _ in range(10):
-                  time.sleep(30)
-                  if not market_open():
-                      break
-
-          print("\nMarket closed — trading loop complete.", flush=True)
-
-          # Send end-of-day Telegram summary. The final trades.db state was already
-          # pushed by the last run() cycle's push_db() before market-close was detected.
-          print("Sending end-of-day summary...", flush=True)
-          r = subprocess.run([sys.executable, "bot/main.py", "--summary"])
-          if r.returncode != 0:
-              print(f"::warning::End-of-day summary exited with code {r.returncode}", flush=True)
-          PYEOF
+      - name: Send end-of-day summary (safety net)
+        if: always()
+        continue-on-error: true
+        env:
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
+          ALPACA_BASE_URL: https://paper-api.alpaca.markets
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
+          TRADING_MODE: paper
+          PYTHONUNBUFFERED: "1"
+        run: python bot/main.py --summary
 
       - name: Save trade database
         if: always()

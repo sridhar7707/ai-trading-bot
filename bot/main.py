@@ -10,7 +10,7 @@ import sys
 import time
 import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from loguru import logger
 
 _UNIVERSE_PATH  = "data/universe_today.json"
@@ -80,6 +80,9 @@ _MACRO_DB_TTL     = 4  * 3600
 # Without this cache, 25 symbols × every cycle = ~1,500 Reddit API calls/day.
 _wsb_cache: dict[str, tuple[float, dict]] = {}
 _WSB_CACHE_TTL = 300  # seconds — matches the trading cycle interval
+_market_holiday_cache: dict[str, bool] = {}  # date_str → is_holiday (one Alpaca API call per day)
+_last_hf_sync: float = 0.0                   # epoch time of last HuggingFace DB push
+_HF_SYNC_INTERVAL: float = 900               # push at most every 15 min (≈3 cycles)
 
 
 def _is_market_hours(alpaca_api=None) -> bool:
@@ -89,16 +92,19 @@ def _is_market_hours(alpaca_api=None) -> bool:
     if et.weekday() >= 5:
         return False
     today_str = et.strftime("%Y-%m-%d")
-    is_holiday = False
-    if alpaca_api is not None:
-        try:
-            cal = alpaca_api.get_calendar(start=today_str, end=today_str)
-            is_holiday = len(cal) == 0  # empty list = market closed today
-        except Exception as e:
-            logger.warning(f"Alpaca calendar check failed — using hardcoded holidays: {e}")
+    # Cache the holiday result per day — only one Alpaca API call per session
+    is_holiday = _market_holiday_cache.get(today_str)
+    if is_holiday is None:
+        if alpaca_api is not None:
+            try:
+                cal = alpaca_api.get_calendar(start=today_str, end=today_str)
+                is_holiday = len(cal) == 0
+            except Exception as e:
+                logger.warning(f"Alpaca calendar check failed — using hardcoded holidays: {e}")
+                is_holiday = today_str in _US_MARKET_HOLIDAYS
+        else:
             is_holiday = today_str in _US_MARKET_HOLIDAYS
-    else:
-        is_holiday = today_str in _US_MARKET_HOLIDAYS
+        _market_holiday_cache[today_str] = is_holiday
     if is_holiday:
         logger.info("NYSE holiday — skipping cycle.")
         return False
@@ -257,7 +263,7 @@ def _log_signal(
          round(xgb_prob, 4), round(lstm_prob, 4), round(sentiment_score, 4),
          round(macro_score, 4), round(ensemble_score, 4), ensemble_action, regime),
     )
-    con.commit()
+    # Caller is responsible for committing — batch all 25 signal rows in one fsync
 
 
 def _apply_sim_capital(portfolio_value: float, available_cash: float) -> tuple[float, float, bool]:
@@ -471,6 +477,69 @@ def _is_near_earnings(con, symbol: str) -> bool:
     )
     con.commit()
     return near
+
+
+def _prefetch_earnings_parallel(con, symbols: list[str]) -> dict[str, bool]:
+    """Bulk-fetch earnings proximity: one SQL read, parallel yfinance for misses, one batch write.
+
+    Replaces 25 sequential yfinance HTTP calls (1–5 s each on cache miss) with a
+    single parallel burst capped at 8 threads.
+    """
+    now = time.time()
+    placeholders = ",".join("?" * len(symbols))
+    rows = con.execute(
+        f"SELECT symbol, near_earnings, cached_at FROM earnings_cache WHERE symbol IN ({placeholders})",
+        symbols,
+    ).fetchall()
+
+    result: dict[str, bool] = {}
+    for sym, near, cached_at in rows:
+        try:
+            if now - datetime.fromisoformat(cached_at).timestamp() < _EARNINGS_DB_TTL:
+                result[sym] = bool(near)
+        except (ValueError, TypeError):
+            pass
+
+    for sym in symbols:
+        if sym in _ETF_SYMBOLS:
+            result[sym] = False
+
+    stale = [s for s in symbols if s not in result and s not in _ETF_SYMBOLS]
+    if not stale:
+        return {s: result.get(s, False) for s in symbols}
+
+    def _fetch_one(symbol: str) -> tuple[str, bool]:
+        try:
+            import yfinance as yf
+            cal = yf.Ticker(symbol).calendar
+            if cal is None:
+                return symbol, False
+            dates = cal.get("Earnings Date", []) if isinstance(cal, dict) else (
+                cal.loc["Earnings Date"].tolist() if "Earnings Date" in cal.index else []
+            )
+            if not dates:
+                return symbol, False
+            nearest = pd.to_datetime(dates[0]).date()
+            near = abs((nearest - date.today()).days) <= EARNINGS_WINDOW_DAYS
+            if near:
+                logger.info(f"Earnings guard: {symbol} — {nearest} within {EARNINGS_WINDOW_DAYS}d")
+            return symbol, near
+        except Exception as e:
+            logger.warning(f"Earnings prefetch failed for {symbol}: {e}")
+            return symbol, False
+
+    logger.info(f"Earnings prefetch: {len(stale)} cache misses — fetching in parallel")
+    with ThreadPoolExecutor(max_workers=min(len(stale), 8)) as pool:
+        fresh = dict(pool.map(_fetch_one, stale))
+
+    ts = datetime.now(timezone.utc).isoformat()
+    con.executemany(
+        "INSERT OR REPLACE INTO earnings_cache (symbol, near_earnings, cached_at) VALUES (?,?,?)",
+        [(sym, int(near), ts) for sym, near in fresh.items()],
+    )
+    con.commit()
+    result.update(fresh)
+    return {s: result.get(s, False) for s in symbols}
 
 
 # ── Position state helpers ────────────────────────────────────────────────────
@@ -773,7 +842,7 @@ def _load_premarket_sentiment() -> dict[str, float]:
 
 # ── Main trading cycle ────────────────────────────────────────────────────────
 
-def run(mode: str = "paper"):
+def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
     logger.info(f"=== Trading cycle start | mode={mode} ===")
 
     # Emergency override: create data/HALT_TRADING file to pause without canceling the workflow.
@@ -783,6 +852,7 @@ def run(mode: str = "paper"):
         tg._send("⛔ <b>EMERGENCY HALT ACTIVE</b> — bot paused. Delete data/HALT_TRADING to resume.")
         return
 
+    global _last_hf_sync
     client = AlpacaClient()
     if not _is_market_hours(client.api):
         logger.info("Market is closed — cycle skipped (no trades, no DB write). "
@@ -811,9 +881,9 @@ def run(mode: str = "paper"):
         portfolio_high=portfolio_high,
     )
 
-    regime_clf = RegimeClassifier()
-    xgb        = XGBPredictor()
-    lstm       = LSTMPredictor()
+    regime_clf = _regime_clf if _regime_clf is not None else RegimeClassifier()
+    xgb        = _xgb        if _xgb        is not None else XGBPredictor()
+    lstm       = _lstm       if _lstm       is not None else LSTMPredictor()
 
     portfolio_value, available_cash = client.get_account_summary()
     if portfolio_value <= 0:
@@ -941,7 +1011,7 @@ def run(mode: str = "paper"):
             bars = pd.DataFrame()
         return symbol, bars
 
-    with ThreadPoolExecutor(max_workers=min(len(active_symbols), 10)) as pool:
+    with ThreadPoolExecutor(max_workers=len(active_symbols)) as pool:
         fetched = list(pool.map(_fetch_symbol, active_symbols))
 
     bars_map = {sym: bars for sym, bars in fetched}
@@ -978,6 +1048,9 @@ def run(mode: str = "paper"):
         vs_spy_today = float(spy_day_bars["close"].pct_change().iloc[-1]) if len(spy_day_bars) > 1 else 0.0
     except Exception:
         vs_spy_today = 0.0
+
+    # Prefetch earnings proximity in parallel — avoids 25 sequential yfinance HTTP calls
+    earnings_map = _prefetch_earnings_parallel(con, active_symbols)
 
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
@@ -1165,8 +1238,8 @@ def run(mode: str = "paper"):
                 logger.info(f"BUY {symbol} skipped — open buy order already pending")
                 continue
 
-            # Gate 6 — Earnings proximity
-            if _is_near_earnings(con, symbol):
+            # Gate 6 — Earnings proximity (prefetched in parallel before loop)
+            if earnings_map.get(symbol, False):
                 continue
 
             # Gate 7 — Correlation: avoid adding a position highly correlated with existing holdings
@@ -1232,6 +1305,8 @@ def run(mode: str = "paper"):
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
 
+    con.commit()  # flush all batched signal_log inserts in one fsync (was 25 individual commits)
+
     # End-of-cycle DB summary — makes "why is the dashboard empty?" obvious from the logs
     try:
         n_trades = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
@@ -1273,10 +1348,53 @@ def run(mode: str = "paper"):
 
     try:
         from bot.monitor.sync_db import push_db
-        if not push_db():
-            logger.warning("trades.db sync to HuggingFace FAILED — dashboard will show stale data")
+        if time.time() - _last_hf_sync > _HF_SYNC_INTERVAL:
+            if push_db():
+                _last_hf_sync = time.time()
+            else:
+                logger.warning("trades.db sync to HuggingFace FAILED — dashboard will show stale data")
+        else:
+            logger.debug(f"HF sync skipped — last push {time.time() - _last_hf_sync:.0f}s ago (<{_HF_SYNC_INTERVAL:.0f}s threshold)")
     except Exception as _e:
         logger.warning(f"HF DB sync skipped: {_e}")
+
+
+def run_loop(mode: str = "paper"):
+    """Load models once, cycle every 5 minutes until market close.
+
+    Eliminates per-cycle Python startup + model-loading overhead (~10-30 s/cycle).
+    Models (XGB, LSTM, scaler) stay in memory for the full trading session.
+    """
+    logger.info("Long-running mode — loading models once for full session.")
+    regime_clf = RegimeClassifier()
+    xgb        = XGBPredictor()
+    lstm       = LSTMPredictor()
+
+    client = AlpacaClient()
+    if not _is_market_hours(client.api):
+        logger.info("Market is closed at session start — nothing to trade.")
+        tg._send("⚠️ <b>Trading Bot fired but market is closed</b>. Check cron schedule or holiday calendar.")
+        return
+
+    cycle = 0
+    while _is_market_hours(client.api):
+        cycle += 1
+        logger.info(f"\n=== Loop cycle {cycle} ===")
+        try:
+            run(mode=mode, _regime_clf=regime_clf, _xgb=xgb, _lstm=lstm)
+        except Exception as e:
+            logger.error(f"Cycle {cycle} crashed: {e}")
+            tg._send(f"⚠️ <b>CYCLE {cycle} CRASHED</b> — {e}. Continuing to next cycle.")
+        for _ in range(10):
+            time.sleep(30)
+            if not _is_market_hours(client.api):
+                break
+
+    logger.info("Market closed — loop complete.")
+    try:
+        end_of_day_summary()
+    except Exception as e:
+        logger.error(f"End-of-day summary failed: {e}")
 
 
 if __name__ == "__main__":
@@ -1284,10 +1402,14 @@ if __name__ == "__main__":
     parser.add_argument("--mode",    default="paper", choices=["paper", "live"])
     parser.add_argument("--summary", action="store_true",
                         help="Send end-of-day Telegram summary and exit")
+    parser.add_argument("--loop",    action="store_true",
+                        help="Long-running mode: load models once, loop until market close")
     args = parser.parse_args()
     try:
         if args.summary:
             end_of_day_summary()
+        elif args.loop:
+            run_loop(mode=args.mode)
         else:
             run(mode=args.mode)
     except Exception:
