@@ -163,6 +163,16 @@ def test_overview_total_return_and_inception(dash_db):
     assert d["inception_date"] is not None
 
 
+def test_overview_provenance_line(dash_db):
+    d = dd.get_overview()
+    # fixture seeds 3 trades (1 BUY + 2 SELL)
+    assert d["total_trades"] == 3
+    line = dd._provenance_line(d)
+    assert "Paper trading" in line
+    assert "3 trades executed" in line
+    assert "since" in line   # inception date present
+
+
 def test_overview_vs_spy_beating(dash_db):
     d = dd.get_overview()
     d["spy_return"] = 0.012   # bot +2% beats SPY +1.2%

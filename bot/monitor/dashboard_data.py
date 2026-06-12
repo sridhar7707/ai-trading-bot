@@ -354,6 +354,13 @@ def get_overview() -> dict:
         open_positions = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
     except Exception:
         open_positions = 0
+    # Provenance: total executed trades (paper-trading "since" date = inception_date above).
+    try:
+        total_trades = con.execute(
+            "SELECT COUNT(*) FROM trades WHERE action='BUY' OR action LIKE 'SELL%'"
+        ).fetchone()[0]
+    except Exception:
+        total_trades = 0
     con.close()
 
     # DB sync status for display
@@ -379,6 +386,7 @@ def get_overview() -> dict:
         "week_pnl_dollars": week_pnl_dollars,
         "total_return":     total_return,
         "inception_date":   inception_date,
+        "total_trades":     total_trades,
         "spy_return":       None,   # filled in by the caller (network, best-effort)
         "trades_today":     trades_today,
         "open_positions":   open_positions,
@@ -398,6 +406,19 @@ def get_overview() -> dict:
 def _money(x: float) -> str:
     """Signed dollar amount, e.g. +$480.00 / -$120.50."""
     return f"{'+' if x >= 0 else '-'}${abs(x):,.2f}"
+
+
+def _provenance_line(d: dict) -> str:
+    """One-line credibility caption: paper-trading, since when, how many trades."""
+    n = d.get("total_trades", 0)
+    inc = d.get("inception_date")
+    since = ""
+    if inc:
+        try:
+            since = " since " + pd.to_datetime(inc).strftime("%b %d, %Y")
+        except Exception:
+            pass
+    return f"📄 **Paper trading{since}** · {n} trade{'s' if n != 1 else ''} executed (simulated capital — no real money)"
 
 
 def _fmt_age(seconds: float | None) -> str:
@@ -455,6 +476,7 @@ def overview_md(d: dict) -> str:
         f"| Open Positions | {d['open_positions']} |\n"
         f"| Day Trades Used | {d['day_trades_used']}/3 (PDT) |\n"
         f"| Macro Score | {d['macro_score']:.2f} |\n\n"
+        f"{_provenance_line(d)}\n\n"
         f"*{sync_line}*\n"
     )
 

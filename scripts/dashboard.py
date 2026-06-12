@@ -191,6 +191,29 @@ _GLOSSARY = """
 **ATR** — a measure of a stock's volatility, used to size the stop-loss distance.
 """
 
+_REPO_URL = "https://github.com/sridhar7707/ai-trading-bot"
+_ABOUT = f"""
+An automated **paper-trading** system — simulated capital, no real money. Market
+data and order execution use Alpaca's paper-trading API.
+
+**📦 Source code:** [{_REPO_URL.replace('https://', '')}]({_REPO_URL})
+
+**How a trade is made (every ~5 min during market hours):**
+1. **Features & regime** — compute technical indicators per symbol and classify the
+   market regime (Trending / Ranging / Volatile).
+2. **Signal ensemble** — score price direction with **XGBoost + LSTM + FinBERT
+   sentiment**, combined into one weighted ensemble score.
+3. **Risk gate (hard-coded, the model can't bypass it)** — position sizing via the
+   Kelly fraction, stop-loss / trailing-stop / take-profit, daily & weekly loss
+   limits, portfolio drawdown cap, sector concentration, wash-sale and **PDT**
+   compliance.
+4. **Execute** — only orders that pass every gate are sent to Alpaca; each fill is
+   logged with its full signal audit trail.
+
+**Simulated vs. real:** trades are simulated (paper); the market data, prices, and
+brokerage mechanics are real. An emergency-halt file can pause all trading instantly.
+"""
+
 with gr.Blocks(
     title="Trading Bot Dashboard",
     css=_CSS,
@@ -212,6 +235,11 @@ with gr.Blocks(
             info="Simple = portfolio, positions, trades. Detailed = + performance, signals, audit, compliance.",
             interactive=True,
         )
+
+    # About panel — the engineering story + repo link, one click from the top so a
+    # reviewer sees what's simulated vs real and how signals flow to orders.
+    with gr.Accordion("📖 About this project (architecture & source)", open=False):
+        gr.Markdown(_ABOUT)
 
     # Plain-language glossary so the jargon (Sharpe, Macro, Regime, PDT, ATR…)
     # is one click away from anywhere on the dashboard.
