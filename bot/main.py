@@ -85,6 +85,8 @@ from config import (
     MAX_HOLD_DAYS, KELLY_LOOKBACK_TRADES, KELLY_FRACTION_MAX,
     CORRELATION_THRESHOLD, RS_LOOKBACK_BARS, ENTRY_REGIMES,
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS, PAPER_SIM_CAPITAL,
+    MAX_RISK_PER_TRADE_PCT,
+    ATR_STOP_MULTIPLIER, ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT, STOP_LOSS_PCT,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -121,6 +123,8 @@ _WSB_CACHE_TTL = 300  # seconds — matches the trading cycle interval
 _market_holiday_cache: dict[str, bool] = {}  # date_str → is_holiday (one Alpaca API call per day)
 _last_hf_sync: float = 0.0                   # epoch time of last HuggingFace DB push
 _HF_SYNC_INTERVAL: float = 900               # push at most every 15 min (≈3 cycles)
+_stop_fired_today: set[str] = set()          # symbols whose stop-loss fired this calendar day
+_stop_fired_date: str = ""                   # date_str when _stop_fired_today was last reset
 
 
 def _is_market_hours(alpaca_api=None) -> bool:
@@ -905,7 +909,11 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         tg._send("⛔ <b>EMERGENCY HALT ACTIVE</b> — bot paused. Delete data/HALT_TRADING to resume.")
         return
 
-    global _last_hf_sync
+    global _last_hf_sync, _stop_fired_today, _stop_fired_date
+    today_str = date.today().isoformat()
+    if _stop_fired_date != today_str:
+        _stop_fired_today = set()
+        _stop_fired_date = today_str
     client = AlpacaClient()
     if not _is_market_hours(client.api):
         logger.info("Market is closed — cycle skipped (no trades, no DB write). "
@@ -1216,6 +1224,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                         is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct,
                         entry_price=entry_price, holding_days=holding_days
                     )
+                    if success:
+                        _stop_fired_today.add(symbol)
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
@@ -1228,6 +1238,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                         is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct,
                         entry_price=entry_price, holding_days=holding_days
                     )
+                    if success:
+                        _stop_fired_today.add(symbol)
                     _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
                     continue
 
@@ -1309,12 +1321,33 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             if _is_wash_sale_risk(con, symbol):
                 continue
 
+            # Gate 7.7 — Stop re-entry block: don't re-buy a symbol whose stop fired today
+            if symbol in _stop_fired_today:
+                logger.info(f"BUY {symbol} skipped — stop-loss fired earlier today (re-entry blocked)")
+                continue
+
             # Gate 8 — Cash and risk approval
             # ensemble_size: STRONG_BUY=0.20, BUY=0.12 — use as confidence multiplier on Kelly
             kelly_f      = _kelly_fraction(con, symbol)
             confidence   = ensemble_size / BUY_FRACTION  # 1.0 for BUY, 1.67 for STRONG_BUY
             pos_fraction = min(kelly_f * macro_cap * confidence, KELLY_FRACTION_MAX)
             notional     = portfolio_value * pos_fraction
+
+            # Risk-per-trade cap: size so max dollar loss ≤ MAX_RISK_PER_TRADE_PCT of portfolio.
+            # Derives the implied stop % from ATR (same formula as risk_manager), then back-calculates
+            # max safe notional — volatile stocks get smaller positions automatically.
+            if current_atr and current_atr > 0 and current_price > 0:
+                stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT,
+                               (ATR_STOP_MULTIPLIER * current_atr) / current_price))
+            else:
+                stop_pct = STOP_LOSS_PCT
+            max_risk_notional = (portfolio_value * MAX_RISK_PER_TRADE_PCT) / stop_pct
+            if notional > max_risk_notional:
+                logger.info(
+                    f"BUY {symbol}: notional capped ${notional:.0f}→${max_risk_notional:.0f} "
+                    f"(stop_pct={stop_pct:.1%}, max_risk={MAX_RISK_PER_TRADE_PCT:.1%})"
+                )
+                notional = max_risk_notional
 
             if notional > available_cash * 0.95:
                 logger.warning(
