@@ -615,7 +615,7 @@ def get_positions_df(prices: dict | None = None, portfolio: float | None = None)
 
 # ── Holdings & Returns (open + sold in one table for easy comparison) ──────────
 
-_RETURNS_COLS = ["Symbol", "Invested $", "Value $", "P&L $ (since entry)", "P&L % (since entry)",
+_RETURNS_COLS = ["Symbol", "Invested $", "Value $", "Return $", "Return %",
                  "Status", "Since / Sold"]
 
 
@@ -943,20 +943,26 @@ def get_compliance_state() -> dict:
     except Exception:
         rs = {}
     portfolio = _latest_portfolio_value(con)
+    is_today     = rs.get("daily_start_date")  == today
+    is_this_week = rs.get("weekly_start_week") == wk
     daily_start  = float(rs.get("daily_start_value",  0) or 0)
     weekly_start = float(rs.get("weekly_start_value", 0) or 0)
     try:
         dtd = json.loads(rs.get("day_trade_dates", "[]"))
     except Exception:
         dtd = []
+    # PDT is a rolling 5-business-day window — count all dates stored, not just today
+    # (risk_state already prunes dates older than 5 business days)
+    day_trades_rolling = len(dtd)
     con.close()
     return {
         "portfolio":           portfolio,
-        "day_pnl_pct":         (portfolio - daily_start)  / daily_start  if daily_start  else 0.0,
-        "week_pnl_pct":        (portfolio - weekly_start) / weekly_start if weekly_start else 0.0,
+        # Guard against stale daily/weekly anchors (same logic as get_overview)
+        "day_pnl_pct":         (portfolio - daily_start)  / daily_start  if is_today  and daily_start  else 0.0,
+        "week_pnl_pct":        (portfolio - weekly_start) / weekly_start if is_this_week and weekly_start else 0.0,
         "daily_limit_pct":     DAILY_LOSS_LIMIT_PCT,
         "weekly_limit_pct":    WEEKLY_LOSS_LIMIT_PCT,
-        "day_trades_used":     dtd.count(today),
+        "day_trades_used":     day_trades_rolling,
         "day_trades_limit":    3,
         "daily_warning_sent":  rs.get("daily_warning_sent_date") == today,
         "weekly_halt_alerted": rs.get("weekly_halt_alerted_week") == wk,
@@ -966,9 +972,10 @@ def get_compliance_state() -> dict:
 def compliance_md(c: dict) -> str:
     if not c:
         return f"No compliance data yet. {_EMPTY_HINT}"
-    daily_used  = abs(c["day_pnl_pct"])  / c["daily_limit_pct"]  * 100
-    weekly_used = abs(c["week_pnl_pct"]) / c["weekly_limit_pct"] * 100
-    pdt_used    = c["day_trades_used"]   / c["day_trades_limit"]  * 100
+    # Only LOSSES consume the risk limit — gains don't, so use max(0, -pnl)
+    daily_used  = max(0.0, -c["day_pnl_pct"])  / c["daily_limit_pct"]  * 100
+    weekly_used = max(0.0, -c["week_pnl_pct"]) / c["weekly_limit_pct"] * 100
+    pdt_used    = c["day_trades_used"]          / c["day_trades_limit"]  * 100
     return (
         f"### Risk Limits\n\n"
         f"| Limit | Used | Threshold | Status |\n|-------|------|-----------|--------|\n"
@@ -976,7 +983,7 @@ def compliance_md(c: dict) -> str:
         f"{'🔴 HIT' if daily_used >= 100 else f'🟡 {daily_used:.0f}%' if daily_used >= 50 else f'🟢 {daily_used:.0f}%'} |\n"
         f"| Weekly Loss | {c['week_pnl_pct']:+.2%} | -{c['weekly_limit_pct']:.0%} | "
         f"{'🔴 HIT' if weekly_used >= 100 else f'🟡 {weekly_used:.0f}%' if weekly_used >= 50 else f'🟢 {weekly_used:.0f}%'} |\n"
-        f"| PDT Day Trades | {c['day_trades_used']}/{c['day_trades_limit']} | 3/rolling 5d | "
+        f"| PDT Day Trades | {c['day_trades_used']}/{c['day_trades_limit']} | 3 / rolling 5 business days | "
         f"{'🔴 FULL' if pdt_used >= 100 else f'🟡 {pdt_used:.0f}%' if pdt_used >= 66 else f'🟢 {pdt_used:.0f}%'} |\n"
         f"\n### Flags\n\n"
         f"- Daily warning sent: {'✅ Yes' if c['daily_warning_sent'] else '— No'}\n"
