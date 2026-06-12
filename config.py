@@ -137,3 +137,7 @@ NEWSAPI_KEY = os.getenv("NEWSAPI_KEY", "")
 REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
 REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "ai-trading-bot/1.0")
+# Finnhub free tier — used by screener for analyst upgrade/downgrade signals.
+# Register at https://finnhub.io (free, no credit card). Add as GitHub secret FINNHUB_API_KEY.
+# Without it the screener still runs; analyst factor is simply skipped.
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")

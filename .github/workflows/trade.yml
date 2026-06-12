@@ -89,6 +89,9 @@ jobs:
       - name: Screen universe (pre-market)
         continue-on-error: true
         env:
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           PYTHONUNBUFFERED: "1"
         run: python scripts/screen_universe.py --max 25 --max-per-sector 3
 
