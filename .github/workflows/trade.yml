@@ -104,14 +104,29 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python scripts/load_model_hf.py
 
+      - name: Get today's date (cache key)
+        id: date
+        run: echo "today=$(date -u '+%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Restore pre-market screened universe
+        id: restore-universe
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: data/universe_today.json
+          key: universe-${{ steps.date.outputs.today }}
+
       - name: Screen universe (pre-market)
+        if: steps.restore-universe.outputs.cache-hit != 'true'
         continue-on-error: true
         env:
           ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
           ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           PYTHONUNBUFFERED: "1"
-        run: python scripts/screen_universe.py --max 25 --max-per-sector 3
+        run: |
+          mkdir -p data
+          python scripts/screen_universe.py --max 25 --max-per-sector 3
 
       - name: Prefetch sentiment (pre-market)
         continue-on-error: true

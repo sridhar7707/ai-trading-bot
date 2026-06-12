@@ -1,0 +1,86 @@
+name: Pre-Market Screener
+
+on:
+  schedule:
+    # 12:00 UTC = 7:00 AM CDT / 8:00 AM EDT — ~90 min before market open.
+    # Screens and ranks today's trading universe so trade.yml starts with a
+    # fresh symbol list rather than running the screener mid-session.
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get today's date (cache key)
+        id: date
+        run: echo "today=$(date -u '+%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run screener
+        env:
+          ALPACA_KEY: ${{ secrets.ALPACA_KEY }}
+          ALPACA_SECRET: ${{ secrets.ALPACA_SECRET }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          mkdir -p data
+          python scripts/screen_universe.py --max 25 --max-per-sector 3
+
+      - name: Show selected symbols
+        run: |
+          if [ -f data/universe_today.json ]; then
+            python3 -c "
+          import json
+          d = json.load(open('data/universe_today.json'))
+          syms = d.get('symbols', d) if isinstance(d, dict) else d
+          print(f'Screened {len(syms)} symbols: {syms}')
+          "
+          else
+            echo "universe_today.json not created — screener may have failed"
+            exit 1
+          fi
+
+      - name: Cache screened universe
+        uses: actions/cache/save@v4
+        with:
+          path: data/universe_today.json
+          key: universe-${{ steps.date.outputs.today }}
+
+      - name: Notify via Telegram
+        continue-on-error: true
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not set — skipping."
+          else
+            COUNT=$(python3 -c "
+          import json
+          d = json.load(open('data/universe_today.json'))
+          syms = d.get('symbols', d) if isinstance(d, dict) else d
+          print(len(syms))
+          " 2>/dev/null || echo "?")
+            NOW=$(TZ=America/New_York date '+%H:%M ET')
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+              -d chat_id="${TELEGRAM_CHAT_ID}" \
+              -d parse_mode="HTML" \
+              --data-urlencode text="📋 <b>Pre-market screen complete</b> — ${COUNT} symbols selected at ${NOW}. Ready for market open." \
+              >/dev/null
+          fi
