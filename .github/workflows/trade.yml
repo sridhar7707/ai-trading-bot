@@ -151,7 +151,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: |
           mkdir -p data
-          python scripts/screen_universe.py --max 25 --max-per-sector 3
+          python scripts/screen_universe.py --max 20 --max-per-sector 3
 
       - name: Prefetch sentiment (pre-market)
         continue-on-error: true
@@ -184,6 +184,7 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           TRADING_MODE: paper
+          PAPER_SIM_CAPITAL: "0"
           PYTHONUNBUFFERED: "1"
         run: python bot/main.py --mode paper --loop
 

@@ -18,26 +18,28 @@ HF_REPO_ID = os.getenv("HF_REPO_ID", "")
 HF_DB_REPO_ID = os.getenv("HF_DB_REPO_ID", "ksri77/ai-trading-bot-db")
 
 # --- Trading universe (live bot trades these) ---
-# Balanced across 8 sectors so the model can rotate capital into whatever is leading,
-# not just chase the tech names it was originally given.
+# Balanced across 8 sectors so the model can rotate capital into whatever is leading.
 STOCKS = [
     # Technology
-    "AAPL", "MSFT", "NVDA",
+    "AAPL", "MSFT", "NVDA", "AMD", "AVGO", "CRM",
     # Communication Services
-    "GOOGL", "META",
+    "GOOGL", "META", "NFLX",
     # Consumer Discretionary
-    "AMZN", "TSLA",
-    # Financials
-    "JPM",
-    # Healthcare
-    "JNJ",
-    # Energy
-    "XOM",
+    "AMZN", "TSLA", "NKE", "MCD",
     # Consumer Staples (defensive)
-    "WMT",
+    "WMT", "COST", "PG",
+    # Financials
+    "JPM", "BAC", "V", "MA",
+    # Healthcare
+    "JNJ", "UNH", "ABBV", "PFE",
+    # Energy
+    "XOM", "CVX",
+    # Industrials
+    "CAT", "HON",
 ]
 ETFS = [
     "SPY", "QQQ", "VTI",   # broad market
+    "IWM",                  # Small-cap Russell 2000
     "XLF",                  # Financials ETF
     "XLV",                  # Healthcare ETF
     "XLE",                  # Energy ETF
@@ -70,7 +72,7 @@ DAILY_LOSS_WARNING_PCT = DAILY_LOSS_LIMIT_PCT * 0.50          # warn at 50% of d
 WEEKLY_LOSS_LIMIT_PCT = float(os.getenv("WEEKLY_LOSS_LIMIT_PCT", 0.10))  # 10% weekly circuit breaker
 PORTFOLIO_DRAWDOWN_LIMIT_PCT = float(os.getenv("PORTFOLIO_DRAWDOWN_LIMIT_PCT", 0.20))  # 20% from all-time high
 MACRO_HALT_VIX = float(os.getenv("MACRO_HALT_VIX", 40.0))    # halt all new buys above this VIX level
-MAX_POSITIONS = 5
+MAX_POSITIONS = 8
 MAX_SECTOR_POSITIONS = 2                                        # max open positions per sector
 
 # --- ATR-based exit rules ---
