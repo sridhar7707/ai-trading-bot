@@ -529,3 +529,72 @@ def test_positions_empty_returns_typed_columns(empty_schema_db):
     df = dd.get_positions_df(prices={}, portfolio=0.0)
     assert list(df.columns) == dd._POSITION_COLS
     assert len(df) == 0
+
+
+# ── get_latest_signals_df ─────────────────────────────────────────────────────
+
+def _seed_signal_log(con, symbol, action, xgb, lstm, sent, macro, ens, ts):
+    con.execute(
+        "INSERT INTO signal_log "
+        "(timestamp, symbol, xgb_prob, lstm_prob, sentiment_score, macro_score, "
+        "ensemble_score, ensemble_action, regime) VALUES (?,?,?,?,?,?,?,?,?)",
+        (ts, symbol, xgb, lstm, sent, macro, ens, action, "TRENDING_UP"),
+    )
+
+
+def test_get_latest_signals_df_returns_one_row_per_symbol(dash_db, monkeypatch, tmp_path):
+    """Latest signal per symbol — only the newest timestamp per symbol appears."""
+    import sqlite3
+    con = sqlite3.connect(dash_db)
+    _seed_signal_log(con, "AAPL", "BUY",  0.72, 0.68, 0.3, 0.5, 0.63, _ts(9))
+    _seed_signal_log(con, "AAPL", "HOLD", 0.55, 0.50, 0.1, 0.5, 0.52, _ts(10))  # newer
+    _seed_signal_log(con, "MSFT", "STRONG_BUY", 0.85, 0.80, 0.5, 0.6, 0.74, _ts(9))
+    con.commit(); con.close()
+
+    df = dd.get_latest_signals_df()
+    assert len(df) == 2
+    aapl = df[df["Symbol"] == "AAPL"].iloc[0]
+    assert aapl["Signal"] == "HOLD"      # newer row wins
+
+
+def test_get_latest_signals_df_columns_present(dash_db, monkeypatch, tmp_path):
+    import sqlite3
+    con = sqlite3.connect(dash_db)
+    _seed_signal_log(con, "NVDA", "BUY", 0.70, 0.65, 0.4, 0.55, 0.63, _ts(9))
+    con.commit(); con.close()
+
+    df = dd.get_latest_signals_df()
+    expected_cols = {"Symbol", "As Of", "Signal", "Score", "XGB", "LSTM",
+                     "Sentiment", "Macro", "Regime"}
+    assert expected_cols.issubset(set(df.columns))
+
+
+def test_get_latest_signals_df_sorted_by_score_descending(dash_db, monkeypatch):
+    import sqlite3
+    con = sqlite3.connect(dash_db)
+    _seed_signal_log(con, "LOW_SYM", "HOLD",       0.45, 0.45, 0.0, 0.5, 0.45, _ts(9))
+    _seed_signal_log(con, "HIGH_SYM", "STRONG_BUY", 0.90, 0.85, 0.6, 0.7, 0.80, _ts(9))
+    con.commit(); con.close()
+
+    df = dd.get_latest_signals_df()
+    scores = df["Score"].tolist()
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_get_latest_signals_df_empty_when_no_signal_log(empty_schema_db):
+    """Returns empty DataFrame when signal_log table has no rows."""
+    df = dd.get_latest_signals_df()
+    assert len(df) == 0
+
+
+def test_get_latest_signals_df_scores_rounded_to_3dp(dash_db):
+    import sqlite3
+    con = sqlite3.connect(dash_db)
+    _seed_signal_log(con, "AAPL", "BUY", 0.123456, 0.654321, 0.0, 0.5, 0.617, _ts(9))
+    con.commit(); con.close()
+
+    df = dd.get_latest_signals_df()
+    row = df[df["Symbol"] == "AAPL"].iloc[0]
+    # All score columns should be at most 3 decimal places
+    assert row["XGB"]   == pytest.approx(0.123, abs=0.001)
+    assert row["LSTM"]  == pytest.approx(0.654, abs=0.001)

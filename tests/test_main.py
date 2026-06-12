@@ -8,7 +8,7 @@ from bot.main import (
     _kelly_fraction, _passes_correlation_gate, _check_time_exit,
     _reconcile_positions, _load_risk_state, _save_risk_state,
     _upsert_position_state, _delete_position_state, _is_wash_sale_risk,
-    _record_snapshot, _anchor_daily_start, _apply_sim_capital,
+    _record_snapshot, _anchor_daily_start, _apply_sim_capital, _log_signal,
 )
 from bot.risk.risk_manager import RiskManager
 
@@ -53,6 +53,16 @@ def db():
             portfolio_value REAL,
             available_cash REAL,
             open_positions INTEGER
+        )
+    """)
+    con.execute("""
+        CREATE TABLE signal_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            xgb_prob REAL, lstm_prob REAL, sentiment_score REAL,
+            macro_score REAL, ensemble_score REAL,
+            ensemble_action TEXT, regime TEXT
         )
     """)
     con.commit()
@@ -762,6 +772,54 @@ def test_anchor_daily_start_ignores_today_only_data(db):
     db.commit()
     val, src = _anchor_daily_start(db)
     assert val is None
+
+
+# --- _log_signal (per-cycle signal log) ---
+
+def test_log_signal_writes_row(db):
+    _log_signal(db, "AAPL", 0.70, 0.65, 0.30, 0.55, "TRENDING_UP", "BUY")
+    row = db.execute(
+        "SELECT symbol, xgb_prob, lstm_prob, sentiment_score, macro_score, "
+        "ensemble_action, regime FROM signal_log"
+    ).fetchone()
+    assert row[0] == "AAPL"
+    assert row[1] == pytest.approx(0.70, abs=0.001)
+    assert row[2] == pytest.approx(0.65, abs=0.001)
+    assert row[5] == "BUY"
+    assert row[6] == "TRENDING_UP"
+
+
+def test_log_signal_ensemble_score_math(db):
+    """ensemble_score = 0.35*xgb + 0.35*lstm + 0.15*((sent+1)/2) + 0.15*macro"""
+    xgb, lstm, sent, macro = 0.8, 0.6, 0.4, 0.7
+    _log_signal(db, "MSFT", xgb, lstm, sent, macro, "RANGING", "STRONG_BUY")
+    row = db.execute("SELECT ensemble_score FROM signal_log").fetchone()
+    sent_norm = (sent + 1.0) / 2.0
+    expected  = 0.35 * xgb + 0.35 * lstm + 0.15 * sent_norm + 0.15 * macro
+    assert row[0] == pytest.approx(expected, abs=0.001)
+
+
+def test_log_signal_negative_sentiment_normalised(db):
+    """Strongly negative sentiment (-1.0) → normalised to 0.0, not negative."""
+    _log_signal(db, "TSLA", 0.5, 0.5, -1.0, 0.5, "VOLATILE", "HOLD")
+    row = db.execute("SELECT ensemble_score FROM signal_log").fetchone()
+    # sent_norm = 0.0 → no negative contribution to ensemble
+    expected = 0.35 * 0.5 + 0.35 * 0.5 + 0.15 * 0.0 + 0.15 * 0.5
+    assert row[0] == pytest.approx(expected, abs=0.001)
+
+
+def test_log_signal_multiple_symbols_stored_separately(db):
+    _log_signal(db, "AAPL", 0.6, 0.6, 0.1, 0.5, "TRENDING_UP", "BUY")
+    _log_signal(db, "NVDA", 0.8, 0.75, 0.5, 0.6, "TRENDING_UP", "STRONG_BUY")
+    rows = db.execute("SELECT symbol FROM signal_log ORDER BY symbol").fetchall()
+    assert [r[0] for r in rows] == ["AAPL", "NVDA"]
+
+
+def test_log_signal_each_row_has_timestamp(db):
+    _log_signal(db, "JPM", 0.55, 0.50, 0.0, 0.5, "RANGING", "HOLD")
+    ts = db.execute("SELECT timestamp FROM signal_log").fetchone()[0]
+    assert ts is not None
+    assert len(ts) > 10  # ISO datetime string
 
 
 def test_latest_portfolio_value_zero_when_empty(db):
