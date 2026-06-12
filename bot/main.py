@@ -319,42 +319,43 @@ def _apply_sim_capital(portfolio_value: float, available_cash: float) -> tuple[f
 def _anchor_daily_start(con) -> tuple[float | None, str]:
     """Pick the start-of-day equity baseline for Day P&L.
 
-    Prefers the last account snapshot BEFORE today (yesterday's close — the real
-    equity). Falls back to the last trade row only on older DBs without snapshots.
+    Looks for the last snapshot from the nearest prior BUSINESS day only.
+    If the bot did not run that day (e.g., Mon run then Thu restart — no
+    Tue/Wed data), returns None and reset_daily anchors to today's opening
+    portfolio value (Day P&L = $0 at session start, correct for a fresh start).
 
-    Staleness guard: only accepts data from within the last 4 calendar days.
-    This handles Mon←Fri weekends (3-day gap) but rejects values from a multi-day
-    outage — in that case we return None so reset_daily anchors to today's opening
-    value instead (Day P&L = $0 at session start, which is correct for a fresh start).
-
-    Without this guard the anchor would silently pick the oldest available snapshot
-    (e.g. 3 days ago), making Day P&L report "return since last run" rather than
-    "today's gain".
+    A 4-day window would wrongly accept Mon data on Thu, reporting "return
+    since last run" instead of "today's gain".  Exact prior-business-day
+    prevents that while still handling Fri→Mon (3-calendar-day) weekends.
 
     Returns (value_or_None, source_description).
     """
-    today_iso  = date.today().isoformat()
-    cutoff_iso = (date.today() - timedelta(days=4)).isoformat()
+    today = date.today()
+    prior = today - timedelta(days=1)
+    while prior.weekday() >= 5:   # skip Saturday(5) and Sunday(6)
+        prior -= timedelta(days=1)
+    prior_start = prior.isoformat()
+    prior_end   = today.isoformat()   # exclusive upper bound
 
     row = con.execute(
         "SELECT timestamp, portfolio_value FROM portfolio_snapshots "
-        "WHERE timestamp < ? AND timestamp >= ? "
+        "WHERE timestamp >= ? AND timestamp < ? "
         "ORDER BY timestamp DESC LIMIT 1",
-        (today_iso, cutoff_iso),
+        (prior_start, prior_end),
     ).fetchone()
     if row and row[1] is not None:
         return float(row[1]), f"snapshot from {row[0][:10]}"
 
     row = con.execute(
         "SELECT timestamp, portfolio_value FROM trades "
-        "WHERE timestamp < ? AND timestamp >= ? "
+        "WHERE timestamp >= ? AND timestamp < ? "
         "ORDER BY timestamp DESC LIMIT 1",
-        (today_iso, cutoff_iso),
+        (prior_start, prior_end),
     ).fetchone()
     if row and row[1] is not None:
         return float(row[1]), f"trade from {row[0][:10]}"
 
-    return None, "no data within 4 days — starting fresh"
+    return None, f"no data for {prior_start} — starting fresh"
 
 
 def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
@@ -1455,6 +1456,23 @@ def run_loop(mode: str = "paper"):
         logger.error(f"End-of-day summary failed: {e}")
 
 
+def _do_reset_daily_start():
+    """Clear the stale daily-start anchor from risk_state.
+
+    The next bot cycle will call _anchor_daily_start (returns None when no
+    prior-business-day data exists), then reset_daily(current_portfolio_value)
+    — setting Day P&L = $0 at today's session open.  Run this step before
+    the trading loop via workflow_dispatch reset_daily_start=true.
+    """
+    con = init_db()
+    con.execute(
+        "DELETE FROM risk_state WHERE key IN ('daily_start_value', 'daily_start_date')"
+    )
+    con.commit()
+    con.close()
+    logger.info("daily_start cleared from risk_state — next bot cycle will re-anchor to today's open.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode",    default="paper", choices=["paper", "live"])
@@ -1462,9 +1480,13 @@ if __name__ == "__main__":
                         help="Send end-of-day Telegram summary and exit")
     parser.add_argument("--loop",    action="store_true",
                         help="Long-running mode: load models once, loop until market close")
+    parser.add_argument("--reset-daily-start", action="store_true",
+                        help="Clear stale daily_start anchor so Day P&L resets on next cycle")
     args = parser.parse_args()
     try:
-        if args.summary:
+        if args.reset_daily_start:
+            _do_reset_daily_start()
+        elif args.summary:
             end_of_day_summary()
         elif args.loop:
             run_loop(mode=args.mode)
