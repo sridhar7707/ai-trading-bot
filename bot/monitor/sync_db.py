@@ -98,6 +98,11 @@ def pull_db(force: bool = False) -> bool:
             result[0] = True
         except Exception as exc:
             error[0] = str(exc)
+            msg = str(exc).lower()
+            if any(x in msg for x in ("404", "not found", "entry", "does not exist")):
+                if local.exists():
+                    local.unlink()
+                    logger.info(f"pull_db: trades.db deleted from HF — removed local copy at {local}")
             logger.error(f"pull_db: download failed — {exc}\n{traceback.format_exc()}")
 
     t = threading.Thread(target=_download, daemon=True)

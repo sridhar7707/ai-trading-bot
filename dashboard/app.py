@@ -226,7 +226,14 @@ def _sync_db() -> None:
                                   token=HF_TOKEN, force_download=True)
         shutil.copy(cached, DB_PATH)
     except Exception as e:
-        logger.warning(f"DB sync: {e}")
+        msg = str(e).lower()
+        if any(x in msg for x in ("404", "not found", "entry", "does not exist")):
+            # File was deleted from HF — remove local copy so dashboard shows empty state
+            if os.path.exists(DB_PATH):
+                os.remove(DB_PATH)
+                logger.info("DB sync: trades.db deleted from HF — local copy removed")
+        else:
+            logger.warning(f"DB sync: {e}")
     # Pull validation / explainability artefacts — non-fatal if absent
     for filename, dest in [
         ("validation_report.json",  "models/validation_report.json"),
