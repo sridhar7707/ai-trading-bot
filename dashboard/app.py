@@ -279,6 +279,24 @@ def _refresh_cache() -> dict:
         return result
     try:
         con = sqlite3.connect(DB_PATH)
+        # Migrate schema so the dashboard works with any DB version pulled from HF.
+        # ALTER TABLE is a no-op when the column already exists (OperationalError is swallowed).
+        for _col in (
+            "xgb_prob REAL DEFAULT 0.0",
+            "lstm_prob REAL DEFAULT 0.0",
+            "sentiment_score REAL DEFAULT 0.0",
+            "macro_score REAL DEFAULT 0.0",
+            "ensemble_score REAL DEFAULT 0.0",
+            "realized_pnl REAL DEFAULT 0.0",
+            "order_id TEXT DEFAULT NULL",
+            "holding_days INTEGER DEFAULT 0",
+            "feature_drivers TEXT DEFAULT NULL",
+        ):
+            try:
+                con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
+                con.commit()
+            except sqlite3.OperationalError:
+                pass
         try:
             df = pd.read_sql(
                 "SELECT id,timestamp,symbol,action,shares,price,notional,"
