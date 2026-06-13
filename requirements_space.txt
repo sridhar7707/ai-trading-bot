@@ -1,4 +1,4 @@
-gradio==5.4.0
+gradio>=5.9.0,<6.0.0
 pandas>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.7.0
@@ -6,9 +6,6 @@ scipy>=1.11.0
 loguru>=0.7.0
 requests>=2.31.0
 yfinance>=0.2.0
-# NOTE: do NOT pin websockets>=13 — gradio-client requires websockets<13, so it
-# breaks the Space build. The dashboard uses Alpaca for prices/SPY; yfinance is
-# only a best-effort fallback and its websockets.asyncio import failing is caught.
 python-dotenv>=1.0.0
 pillow>=10.4.0
 plotly>=5.18.0
