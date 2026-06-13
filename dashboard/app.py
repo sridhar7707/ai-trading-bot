@@ -1687,6 +1687,347 @@ def render_institutional_metrics() -> str:
             f'{_section("📐","Institutional Metrics", n_str)}{table}</div>')
 
 
+# ── Render: AI decision feed (trade timeline) ────────────────────────────────
+def render_timeline() -> str:
+    d  = get_data()
+    df = d["trades_df"]
+    if df.empty:
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
+                 f'No decisions yet. The AI trades Mon–Fri 9:30am–4pm ET.</div>')
+        return f'<div class="nt nt-wrap">{_section("🕐","AI Decision Feed","live")}{_wrap(empty)}</div>'
+
+    recent = df.tail(30).iloc[::-1]
+    items  = ""
+    for i, (_, row) in enumerate(recent.iterrows()):
+        action  = str(row.get("action", ""))
+        sym     = str(row.get("symbol", "—"))
+        ts      = row.get("timestamp", "")
+        conf    = float(row.get("ensemble_score",  0.0) or 0.0)
+        regime  = str(row.get("regime") or "").replace("_", " ").title()
+        sent    = float(row.get("sentiment_score", 0.0) or 0.0)
+        pnl     = float(row.get("pnl_pct",         0.0) or 0.0)
+        drv_raw = row.get("feature_drivers")
+        is_last = i == len(recent) - 1
+        dot_c   = GAIN if action == "BUY" else LOSS
+
+        ts_full  = _to_ct(ts)
+        time_lbl = ts_full[11:16] if len(ts_full) >= 16 else ts_full[:5]
+        tz_lbl   = ts_full[17:20] if len(ts_full) >= 20 else ""
+        date_lbl = ts_full[:10]
+
+        if action == "BUY":
+            parts = []
+            if conf > 0:        parts.append(f"Confidence {conf*100:.0f}%")
+            if sent > 0.05:     parts.append("Positive sentiment")
+            elif sent < -0.05:  parts.append("Negative sentiment")
+            if regime:          parts.append(regime)
+            try:
+                import json as _j
+                ds  = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
+                pos = [(f, float(v)) for f, v in (ds or []) if float(v) > 0]
+                if pos:
+                    best = max(pos, key=lambda x: x[1])
+                    w = _WHY_MAP.get(best[0])
+                    parts.append(w[0] if w else _FI_LABELS.get(best[0], best[0]))
+            except Exception:
+                pass
+            detail = " · ".join(parts)
+        else:
+            reason  = _SELL_REASON.get(action, "Exit")
+            pnl_str = f"{pnl:+.1%}" if pnl != 0 else ""
+            detail  = f"{reason} · {pnl_str}" if pnl_str else reason
+
+        conf_badge = ""
+        if action == "BUY" and conf > 0:
+            c_c = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
+            conf_badge = (f'<span style="font-size:11px;color:{c_c};font-weight:700;">'
+                          f'{conf*100:.0f}%</span>')
+
+        line = f'border-bottom:1px solid {BORDER};' if not is_last else ''
+        connector = (f'<div style="width:1px;flex:1;background:{BORDER};min-height:14px;"></div>'
+                     if not is_last else '')
+        items += (
+            f'<div style="display:flex;gap:14px;padding:10px 0;{line}">'
+            f'<div style="flex-shrink:0;width:58px;text-align:right;">'
+            f'<div style="font-size:12px;color:{TEXT1};font-family:monospace;font-weight:600;">{time_lbl}</div>'
+            f'<div style="font-size:10px;color:{TEXT2};">{tz_lbl}</div>'
+            f'<div style="font-size:10px;color:{TEXT2};">{date_lbl}</div>'
+            f'</div>'
+            f'<div style="display:flex;flex-direction:column;align-items:center;padding-top:4px;">'
+            f'<div style="width:10px;height:10px;border-radius:50%;background:{dot_c};flex-shrink:0;'
+            f'box-shadow:0 0 6px {dot_c}44;"></div>'
+            f'{connector}'
+            f'</div>'
+            f'<div style="flex:1;min-width:0;">'
+            f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">'
+            f'{_badge(action)}{_sym(sym)}{conf_badge}'
+            f'</div>'
+            f'<div style="font-size:11px;color:{TEXT2};white-space:nowrap;overflow:hidden;'
+            f'text-overflow:ellipsis;">{detail}</div>'
+            f'</div></div>'
+        )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🕐","AI Decision Feed",f"last {len(recent)} decisions · newest first")}'
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:0 16px;">'
+            f'{items}</div></div>')
+
+
+# ── Render: investor view (plain-language Models tab) ────────────────────────
+def render_investor_view() -> str:
+    d  = get_data()
+    df = d["trades_df"]
+    if df.empty:
+        msg = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:13px;">'
+               f'No trade history yet.</div>')
+        return f'<div class="nt nt-wrap">{_section("🤖","AI Performance","investor summary")}{_wrap(msg)}</div>'
+
+    sells  = df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")]
+    n_s    = len(sells)
+    wins   = sells[sells["pnl_pct"] > 0]  if n_s > 0 else pd.DataFrame()
+    losses = sells[sells["pnl_pct"] <= 0] if n_s > 0 else pd.DataFrame()
+    wr     = len(wins) / n_s if n_s > 0 else 0.0
+    avg_w  = float(wins["pnl_pct"].mean()   * 100) if len(wins)   > 0 else 0.0
+    avg_l  = float(losses["pnl_pct"].mean() * 100) if len(losses) > 0 else 0.0
+    rr     = abs(avg_w / avg_l) if avg_l != 0 else 0.0
+
+    cards = (
+        f'<div class="nt-cards">'
+        + _card("Win Rate",          f"{wr:.0%}" if n_s > 0 else "—",
+                TEXT2, GAIN if wr >= 0.55 else (NEURAL if wr >= 0.45 else LOSS),
+                f"AI correct {len(wins)} of {n_s} closed trades", 0.0)
+        + _card("Avg Winning Trade", f"+{avg_w:.1f}%" if avg_w > 0 else "—",
+                TEXT2, GAIN, "Average gain per winning trade", 0.06)
+        + _card("Avg Losing Trade",  f"{avg_l:.1f}%"  if avg_l < 0 else "—",
+                TEXT2, LOSS, "Average loss per losing trade",  0.12)
+        + _card("Risk / Reward",     f"{rr:.1f}×"     if rr > 0   else "—",
+                TEXT2, GAIN if rr >= 1.5 else (NEURAL if rr >= 1.0 else LOSS),
+                "Avg win ÷ avg loss — >1.5× is good", 0.18)
+        + f'</div>'
+    )
+
+    # Top buy signals from recent SHAP
+    signal_counts: dict[str, int] = {}
+    for _, row in df[df["action"] == "BUY"].tail(20).iterrows():
+        drv_raw = row.get("feature_drivers")
+        if not drv_raw:
+            continue
+        try:
+            import json as _j
+            ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else drv_raw
+            for feat, val in (ds or []):
+                if float(val) > 0:
+                    name = _WHY_MAP.get(feat, (_FI_LABELS.get(feat, feat),))[0]
+                    signal_counts[name] = signal_counts.get(name, 0) + 1
+        except Exception:
+            pass
+    top3 = sorted(signal_counts.items(), key=lambda x: -x[1])[:3]
+    sig_rows = "".join(
+        f'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid {BORDER};">'
+        f'<span style="font-size:15px;">📡</span>'
+        f'<span style="font-size:13px;color:{TEXT1};">{name}</span>'
+        f'<span style="margin-left:auto;font-size:11px;color:{TEXT2};">fired {cnt}× recently</span>'
+        f'</div>'
+        for name, cnt in top3
+    ) or f'<div style="color:{TEXT2};font-size:12px;padding:10px 0;">Building signal history.</div>'
+
+    signals_box = (
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Most Common Buy Signals</div>'
+        f'{sig_rows}</div>'
+    )
+
+    last6 = sells.tail(6).iloc[::-1]
+    result_rows = "".join(
+        f'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid {BORDER};">'
+        f'<span style="font-size:15px;">{"✅" if float(row.get("pnl_pct",0) or 0) > 0 else "❌"}</span>'
+        f'<span style="font-family:Courier New,monospace;font-weight:700;color:{PRIMARY};font-size:13px;">{row.get("symbol","")}</span>'
+        f'<span style="font-size:11px;color:{TEXT2};">{_SELL_REASON.get(str(row.get("action","")),"Exit")}</span>'
+        f'<span style="margin-left:auto;font-weight:700;color:{"" + GAIN if float(row.get("pnl_pct",0) or 0) > 0 else LOSS};">'
+        f'{float(row.get("pnl_pct",0) or 0):+.1%}</span>'
+        f'</div>'
+        for _, row in last6.iterrows()
+    ) or f'<div style="color:{TEXT2};font-size:12px;padding:10px 0;">No closed trades yet.</div>'
+
+    results_box = (
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Recent Trade Results</div>'
+        f'{result_rows}</div>'
+    )
+    explain = (
+        f'<div style="background:{BG};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
+        f'<div style="font-size:12px;color:{TEXT2};line-height:1.7;">'
+        f'<strong style="color:{TEXT1};">How TradeGenius AI works:</strong><br>'
+        f'Three AI models vote on every trade: an <b>XGBoost</b> pattern engine trained on price history, '
+        f'an <b>LSTM</b> that reads momentum, and a <b>FinBERT</b> model that reads financial news. '
+        f'The AI only buys when all three agree <em>and</em> risk limits, market regime, and '
+        f'position sizing rules all pass. Every position has an automatic stop-loss.'
+        f'</div></div>'
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🤖","AI Performance","investor summary")}'
+            f'{cards}{signals_box}{results_box}{explain}</div>')
+
+
+# ── Symbol choices + detail drilldown ─────────────────────────────────────────
+def _get_symbol_choices() -> list[str]:
+    d = get_data()
+    syms = list(d["open_pos"].keys())
+    if not d["trades_df"].empty:
+        for s in d["trades_df"]["symbol"].unique():
+            if s not in syms:
+                syms.append(s)
+    return syms[:20]
+
+
+def render_symbol_detail(symbol: str) -> str:
+    if not symbol:
+        return (f'<div class="nt nt-wrap"><div style="color:{TEXT2};text-align:center;'
+                f'padding:20px;font-size:12px;">Select a symbol above to see its AI analysis.</div></div>')
+    d       = get_data()
+    df      = d["trades_df"]
+    prices  = d["prices"]
+    open_pos = d["open_pos"]
+
+    sym_df   = df[df["symbol"] == symbol] if not df.empty else pd.DataFrame()
+    buy_df   = sym_df[sym_df["action"] == "BUY"]
+    lb       = buy_df.iloc[-1] if not buy_df.empty else None
+
+    cur_price = prices.get(symbol, 0.0)
+    pos       = open_pos.get(symbol)
+
+    conf    = float(lb.get("ensemble_score",  0.0) or 0.0) if lb is not None else 0.0
+    xgb_p   = float(lb.get("xgb_prob",        0.0) or 0.0) if lb is not None else 0.0
+    lstm_p  = float(lb.get("lstm_prob",        0.0) or 0.0) if lb is not None else 0.0
+    sent    = float(lb.get("sentiment_score",  0.0) or 0.0) if lb is not None else 0.0
+    regime  = (str(lb.get("regime") or "—").replace("_", " ").title() if lb is not None
+               else d["regime_raw"].title())
+    entry   = float(lb.get("price", 0.0) or 0.0) if lb is not None else 0.0
+    drv_raw = lb.get("feature_drivers") if lb is not None else None
+    ts      = lb.get("timestamp", "") if lb is not None else ""
+
+    conf_c  = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
+    sent_c  = GAIN if sent > 0.05 else (LOSS if sent < -0.05 else TEXT2)
+    sent_l  = "Positive" if sent > 0.05 else ("Negative" if sent < -0.05 else "Neutral")
+    r_lower = regime.lower()
+    r_color = (GAIN if any(x in r_lower for x in ["bull","trending up"]) else
+               LOSS if any(x in r_lower for x in ["bear","trending down"]) else NEURAL)
+
+    pnl_str, pnl_c = "—", TEXT2
+    if pos and entry > 0 and cur_price > 0:
+        pnl_v   = (cur_price - entry) / entry * 100
+        pnl_str = f"{pnl_v:+.1f}%"
+        pnl_c   = GAIN if pnl_v >= 0 else LOSS
+
+    status_lbl = "OPEN POSITION" if pos else "RECENTLY TRADED"
+    status_c   = GAIN if pos else TEXT2
+    conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "—"
+
+    # SHAP drivers
+    why_html = ""
+    try:
+        import json as _j
+        ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
+        pos_d = sorted([(f, float(v)) for f, v in (ds or []) if float(v) > 0], key=lambda x: -x[1])[:4]
+        for feat, _ in pos_d:
+            w    = _WHY_MAP.get(feat)
+            name = w[0] if w else _FI_LABELS.get(feat, feat)
+            desc = w[1] if w else ""
+            why_html += (
+                f'<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid {BORDER};">'
+                f'<span style="color:{GAIN};font-weight:700;width:14px;flex-shrink:0;">+</span>'
+                f'<div><div style="font-size:12px;color:{TEXT1};">{name}</div>'
+                f'<div style="font-size:11px;color:{TEXT2};">{desc}</div></div></div>'
+            )
+    except Exception:
+        pass
+    if not why_html:
+        why_html = f'<div style="color:{TEXT2};font-size:12px;padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
+
+    # Mini model bars
+    def _mbar(label, v, c):
+        return (f'<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">'
+                f'<span style="font-size:11px;color:{TEXT2};width:60px;">{label}</span>'
+                f'<div style="background:{BORDER};border-radius:2px;height:4px;flex:1;">'
+                f'<div style="background:{c};height:100%;width:{int(v*100)}%;"></div></div>'
+                f'<span style="font-size:11px;color:{c};width:32px;text-align:right;">{v*100:.0f}%</span></div>')
+
+    model_html = ""
+    if xgb_p > 0 or lstm_p > 0:
+        xc = GAIN if xgb_p >= 0.70 else (NEURAL if xgb_p >= 0.55 else TEXT2)
+        lc = GAIN if lstm_p >= 0.70 else (NEURAL if lstm_p >= 0.55 else TEXT2)
+        model_html = (
+            f'<div style="margin-top:10px;">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Model Scores</div>'
+            + _mbar("XGBoost", xgb_p, xc) + _mbar("LSTM", lstm_p, lc)
+            + f'</div>'
+        )
+
+    # Recent trades for this symbol
+    hist_rows = ""
+    for _, r in sym_df.tail(5).iloc[::-1].iterrows():
+        act = str(r.get("action", ""))
+        px  = float(r.get("price", 0) or 0)
+        p   = float(r.get("pnl_pct", 0) or 0)
+        p_c = GAIN if p > 0 else (LOSS if p < 0 else TEXT2)
+        hist_rows += (
+            f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid {BORDER};">'
+            f'{_badge(act)}'
+            f'<span style="font-family:monospace;font-size:12px;color:{TEXT1};">${px:.2f}</span>'
+            f'<span style="font-size:11px;color:{p_c};margin-left:auto;">'
+            f'{f"{p:+.1%}" if p != 0 else ""}</span></div>'
+        )
+
+    # Stats grid
+    stat_g = (
+        f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">'
+        f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">AI Score</div>'
+        f'<div style="font-size:20px;font-weight:700;color:{conf_c};">{conf_pct}</div></div>'
+        f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Sentiment</div>'
+        f'<div style="font-size:18px;font-weight:700;color:{sent_c};">{sent_l}</div></div>'
+        f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Regime</div>'
+        f'<div style="font-size:14px;font-weight:700;color:{r_color};">{regime}</div></div>'
+        f'</div>'
+    )
+    pos_g = ""
+    if pos:
+        cur_str = f"${cur_price:.2f}" if cur_price > 0 else "—"
+        pos_g = (
+            f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">'
+            f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Entry</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};">${entry:.2f}</div></div>'
+            f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};">{cur_str}</div></div>'
+            f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Unrealized P&amp;L</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{pnl_c};">{pnl_str}</div></div>'
+            f'</div>'
+        )
+
+    ts_note = f'<div style="font-size:10px;color:{TEXT2};margin-top:8px;">Signal: {_to_ct(ts)[:16]}</div>' if ts else ""
+    card = (
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};border-top:3px solid {PRIMARY};border-radius:8px;padding:20px;">'
+        f'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;">'
+        f'<span style="font-family:Courier New,monospace;font-size:30px;font-weight:700;color:{PRIMARY};letter-spacing:-1px;">{symbol}</span>'
+        f'<span style="background:{SURFACE2};border:1px solid {status_c};color:{status_c};'
+        f'padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;">{status_lbl}</span>'
+        f'</div>'
+        f'{stat_g}{pos_g}'
+        f'<div class="nt-ai-split">'
+        f'<div><div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Why the AI entered</div>'
+        f'{why_html}{model_html}</div>'
+        f'<div class="nt-ai-right">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Trade History</div>'
+        f'{hist_rows}{ts_note}'
+        f'</div></div></div>'
+    )
+    return f'<div class="nt nt-wrap">{_section("🔍", symbol, "AI analysis")}{card}</div>'
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -1694,17 +2035,25 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            ai_rec_out    = gr.HTML(value=render_ai_recommendation)   # hero — first thing visible
-            hero_out      = gr.HTML(value=render_dashboard_hero)
+            ai_rec_out     = gr.HTML(value=render_ai_recommendation)
+            hero_out       = gr.HTML(value=render_dashboard_hero)
             risk_panel_out = gr.HTML(value=render_risk_panel)
             with gr.Row():
                 with gr.Column(scale=50):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
                 with gr.Column(scale=50):
                     watchlist_out = gr.HTML(value=render_watchlist)
+            # ── Symbol drilldown ──────────────────────────────────────────────
+            symbol_selector = gr.Dropdown(
+                choices=_get_symbol_choices(),
+                label="🔍 Symbol Detail — select a ticker to drill down",
+                value=None, container=True,
+            )
+            symbol_detail_out = gr.HTML(value="")
 
         with gr.TabItem("⚡ Signals"):
-            signals_out = gr.HTML(value=render_signals_tab)
+            timeline_out = gr.HTML(value=render_timeline)
+            signals_out  = gr.HTML(value=render_signals_tab)
 
         with gr.TabItem("💼 Portfolio"):
             with gr.Row():
@@ -1717,14 +2066,36 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
             trades_out = gr.HTML(value=render_trades)
 
         with gr.TabItem("🔬 Models"):
-            metrics_out = gr.HTML(value=render_institutional_metrics)
-            with gr.Row():
-                with gr.Column(scale=65):
-                    fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
-                with gr.Column(scale=35):
-                    val_out = gr.HTML(value=render_validation_report)
+            model_view = gr.Radio(
+                choices=["📊 Investor View", "🔬 Developer View"],
+                value="📊 Investor View",
+                label="", container=False,
+            )
+            investor_out = gr.HTML(value=render_investor_view, visible=True)
+            with gr.Column(visible=False) as dev_col:
+                metrics_out = gr.HTML(value=render_institutional_metrics)
+                with gr.Row():
+                    with gr.Column(scale=65):
+                        fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
+                    with gr.Column(scale=35):
+                        val_out = gr.HTML(value=render_validation_report)
 
     gr.HTML(value=FOOTER_HTML)
+
+    # Models tab toggle
+    model_view.change(
+        fn=lambda v: (gr.update(visible=(v == "📊 Investor View")),
+                      gr.update(visible=(v == "🔬 Developer View"))),
+        inputs=[model_view],
+        outputs=[investor_out, dev_col],
+    )
+
+    # Symbol drilldown
+    symbol_selector.change(
+        fn=render_symbol_detail,
+        inputs=[symbol_selector],
+        outputs=[symbol_detail_out],
+    )
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
@@ -1733,15 +2104,18 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
     timer.tick(fn=render_risk_panel,               outputs=risk_panel_out)
     timer.tick(fn=render_market_intelligence,      outputs=mkt_intel_out)
     timer.tick(fn=render_watchlist,                outputs=watchlist_out)
+    timer.tick(fn=render_timeline,                 outputs=timeline_out)
     timer.tick(fn=render_signals_tab,              outputs=signals_out)
     timer.tick(fn=render_equity_chart,             outputs=eq_plot)
     timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
     timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
     timer.tick(fn=render_positions,                outputs=pos_out)
     timer.tick(fn=render_trades,                   outputs=trades_out)
+    timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
     timer.tick(fn=render_validation_report,        outputs=val_out)
+    timer.tick(fn=lambda: gr.update(choices=_get_symbol_choices()), outputs=symbol_selector)
 
 if __name__ == "__main__":
     demo.launch()
