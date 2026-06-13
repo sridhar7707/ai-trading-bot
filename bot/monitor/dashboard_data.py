@@ -1122,6 +1122,8 @@ _ACTION_COLOR = {
     "SELL_TIME_EXIT":     "#6a1b9a",   # purple
     "SELL_STOP":          "#b71c1c",   # red
     "SELL_GAP_DOWN":      "#7f0000",   # dark red
+    "SELL_TRIM":          "#0277bd",   # blue-grey — partial position trim
+    "SELL_RECONCILE":     "#546e7a",   # grey — synthetic close from account reset
 }
 
 # Plain-language reason per exit type (the action IS the reason for sells).
@@ -1132,6 +1134,8 @@ _SELL_REASON = {
     "SELL_TIME_EXIT":     "Max hold reached",
     "SELL_STOP":          "Stop-loss hit",
     "SELL_GAP_DOWN":      "Gap-down protection",
+    "SELL_TRIM":          "Position trimmed",
+    "SELL_RECONCILE":     "Account reset",
 }
 
 

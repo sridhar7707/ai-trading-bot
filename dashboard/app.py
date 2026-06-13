@@ -333,7 +333,7 @@ def _refresh_cache() -> dict:
     # Summary stats — single pass over the DataFrame
     result["total_trades"] = len(df)
     result["buy_count"]    = int((df["action"] == "BUY").sum())
-    sells_mask             = df["action"].isin(["SELL", "SELL_STOP"])
+    sells_mask             = df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")
     result["sell_count"]   = int(sells_mask.sum())
     result["win_count"]    = int((sells_mask & (df["pnl_pct"] > 0)).sum())
 
@@ -728,7 +728,7 @@ def render_pnl_chart():
         import plotly.graph_objects as go
         df    = get_data()["trades_df"]
         fig   = go.Figure()
-        sells = df[df["action"].isin(["SELL", "SELL_STOP"])].copy() if not df.empty else pd.DataFrame()
+        sells = df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")].copy() if not df.empty else pd.DataFrame()
 
         if sells.empty or "pnl_pct" not in sells.columns or sells["pnl_pct"].isna().all():
             fig.add_annotation(
@@ -1488,7 +1488,7 @@ def render_risk_panel() -> str:
     if not df.empty:
         today_str  = str(datetime.date.today())
         sells_today = df[
-            df["action"].isin(["SELL", "SELL_STOP"]) &
+            df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE") &
             (df["date"].astype(str) == today_str)
         ]
         if not sells_today.empty and "pnl_pct" in sells_today.columns:
@@ -1613,7 +1613,7 @@ def render_institutional_metrics() -> str:
     var_95 = float(rets.quantile(0.05)) if len(rets) >= 5 else 0.0
 
     # Win rate
-    sells    = df[df["action"].isin(["SELL", "SELL_STOP"])]
+    sells    = df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")]
     win_rate = float((sells["pnl_pct"] > 0).sum() / len(sells)) if len(sells) > 0 else 0.0
 
     def _row(label, val_str, color, desc):
