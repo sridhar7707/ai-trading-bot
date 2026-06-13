@@ -354,7 +354,7 @@ def _refresh_cache() -> dict:
                 pos[sym] = {"shares": 0.0, "invested": 0.0}
             pos[sym]["shares"]   += shares
             pos[sym]["invested"] += notional
-        elif row["action"] in ("SELL", "SELL_STOP") and sym in pos and pos[sym]["shares"] > 0:
+        elif row["action"].startswith("SELL") and sym in pos and pos[sym]["shares"] > 0:
             avg = pos[sym]["invested"] / pos[sym]["shares"]
             pos[sym]["shares"]   = max(0.0, pos[sym]["shares"] - shares)
             pos[sym]["invested"] = max(0.0, pos[sym]["invested"] - avg * shares)

@@ -748,14 +748,33 @@ def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: b
         _save_risk_state(con, risk)
 
 
-def _reconcile_positions(con, alpaca_positions: dict):
+def _reconcile_positions(con, alpaca_positions: dict, portfolio_value: float = 0.0):
     """Sync position_state table with Alpaca's live positions at startup.
     Removes stale DB entries for positions closed externally;
     seeds DB entries for positions opened manually/outside the bot.
+    Logs a SELL_RECONCILE trade for any stale DB position so the dashboard
+    position walk sees a matching close and no longer shows it as open.
     """
     db_syms = {r[0] for r in con.execute("SELECT symbol FROM position_state").fetchall()}
     for sym in db_syms - set(alpaca_positions.keys()):
-        logger.warning(f"Reconcile: {sym} in DB but not Alpaca — removing stale state")
+        logger.warning(f"Reconcile: {sym} in DB but not Alpaca — closing open trades record")
+        # Calculate net open shares from trades table so the dashboard closes the position.
+        rows = con.execute(
+            "SELECT action, shares FROM trades WHERE symbol=?", (sym,)
+        ).fetchall()
+        net_shares = sum(r[1] if r[0] == "BUY" else -r[1] for r in rows)
+        if net_shares > 0.001:
+            ps = con.execute(
+                "SELECT entry_price FROM position_state WHERE symbol=?", (sym,)
+            ).fetchone()
+            entry_price = float(ps[0]) if ps else 0.0
+            notional = net_shares * entry_price
+            log_trade(con, sym, "SELL_RECONCILE", net_shares, entry_price,
+                      notional, "reconcile", portfolio_value, 0.0)
+            logger.warning(
+                f"Reconcile: logged SELL_RECONCILE for {sym} "
+                f"({net_shares:.4f} shares @ ${entry_price:.2f}) — position removed externally"
+            )
         _delete_position_state(con, sym)
     for sym, pos in alpaca_positions.items():
         if sym not in db_syms:
@@ -1024,7 +1043,7 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         pdt_exempt = False
 
     positions       = client.get_positions()
-    _reconcile_positions(con, positions)
+    _reconcile_positions(con, positions, portfolio_value=portfolio_value)
     buy_order_syms, sell_order_syms = client.get_open_order_symbols()
 
     # Restore intraday halt — persists across 5-min cycles so a mid-day breach
