@@ -89,7 +89,7 @@ from config import (
     ATR_STOP_MULTIPLIER, ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT, STOP_LOSS_PCT,
     MIN_RR_RATIO, MIN_TP_PCT, RANGING_SIZE_FACTOR,
     MAX_SECTOR_EXPOSURE_PCT, MAX_POSITION_DRIFT_PCT, MIN_CASH_RESERVE_PCT,
-    MAX_POSITION_PCT,
+    MAX_POSITION_PCT, SECTOR_MAP,
 )
 from bot.execution.alpaca_client import AlpacaClient
 from bot.strategy.features import compute_features, FEATURE_COLS
@@ -1479,7 +1479,7 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                               sentiment_score=sentiments.get(symbol, 0.0),
                               macro_score=macro_score,
                               order_id=result.get("order_id"),
-                              feature_drivers=json.dumps(_drivers) if _drivers else None)
+                              feature_drivers=json.dumps(_drivers) if _drivers is not None else None)
                     _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)
                     available_cash -= notional
                     buy_order_syms.discard(symbol)  # order is now filled, not pending

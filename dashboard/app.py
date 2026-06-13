@@ -282,7 +282,8 @@ def _refresh_cache() -> dict:
                 "COALESCE(lstm_prob,0.0)       AS lstm_prob,"
                 "feature_drivers "
                 "FROM trades ORDER BY id", con)
-        except Exception:
+        except Exception as _e:
+            logger.warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
             df = pd.read_sql(
                 "SELECT id,timestamp,symbol,action,shares,price,notional,"
                 "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
