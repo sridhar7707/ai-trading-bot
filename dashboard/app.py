@@ -2087,6 +2087,151 @@ def render_symbol_detail(symbol: str) -> str:
     return f'<div class="nt nt-wrap">{_section("🔍", symbol, "AI analysis")}{card}</div>'
 
 
+# ── Render: since-yesterday comparison panel ─────────────────────────────────
+def render_whats_changed() -> str:
+    today     = datetime.date.today().isoformat()
+    yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+    d         = datetime.date.today()
+    date_label = f"{d.strftime('%B')} {d.day}"
+
+    def _empty(msg: str) -> str:
+        inner = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">{msg}</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("📅", "Since Yesterday", date_label)}'
+                f'{_wrap(inner)}</div>')
+
+    if not os.path.exists(DB_PATH):
+        return _empty("No trade data yet.")
+
+    try:
+        con = sqlite3.connect(DB_PATH)
+
+        def _latest_per_symbol(date_str: str) -> list:
+            return con.execute(
+                "SELECT t.symbol, t.ensemble_score, t.regime, t.sentiment_score, t.portfolio_value "
+                "FROM trades t "
+                "INNER JOIN (SELECT symbol, MAX(id) AS mid FROM trades "
+                "            WHERE date(timestamp) = ? GROUP BY symbol) m "
+                "ON t.id = m.mid",
+                (date_str,),
+            ).fetchall()
+
+        today_rows = _latest_per_symbol(today)
+        yest_rows  = _latest_per_symbol(yesterday)
+
+        # Portfolio bookends: yesterday's last overall value vs today's last
+        yest_pv_row  = con.execute(
+            "SELECT portfolio_value FROM trades WHERE date(timestamp) = ? "
+            "AND portfolio_value > 0 ORDER BY id DESC LIMIT 1", (yesterday,)
+        ).fetchone()
+        today_pv_row = con.execute(
+            "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 "
+            "ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        con.close()
+    except Exception as exc:
+        logger.warning(f"render_whats_changed DB error: {exc}")
+        return _empty("Could not load comparison data.")
+
+    if not yest_rows:
+        return _empty("First session — no comparison available yet.")
+
+    yest_map  = {r[0]: {"score": float(r[1] or 0), "regime": r[2] or "",
+                         "sent": float(r[3] or 0)} for r in yest_rows}
+    today_map = {r[0]: {"score": float(r[1] or 0), "regime": r[2] or "",
+                         "sent": float(r[3] or 0)} for r in today_rows}
+
+    # ── Portfolio delta summary ────────────────────────────────────────────────
+    pv_html = ""
+    if yest_pv_row and today_pv_row:
+        yv = float(yest_pv_row[0] or 0)
+        tv = float(today_pv_row[0] or 0)
+        if yv > 0:
+            delta = tv - yv
+            pct   = delta / yv * 100
+            d_c   = GAIN if delta >= 0 else LOSS
+            icon  = "📈" if delta >= 0 else "📉"
+            word  = "up" if delta >= 0 else "down"
+            pv_html = (
+                f'<div style="background:{BG};border:1px solid {d_c}33;border-radius:6px;'
+                f'padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">'
+                f'<span style="font-size:16px;">{icon}</span>'
+                f'<span style="font-size:13px;color:{TEXT1};">Portfolio '
+                f'<strong style="color:{d_c};">{word} ${abs(delta):,.2f} ({pct:+.2f}%)</strong>'
+                f' since yesterday</span></div>'
+            )
+
+    # ── Per-symbol change rows ─────────────────────────────────────────────────
+    def _sent_label(v: float) -> str:
+        return "Positive" if v > 0.05 else ("Negative" if v < -0.05 else "Neutral")
+
+    rows_html    = ""
+    changes_seen = False
+
+    for sym in sorted(set(yest_map) & set(today_map)):
+        y = yest_map[sym]
+        t = today_map[sym]
+
+        score_delta = t["score"] - y["score"]
+        regime_y    = y["regime"].replace("_", " ").title()
+        regime_t    = t["regime"].replace("_", " ").title()
+        sent_y      = _sent_label(y["sent"])
+        sent_t      = _sent_label(t["sent"])
+
+        changes: list[tuple[str, str, str]] = []
+
+        if abs(score_delta) > 0.05:
+            arrow = (f'<span style="color:{GAIN};font-weight:700;">↑</span>' if score_delta > 0
+                     else f'<span style="color:{LOSS};font-weight:700;">↓</span>')
+            changes.append(("Confidence", arrow,
+                            f'{y["score"] * 100:.0f}% → {t["score"] * 100:.0f}%'))
+
+        if regime_y and regime_t and regime_y != regime_t:
+            changes.append(("Regime",
+                            f'<span style="color:{TEXT2};font-weight:700;">→</span>',
+                            f'{regime_y} → {regime_t}'))
+
+        if sent_y != sent_t:
+            if sent_t == "Positive":
+                s_arrow = f'<span style="color:{GAIN};font-weight:700;">↑</span>'
+            elif sent_t == "Negative":
+                s_arrow = f'<span style="color:{LOSS};font-weight:700;">↓</span>'
+            else:
+                s_arrow = f'<span style="color:{TEXT2};font-weight:700;">→</span>'
+            changes.append(("Sentiment", s_arrow, f'{sent_y} → {sent_t}'))
+
+        if not changes:
+            continue
+
+        changes_seen = True
+        for i, (metric, arrow_html, mag) in enumerate(changes):
+            sym_cell = (f'<span style="font-family:Courier New,monospace;font-weight:700;'
+                        f'color:{PRIMARY};font-size:13px;">{sym}</span>') if i == 0 else ""
+            rows_html += (
+                f'<div style="display:grid;grid-template-columns:80px 100px 32px 1fr;'
+                f'align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid {BORDER};">'
+                f'<div>{sym_cell}</div>'
+                f'<div style="font-size:12px;color:{TEXT2};">{metric}</div>'
+                f'<div style="text-align:center;font-size:15px;">{arrow_html}</div>'
+                f'<div style="font-size:12px;color:{TEXT1};">{mag}</div>'
+                f'</div>'
+            )
+
+    if not changes_seen:
+        rows_html = (
+            f'<div style="color:{TEXT2};font-size:12px;padding:12px 0;text-align:center;">'
+            f'No significant changes since yesterday — AI signals are stable.</div>'
+        )
+
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("📅", "Since Yesterday", date_label)}'
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
+        f'{pv_html}{rows_html}'
+        f'</div></div>'
+    )
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -2094,9 +2239,10 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            ai_rec_out     = gr.HTML(value=render_ai_recommendation)
-            hero_out       = gr.HTML(value=render_dashboard_hero)
-            risk_panel_out = gr.HTML(value=render_risk_panel)
+            ai_rec_out        = gr.HTML(value=render_ai_recommendation)
+            hero_out          = gr.HTML(value=render_dashboard_hero)
+            whats_changed_out = gr.HTML(value=render_whats_changed)
+            risk_panel_out    = gr.HTML(value=render_risk_panel)
             with gr.Row():
                 with gr.Column(scale=50):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
@@ -2159,6 +2305,7 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
     timer.tick(fn=render_dashboard_hero,           outputs=hero_out)
+    timer.tick(fn=render_whats_changed,            outputs=whats_changed_out)
     timer.tick(fn=render_ai_recommendation,        outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,               outputs=risk_panel_out)
     timer.tick(fn=render_market_intelligence,      outputs=mkt_intel_out)
