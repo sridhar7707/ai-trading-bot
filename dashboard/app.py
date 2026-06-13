@@ -83,6 +83,20 @@ footer {{ display: none !important; }}
   background: transparent !important;
 }}
 .tabitem {{ background: transparent !important; border: none !important; }}
+
+/* ── Portfolio performance period tabs ────────────────────────────────────── */
+.perf-tabs > .wrap {{ flex-wrap:wrap !important; gap:6px !important; }}
+.perf-tabs label {{
+  padding:6px 16px !important; border-radius:6px !important;
+  border:1px solid {BORDER} !important; background:{SURFACE} !important;
+  color:{TEXT2} !important; font-size:12px !important; font-weight:700 !important;
+  white-space:nowrap !important; cursor:pointer !important;
+  transition:color .15s, border-color .15s !important;
+}}
+.perf-tabs label:has(input:checked) {{
+  color:{PRIMARY} !important; border-color:{PRIMARY} !important;
+  background:{BG} !important;
+}}
 """
 
 # ── Stylesheet (injected once via static HEADER_HTML) ────────────────────────
@@ -2313,6 +2327,190 @@ def render_whats_changed() -> str:
     )
 
 
+# ── Portfolio performance period helpers ──────────────────────────────────────
+_PERF_PERIODS = [
+    ("1D",       1),
+    ("1W",       7),
+    ("1M",      30),
+    ("3M",      90),
+    ("YTD",     None),   # special: Jan 1 of current year
+    ("1Y",     365),
+    ("All Time", None),  # special: first DB record
+]
+_PERF_LABELS = {
+    "1D":       "today",
+    "1W":       "this week",
+    "1M":       "this month",
+    "3M":       "last 3 months",
+    "YTD":      "year to date",
+    "1Y":       "last year",
+    "All Time": "since inception",
+}
+
+
+def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
+    """
+    Returns {period_key: (start_val, end_val, start_date_label) | None}.
+    None means insufficient data for that period.
+    """
+    if not os.path.exists(DB_PATH):
+        return {k: None for k, _ in _PERF_PERIODS}
+    try:
+        con    = sqlite3.connect(DB_PATH)
+        today  = datetime.date.today()
+        now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        # Current (latest) portfolio value
+        cur_row = con.execute(
+            "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if not cur_row:
+            con.close()
+            return {k: None for k, _ in _PERF_PERIODS}
+        cur_val = float(cur_row[0])
+
+        # First ever portfolio value
+        first_row = con.execute(
+            "SELECT portfolio_value, timestamp FROM trades WHERE portfolio_value > 0 ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        first_val = float(first_row[0]) if first_row else None
+        first_ts  = first_row[1][:10]  if first_row else None
+
+        result: dict[str, tuple[float, float, str] | None] = {}
+
+        for key, days in _PERF_PERIODS:
+            if key == "All Time":
+                if first_val is not None and first_val != cur_val:
+                    result[key] = (first_val, cur_val, first_ts or "")
+                else:
+                    result[key] = None
+                continue
+
+            if key == "YTD":
+                cutoff = datetime.date(today.year, 1, 1).isoformat()
+            else:
+                cutoff = (today - datetime.timedelta(days=days)).isoformat()
+
+            # First DB record on or after the cutoff date (start-of-period proxy)
+            row = con.execute(
+                "SELECT portfolio_value, timestamp FROM trades "
+                "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
+                (cutoff,),
+            ).fetchone()
+            if row:
+                start_val  = float(row[0])
+                start_date = row[1][:10]
+                result[key] = (start_val, cur_val, start_date)
+            else:
+                result[key] = None
+
+        con.close()
+        return result
+    except Exception as exc:
+        logger.warning(f"_query_perf_stats: {exc}")
+        return {k: None for k, _ in _PERF_PERIODS}
+
+
+def _perf_choices() -> list[str]:
+    """Build Radio choices with inline % for display, e.g. '1M  +8.9%'."""
+    stats = _query_perf_stats()
+    choices = []
+    for key, _ in _PERF_PERIODS:
+        s = stats.get(key)
+        if s and s[0] > 0:
+            pct = (s[1] - s[0]) / s[0] * 100
+            choices.append(f"{key}  {pct:+.1f}%")
+        else:
+            choices.append(f"{key}  —")
+    return choices
+
+
+def render_portfolio_performance(period: str = "1M  —") -> str:
+    # Strip the inline stat suffix so we always have a clean key
+    key = period.split()[0] if period else "1M"
+
+    stats = _query_perf_stats()
+    cur_row_val = None
+    first_any   = any(v is not None for v in stats.values())
+
+    if not first_any:
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">'
+                 f'No portfolio history yet — data appears after the first trade.</div>')
+        return f'<div class="nt nt-wrap">{empty}</div>'
+
+    s = stats.get(key)
+
+    # ── Strip: all period mini-badges (decorative, Radio handles selection) ────
+    strip_items = ""
+    for pk, _ in _PERF_PERIODS:
+        ps = stats.get(pk)
+        if ps and ps[0] > 0:
+            pct = (ps[1] - ps[0]) / ps[0] * 100
+            c   = GAIN if pct >= 0 else LOSS
+            strip_items += (
+                f'<div style="text-align:center;padding:8px 12px;background:{SURFACE};'
+                f'border:1px solid {"" + PRIMARY if pk == key else BORDER};'
+                f'border-radius:6px;min-width:60px;">'
+                f'<div style="font-size:10px;color:{"" + PRIMARY if pk == key else TEXT2};'
+                f'font-weight:700;margin-bottom:4px;">{pk}</div>'
+                f'<div style="font-size:12px;color:{c};font-weight:700;">{pct:+.1f}%</div>'
+                f'</div>'
+            )
+        else:
+            strip_items += (
+                f'<div style="text-align:center;padding:8px 12px;background:{BG};'
+                f'border:1px solid {BORDER};border-radius:6px;min-width:60px;opacity:0.4;">'
+                f'<div style="font-size:10px;color:{TEXT2};font-weight:700;margin-bottom:4px;">{pk}</div>'
+                f'<div style="font-size:11px;color:{TEXT2};">—</div>'
+                f'</div>'
+            )
+
+    strip = (
+        f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
+        f'{strip_items}</div>'
+    )
+
+    # ── Detail card for selected period ───────────────────────────────────────
+    if not s:
+        detail = (
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;'
+            f'padding:20px;text-align:center;color:{TEXT2};font-size:13px;">'
+            f'Not enough data yet for <strong>{key}</strong> — the bot needs more trading history.</div>'
+        )
+    else:
+        start_val, end_val, start_date = s
+        delta     = end_val - start_val
+        pct       = (delta / start_val * 100) if start_val > 0 else 0.0
+        c         = GAIN if delta >= 0 else LOSS
+        sign      = "+" if delta >= 0 else ""
+        label_str = _PERF_LABELS.get(key, key.lower())
+
+        detail = (
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};'
+            f'border-top:3px solid {c};border-radius:8px;padding:20px 24px;">'
+            # Big headline
+            f'<div style="font-size:32px;font-weight:700;color:{c};letter-spacing:-1px;'
+            f'line-height:1;margin-bottom:8px;">'
+            f'{sign}${abs(delta):,.2f}</div>'
+            # Subline
+            f'<div style="font-size:14px;color:{TEXT2};margin-bottom:14px;">'
+            f'{sign}{pct:.2f}% {label_str}</div>'
+            # From → To
+            f'<div style="display:flex;align-items:center;gap:12px;">'
+            f'<span style="font-size:13px;color:{TEXT2};">From</span>'
+            f'<span style="font-size:15px;font-weight:700;color:{TEXT1};">${start_val:,.2f}</span>'
+            f'<span style="font-size:13px;color:{TEXT2};">→</span>'
+            f'<span style="font-size:15px;font-weight:700;color:{TEXT1};">${end_val:,.2f}</span>'
+            f'</div>'
+            # Start date
+            f'<div style="font-size:11px;color:{TEXT2};margin-top:10px;">'
+            f'Period start: {start_date}</div>'
+            f'</div>'
+        )
+
+    return f'<div class="nt nt-wrap">{strip}{detail}</div>'
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -2342,6 +2540,13 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
             signals_out  = gr.HTML(value=render_signals_tab)
 
         with gr.TabItem("💼 Portfolio"):
+            perf_tabs   = gr.Radio(
+                choices=_perf_choices(),
+                value=_perf_choices()[2],   # default: 1M
+                label="", container=False,
+                elem_classes=["perf-tabs"],
+            )
+            perf_out    = gr.HTML(value=render_portfolio_performance)
             with gr.Row():
                 with gr.Column(scale=65):
                     eq_plot    = gr.Plot(value=render_equity_chart, label="")
@@ -2376,6 +2581,13 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
         outputs=[investor_out, dev_col],
     )
 
+    # Portfolio performance period selection
+    perf_tabs.change(
+        fn=render_portfolio_performance,
+        inputs=[perf_tabs],
+        outputs=[perf_out],
+    )
+
     # Symbol drilldown
     symbol_selector.change(
         fn=render_symbol_detail,
@@ -2393,6 +2605,8 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
     timer.tick(fn=render_watchlist,                outputs=watchlist_out)
     timer.tick(fn=render_timeline,                 outputs=timeline_out)
     timer.tick(fn=render_signals_tab,              outputs=signals_out)
+    timer.tick(fn=lambda: gr.update(choices=_perf_choices()), outputs=perf_tabs)
+    timer.tick(fn=render_portfolio_performance,        outputs=perf_out)
     timer.tick(fn=render_equity_chart,             outputs=eq_plot)
     timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
     timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
