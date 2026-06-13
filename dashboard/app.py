@@ -15,22 +15,23 @@ DB_PATH    = "trades.db"
 HF_TOKEN   = os.getenv("HF_TOKEN",   "")
 HF_REPO_ID = os.getenv("HF_REPO_ID", "ksri77/ai-trading-bot")
 
-# ── Design tokens ─────────────────────────────────────────────────────────────
-BG        = "#060810"
-SURFACE   = "#0e1420"
-BORDER    = "#1a2236"
-PRIMARY   = "#00c8ff"
-GAIN      = "#00e676"
-LOSS      = "#ff3d57"
-NEURAL    = "#9d4edd"
-TEXT1     = "#f0f6fc"
-TEXT2     = "#8892a4"
-PRIMARY_BG = "#001a2e"
-GAIN_BG    = "#001a0d"
-LOSS_BG    = "#1a0010"
+# ── Design tokens — Robinhood-inspired palette ────────────────────────────────
+BG        = "#0e0e0e"   # true near-black (Robinhood app background)
+SURFACE   = "#1b1b1b"   # elevated surface
+SURFACE2  = "#252525"   # hover state
+BORDER    = "#2a2a2a"   # very subtle separator
+PRIMARY   = "#00c805"   # Robinhood signature green
+GAIN      = "#00c805"   # profit green
+LOSS      = "#ff5000"   # Robinhood loss red-orange
+NEURAL    = "#9d4edd"   # regime purple (kept)
+TEXT1     = "#ffffff"
+TEXT2     = "#a0a0a0"
+PRIMARY_BG = "#001602"
+GAIN_BG    = "#001602"
+LOSS_BG    = "#1e0800"
 NEURAL_BG  = "#14003a"
-GAIN_BD    = "#00b854"
-LOSS_BD    = "#cc1f2e"
+GAIN_BD    = "#00a005"
+LOSS_BD    = "#cc3d00"
 NEURAL_BD  = "#7b2fc9"
 
 # Plotly shared theme
@@ -50,8 +51,6 @@ PLOTLY_LAYOUT = dict(
 GRADIO_CSS = f"""
 .gradio-container, .gradio-container > .main {{
   background-color: {BG} !important;
-  background-image: radial-gradient(rgba(0,200,255,0.05) 1px, transparent 1px) !important;
-  background-size: 22px 22px !important;
 }}
 .block, .form, .wrap {{ background: transparent !important; border: none !important;
   box-shadow: none !important; padding: 0 !important; }}
@@ -63,55 +62,61 @@ footer {{ display: none !important; }}
 
 # ── Stylesheet (injected once via static HEADER_HTML) ────────────────────────
 STYLES = f"""<style>
-.nt {{ font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;color:{TEXT1};
-  box-sizing:border-box; }}
+.nt {{ font-family:-apple-system,'Inter',BlinkMacSystemFont,'Segoe UI',sans-serif;
+  color:{TEXT1};box-sizing:border-box; }}
 .nt *, .nt *::before, .nt *::after {{ box-sizing:border-box; }}
 .nt-wrap {{ padding:12px 16px 0; }}
 .nt-header {{
-  display:flex;align-items:center;gap:16px;padding:18px 24px;
-  background:{SURFACE};backdrop-filter:blur(16px);
-  border-radius:12px;border:1px solid {BORDER};
-  box-shadow:0 0 0 1px rgba(0,200,255,0.12),0 8px 32px rgba(0,0,0,0.7);
+  display:flex;align-items:center;gap:16px;padding:16px 24px;
+  background:{SURFACE};border-radius:8px;border:1px solid {BORDER};
   position:relative;overflow:hidden;
 }}
 .nt-header::before {{
-  content:'';position:absolute;top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,{PRIMARY},{GAIN},{NEURAL},{PRIMARY});
-  background-size:200% 100%;animation:shimmer 4s linear infinite;
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:{PRIMARY};
 }}
 .nt-status {{
   display:flex;align-items:center;justify-content:space-between;
-  padding:8px 14px;margin:10px 0 8px;
-  background:{SURFACE};border:1px solid {BORDER};border-radius:8px;font-size:11px;
+  padding:7px 14px;margin:10px 0 8px;
+  background:{SURFACE};border:1px solid {BORDER};border-radius:6px;font-size:11px;
+}}
+.nt-hero {{
+  text-align:center;padding:20px 16px 6px;
+}}
+.nt-hero-val {{
+  font-size:44px;font-weight:700;letter-spacing:-1px;color:{TEXT1};line-height:1;
+}}
+.nt-hero-chg {{
+  font-size:15px;font-weight:600;margin-top:6px;
 }}
 .nt-cards {{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;
 }}
 .nt-card {{
-  background:{SURFACE};border:1px solid {BORDER};border-radius:12px;padding:16px;
-  position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s;
+  background:{SURFACE};border-radius:8px;padding:14px 16px;
+  position:relative;overflow:hidden;transition:background .15s;
 }}
-.nt-card:hover {{ border-color:rgba(0,200,255,.3);box-shadow:0 0 20px rgba(0,200,255,.08); }}
+.nt-card:hover {{ background:{SURFACE2}; }}
 .nt-sec {{
   display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;
   text-transform:uppercase;letter-spacing:1.5px;margin:12px 0 8px;
 }}
-.nt-sec-line {{ flex:1;height:1px;background:linear-gradient(90deg,{BORDER},transparent); }}
+.nt-sec-line {{ flex:1;height:1px;background:{BORDER}; }}
 .nt-tbl {{ width:100%;border-collapse:collapse; }}
 .nt-tbl th {{
-  background:{BG};color:{TEXT2};font-size:10px;font-weight:700;
-  text-transform:uppercase;letter-spacing:1px;
-  padding:12px 16px;border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;
+  background:{BG};color:{TEXT2};font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.8px;
+  padding:10px 16px;border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;
 }}
-.nt-tbl td {{ padding:13px 16px;border-bottom:1px solid #0d1218;vertical-align:middle; }}
+.nt-tbl td {{ padding:12px 16px;border-bottom:1px solid {BORDER};vertical-align:middle; }}
 .nt-tbl tr:last-child td {{ border-bottom:none; }}
-.nt-tbl tr:hover td {{ background:rgba(0,200,255,.025); }}
+.nt-tbl tr:hover td {{ background:{SURFACE2}; }}
 @keyframes shimmer    {{ 0%{{background-position:0%}} 100%{{background-position:200%}} }}
 @keyframes pulse      {{ 0%,100%{{opacity:1}} 50%{{opacity:0.35}} }}
-@keyframes fadeInUp   {{ from{{opacity:0;transform:translateY(8px)}} to{{opacity:1;transform:translateY(0)}} }}
-@keyframes slideInRow {{ from{{opacity:0;transform:translateX(-5px)}} to{{opacity:1;transform:translateX(0)}} }}
+@keyframes fadeInUp   {{ from{{opacity:0;transform:translateY(6px)}} to{{opacity:1;transform:translateY(0)}} }}
+@keyframes slideInRow {{ from{{opacity:0;transform:translateX(-4px)}} to{{opacity:1;transform:translateX(0)}} }}
 @keyframes countdown  {{ from{{width:120px}} to{{width:0px}} }}
-.nt-card {{ animation:fadeInUp .4s ease both; }}
+.nt-card {{ animation:fadeInUp .3s ease both; }}
 </style>"""
 
 # ── Logo ──────────────────────────────────────────────────────────────────────
@@ -154,24 +159,22 @@ HEADER_HTML = f"""{STYLES}
 <div class="nt-header">
   {LOGO}
   <div style="flex:1;">
-    <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;
-      background:linear-gradient(135deg,{TEXT1} 0%,{PRIMARY} 50%,{GAIN} 100%);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-      background-clip:text;color:{PRIMARY};">TradeGenius AI</div>
-    <div style="font-size:12px;color:{TEXT2} !important;margin-top:3px;">
-      Autonomous Paper Trading &nbsp;·&nbsp; XGBoost + SHAP &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT &nbsp;·&nbsp; Walk-Forward Validated
+    <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;color:{TEXT1};">
+      TradeGenius AI</div>
+    <div style="font-size:11px;color:{TEXT2};margin-top:2px;">
+      XGBoost + SHAP &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT &nbsp;·&nbsp; Walk-Forward Validated
     </div>
   </div>
-  <div style="display:flex;gap:10px;align-items:center;">
-    <div style="display:flex;align-items:center;gap:7px;background:{GAIN_BG} !important;
-      border:1px solid {GAIN_BD};color:{GAIN} !important;padding:6px 16px;
-      border-radius:20px;font-size:12px;font-weight:800;letter-spacing:.5px;">
-      <span style="width:7px;height:7px;background:{GAIN};border-radius:50%;
+  <div style="display:flex;gap:8px;align-items:center;">
+    <div style="display:flex;align-items:center;gap:6px;background:{GAIN_BG};
+      border:1px solid {GAIN_BD};color:{GAIN};padding:5px 14px;
+      border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+      <span style="width:6px;height:6px;background:{GAIN};border-radius:50%;
         display:inline-block;animation:pulse 2s infinite;flex-shrink:0;"></span>LIVE
     </div>
-    <div style="background:{SURFACE} !important;border:1px solid {BORDER};
-      color:{TEXT2} !important;padding:6px 16px;border-radius:20px;
-      font-size:12px;font-weight:700;">PAPER</div>
+    <div style="background:{SURFACE2};border:1px solid {BORDER};
+      color:{TEXT2};padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;">
+      PAPER</div>
   </div>
 </div>
 </div>"""
@@ -376,8 +379,8 @@ def _pnl_color(v: str) -> str:
 
 def _sym(s: str) -> str:
     return (f'<span style="display:inline-block;background:{PRIMARY_BG} !important;'
-            f'border:1px solid #1a2236;border-left:3px solid {PRIMARY};border-radius:4px;'
-            f'padding:3px 9px;font-family:Courier New,monospace;font-weight:800;'
+            f'border:1px solid {BORDER};border-left:3px solid {PRIMARY};border-radius:4px;'
+            f'padding:3px 9px;font-family:Courier New,monospace;font-weight:700;'
             f'font-size:13px;color:{PRIMARY} !important;letter-spacing:.5px;">{s}</span>')
 
 def _num(v: str, bold=False) -> str:
@@ -387,18 +390,17 @@ def _num(v: str, bold=False) -> str:
 
 def _pnl(v: str, big=False) -> str:
     c  = _pnl_color(v)
-    gl = {"#00e676":"rgba(0,230,118,.4)","#ff3d57":"rgba(255,61,87,.4)"}.get(c,"transparent")
-    sz = "16px" if big else "14px"; fw = "800" if big else "700"
-    return (f'<span style="font-family:Courier New,monospace;font-weight:{fw};'
-            f'font-size:{sz};color:{c} !important;text-shadow:0 0 10px {gl};">{v}</span>')
+    sz = "15px" if big else "13px"; fw = "700"
+    return (f'<span style="font-family:-apple-system,monospace;font-weight:{fw};'
+            f'font-size:{sz};color:{c} !important;">{v}</span>')
 
 def _badge(action: str) -> str:
     cfg = {"BUY": (GAIN_BG, GAIN, GAIN_BD), "SELL": (LOSS_BG, LOSS, LOSS_BD)}.get(
         action, (NEURAL_BG, NEURAL, NEURAL_BD))
     bg, fg, bd = cfg
-    return (f'<span style="display:inline-block;background:{bg} !important;color:{fg} !important;'
-            f'border:1px solid {bd};padding:3px 11px;border-radius:4px;font-size:11px;'
-            f'font-weight:800;letter-spacing:.3px;font-family:Courier New,monospace;">{action}</span>')
+    return (f'<span style="display:inline-block;background:{bg};color:{fg};'
+            f'border:1px solid {bd};padding:2px 10px;border-radius:4px;font-size:11px;'
+            f'font-weight:700;letter-spacing:.3px;font-family:-apple-system,monospace;">{action}</span>')
 
 def _section(icon: str, title: str, note: str = "") -> str:
     note_html = (f'<span style="font-size:10px;color:{TEXT2} !important;'
@@ -411,36 +413,30 @@ def _section(icon: str, title: str, note: str = "") -> str:
             f'<span class="nt-sec-line"></span></div>')
 
 def _wrap(inner: str) -> str:
-    return (f'<div style="background:#000 !important;border:1px solid {BORDER};'
-            f'border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.7);">'
+    return (f'<div style="background:{SURFACE};border:1px solid {BORDER};'
+            f'border-radius:8px;overflow:hidden;">'
             f'{inner}</div>')
 
 def _card(label: str, value: str, accent: str = PRIMARY,
           color: str = TEXT1, sub: str = "", delay: float = 0) -> str:
-    """Unified card. Pass color=GAIN/LOSS/NEURAL for colored values."""
-    glow = {"#00e676":"rgba(0,230,118,.3)","#ff3d57":"rgba(255,61,87,.3)",
-            "#9d4edd":"rgba(157,78,221,.25)"}.get(color, "transparent")
-    shadow = f"text-shadow:0 0 16px {glow};" if glow != "transparent" else ""
-    sub_html = (f'<div style="font-size:10px;color:{TEXT2} !important;margin-top:3px;">{sub}</div>'
+    sub_html = (f'<div style="font-size:10px;color:{TEXT2};margin-top:2px;">{sub}</div>'
                 if sub else "")
     return (
         f'<div class="nt-card" style="animation-delay:{delay:.2f}s;">'
-        f'<div style="position:absolute;top:0;left:0;right:0;height:3px;background:{accent};'
-        f'border-radius:12px 12px 0 0;"></div>'
-        f'<div style="font-size:20px;font-weight:800;letter-spacing:-0.5px;'
-        f'color:{color} !important;line-height:1.1;margin-top:4px;{shadow}">{value}</div>'
-        f'<div style="font-size:10px;color:{TEXT2} !important;text-transform:uppercase;'
-        f'letter-spacing:1px;font-weight:700;margin-top:7px;">{label}</div>'
+        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;font-weight:600;margin-bottom:8px;">{label}</div>'
+        f'<div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;'
+        f'color:{color};line-height:1;">{value}</div>'
         f'{sub_html}</div>'
     )
 
-TH  = (f'style="background:{BG} !important;color:{TEXT2} !important;font-size:10px;font-weight:700;'
-       f'text-transform:uppercase;letter-spacing:1px;padding:12px 16px;'
+TH  = (f'style="background:{BG};color:{TEXT2};font-size:10px;font-weight:600;'
+       f'text-transform:uppercase;letter-spacing:.8px;padding:10px 16px;'
        f'border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;"')
-TD  = (f'style="padding:13px 16px;border-bottom:1px solid #0d1218 !important;'
-       f'vertical-align:middle;background:#000 !important;color:{TEXT1} !important;"')
-TD0 = (f'style="padding:13px 16px;vertical-align:middle;'
-       f'background:#000 !important;color:{TEXT1} !important;"')
+TD  = (f'style="padding:12px 16px;border-bottom:1px solid {BORDER};'
+       f'vertical-align:middle;background:{SURFACE};color:{TEXT1};"')
+TD0 = (f'style="padding:12px 16px;vertical-align:middle;'
+       f'background:{SURFACE};color:{TEXT1};"')
 
 # ── Render: metrics ───────────────────────────────────────────────────────────
 def render_metrics() -> str:
@@ -477,47 +473,59 @@ def render_metrics() -> str:
     open_count = len(open_syms)
     mkt_label, mkt_color = _market_status()
 
+    # ── Hero: large portfolio value (Robinhood-style focal point) ────────────
+    portfolio_val = d["portfolio"]
+    pnl_sign      = "+" if total_pnl >= 0 else ""
+    hero_chg      = (f'{pnl_sign}${total_pnl:,.2f} ({pnl_pct_all:+.2f}%)'
+                     if total_invested > 0 else "no open positions")
+    hero = (
+        f'<div class="nt-hero">'
+        f'<div class="nt-hero-val">{portfolio_val}</div>'
+        f'<div class="nt-hero-chg" style="color:{pnl_color};">{hero_chg}</div>'
+        f'</div>'
+    )
+
     status = (
         f'<div class="nt-status">'
-        f'<span style="color:{TEXT2} !important;font-family:Courier New,monospace;">'
-        f'Last updated &nbsp;<strong style="color:{PRIMARY} !important;">{_now_ct()}</strong></span>'
+        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
         f'<span style="display:inline-flex;align-items:center;gap:5px;">'
         f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
         f'display:inline-block;"></span>'
-        f'<span style="color:{mkt_color} !important;font-weight:700;font-size:11px;">'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
         f'{mkt_label}</span></span>'
-        f'<div style="height:2px;width:120px;background:linear-gradient(90deg,{PRIMARY},{GAIN});'
-        f'border-radius:1px;animation:countdown 60s linear forwards;"></div>'
-        f'<span style="color:{TEXT2} !important;font-size:11px;font-weight:600;">'
-        f'&#x23F1; Next refresh in 60s</span>'
+        f'<div style="height:2px;width:100px;background:{BORDER};border-radius:1px;">'
+        f'<div style="height:100%;width:100%;background:{PRIMARY};border-radius:1px;'
+        f'animation:countdown 60s linear forwards;"></div></div>'
+        f'<span style="color:{TEXT2};font-size:11px;">60s refresh</span>'
         f'</div>'
     )
 
     row1 = (
         f'<div class="nt-cards">'
-        + _card("Unrealized P&amp;L",  pnl_str,             pnl_accent, pnl_color, pnl_sub, 0.00)
-        + _card("Total Invested",      invested_str,         PRIMARY,   TEXT1,     "across open positions", 0.08)
-        + _card("Portfolio Value",     d["portfolio"],       PRIMARY,   TEXT1,     "Alpaca paper account", 0.16)
-        + _card("Market Regime",       d["regime_raw"].title(), r_accent, r_color, delay=0.24)
+        + _card("Unrealized P&amp;L",  pnl_str,                pnl_color, pnl_color, pnl_sub,                    0.00)
+        + _card("Total Invested",      invested_str,            TEXT2,     TEXT1,     "across open positions",    0.06)
+        + _card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,   "",                         0.12)
+        + _card("Market",              mkt_label,               TEXT2,     mkt_color, "",                         0.18)
         + f'</div>'
     )
 
     row2 = (
         f'<div class="nt-cards">'
-        + _card("Open Positions",  str(open_count),
-                PRIMARY, TEXT1,
-                f"{open_count} symbol(s) held" if open_count else "no active positions", 0.32)
-        + _card("Win Rate",        wr_str,
-                wr_accent, wr_color,
-                f"{win_count} wins of {sell_count} closed", 0.40)
-        + _card("Total Trades",    str(d["total_trades"]),
-                NEURAL, TEXT1, "all-time executions", 0.48)
-        + _card("Buys / Sells",    f"{d['buy_count']} / {d['sell_count']}",
-                PRIMARY, TEXT1, "lifetime order split", 0.56)
+        + _card("Open Positions", str(open_count),
+                TEXT2, TEXT1,
+                f"{open_count} held" if open_count else "none", 0.24)
+        + _card("Win Rate",       wr_str,
+                TEXT2, wr_color,
+                f"{win_count} / {sell_count} closed", 0.30)
+        + _card("Total Trades",   str(d["total_trades"]),
+                TEXT2, TEXT1, "all-time", 0.36)
+        + _card("Buys / Sells",   f"{d['buy_count']} / {d['sell_count']}",
+                TEXT2, TEXT1, "lifetime split", 0.42)
         + f'</div>'
     )
 
-    return f'<div class="nt nt-wrap">{status}{row1}{row2}</div>'
+    return f'<div class="nt nt-wrap">{hero}{status}{row1}{row2}</div>'
 
 
 # ── Render: equity chart (65% width) ─────────────────────────────────────────
@@ -541,11 +549,10 @@ def render_equity_chart():
 
             fig.add_trace(go.Scatter(
                 x=daily["date"], y=daily["value"],
-                fill="tozeroy", fillcolor="rgba(0,200,255,0.06)",
-                line=dict(color=PRIMARY, width=2.5),
-                mode="lines+markers",
-                marker=dict(color=PRIMARY, size=6, line=dict(color=BG, width=1.5)),
-                hovertemplate="<b>%{x|%b %d}</b><br>Portfolio: $%{y:,.2f}<extra></extra>",
+                fill="tozeroy", fillcolor="rgba(0,200,5,0.08)",
+                line=dict(color=PRIMARY, width=2),
+                mode="lines",
+                hovertemplate="<b>%{x|%b %d}</b><br>$%{y:,.2f}<extra></extra>",
                 name="Portfolio Value",
             ))
             if len(daily) > 1:
@@ -850,10 +857,10 @@ def render_validation_report() -> str:
     def _vr(label: str, val: str, color: str = TEXT1) -> str:
         return (
             f'<tr>'
-            f'<td style="padding:9px 14px;border-bottom:1px solid #0d1218;background:#000;'
-            f'color:{TEXT2};font-size:11px;font-weight:700;">{label}</td>'
-            f'<td style="padding:9px 14px;border-bottom:1px solid #0d1218;background:#000;'
-            f'font-family:Courier New,monospace;color:{color};font-weight:800;">{val}</td>'
+            f'<td style="padding:9px 14px;border-bottom:1px solid {BORDER};background:{SURFACE};'
+            f'color:{TEXT2};font-size:11px;font-weight:600;">{label}</td>'
+            f'<td style="padding:9px 14px;border-bottom:1px solid {BORDER};background:{SURFACE};'
+            f'font-family:-apple-system,monospace;color:{color};font-weight:700;">{val}</td>'
             f'</tr>'
         )
 
