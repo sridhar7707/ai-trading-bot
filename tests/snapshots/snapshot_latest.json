@@ -1,0 +1,314 @@
+{
+  "timestamp": "2026-06-13 15:23:26",
+  "file_hash": "85e8bb4499ac0f8b0dcc3149f723b666",
+  "file_size": 128946,
+  "components": {
+    "render_metrics": {
+      "hash": "e36d578f9b23395e76446c4b93ccf7db",
+      "size": 5099,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px"
+      ],
+      "sections": [],
+      "badges": [
+        "BUY",
+        "SELL"
+      ]
+    },
+    "render_equity_chart": {
+      "hash": "91a43426eb3450f56e992d8cd91ddbf2",
+      "size": 2606,
+      "colors": [],
+      "font_sizes": [
+        "11px"
+      ],
+      "sections": [],
+      "badges": []
+    },
+    "render_allocation_chart": {
+      "hash": "571e7e14844f218b9a29605f7d3fa359",
+      "size": 2228,
+      "colors": [
+        "#00bcd4",
+        "#76ff03",
+        "#e040fb",
+        "#f7931a"
+      ],
+      "font_sizes": [],
+      "sections": [],
+      "badges": []
+    },
+    "render_pnl_chart": {
+      "hash": "22f75b457747d17100f41756853e065e",
+      "size": 2351,
+      "colors": [],
+      "font_sizes": [
+        "11px"
+      ],
+      "sections": [],
+      "badges": [
+        "SELL"
+      ]
+    },
+    "render_positions": {
+      "hash": "bcdbdecd9fb6d970cb3b908d8a6896fd",
+      "size": 8298,
+      "colors": [
+        "#0a2010",
+        "#1a1030",
+        "#2a0a0a",
+        "#2a1f08",
+        "#f59e0b"
+      ],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "13px"
+      ],
+      "sections": [
+        "Open Positions"
+      ],
+      "badges": [
+        "BUY",
+        "EXIT",
+        "HOLD",
+        "TRIM",
+        "WATCH"
+      ]
+    },
+    "render_trades": {
+      "hash": "11ed5012f336202a85472c89515b9732",
+      "size": 2654,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "12px",
+        "14px"
+      ],
+      "sections": [
+        "Recent Trades"
+      ],
+      "badges": [
+        "BUY",
+        "SELL"
+      ]
+    },
+    "render_feature_importance_chart": {
+      "hash": "d5a377ba3f543dbf4929156ef7d6cc3f",
+      "size": 2414,
+      "colors": [],
+      "font_sizes": [
+        "11px"
+      ],
+      "sections": [],
+      "badges": [
+        "BUY"
+      ]
+    },
+    "render_validation_report": {
+      "hash": "87cc120514ccb24a4979f858a0bf38fc",
+      "size": 3129,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px"
+      ],
+      "sections": [
+        "Model Validation"
+      ],
+      "badges": []
+    },
+    "render_dashboard_hero": {
+      "hash": "4e514220225fb34d02c743393b252db3",
+      "size": 5444,
+      "colors": [],
+      "font_sizes": [
+        "11px",
+        "16px",
+        "34px"
+      ],
+      "sections": [],
+      "badges": []
+    },
+    "render_ai_recommendation": {
+      "hash": "a1825ca31a67d258118bfcbdc5bb00b9",
+      "size": 9699,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px",
+        "14px",
+        "18px",
+        "28px",
+        "36px"
+      ],
+      "sections": [
+        "AI Recommendation"
+      ],
+      "badges": [
+        "BUY"
+      ]
+    },
+    "render_market_intelligence": {
+      "hash": "28d8cd6af5564676d3164d81f3962831",
+      "size": 1798,
+      "colors": [],
+      "font_sizes": [],
+      "sections": [
+        "Market Intelligence"
+      ],
+      "badges": []
+    },
+    "render_watchlist": {
+      "hash": "fb0e0e772a752a9929bafbfd1a47f006",
+      "size": 1681,
+      "colors": [],
+      "font_sizes": [
+        "12px",
+        "14px"
+      ],
+      "sections": [
+        "Watchlist"
+      ],
+      "badges": []
+    },
+    "render_signals_tab": {
+      "hash": "b474b9126136c025f104cc3c1daf8ccc",
+      "size": 3243,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px"
+      ],
+      "sections": [
+        "AI Buy Signals"
+      ],
+      "badges": [
+        "BUY"
+      ]
+    },
+    "render_risk_panel": {
+      "hash": "99f1d89df5ad1750fe1283726d9947d0",
+      "size": 4753,
+      "colors": [],
+      "font_sizes": [
+        "11px",
+        "12px"
+      ],
+      "sections": [
+        "Risk Controls"
+      ],
+      "badges": [
+        "SELL"
+      ]
+    },
+    "render_institutional_metrics": {
+      "hash": "db1dcafd4ef4962d07da30b56bce435c",
+      "size": 4530,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px"
+      ],
+      "sections": [
+        "Institutional Metrics"
+      ],
+      "badges": [
+        "SELL"
+      ]
+    },
+    "render_timeline": {
+      "hash": "8f547fc24ff2efd7ff066be5664950d8",
+      "size": 4191,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px"
+      ],
+      "sections": [
+        "AI Decision Feed"
+      ],
+      "badges": [
+        "BUY"
+      ]
+    },
+    "render_investor_view": {
+      "hash": "84f3e88b3055fd4b138dce69a48b5ccf",
+      "size": 5282,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px",
+        "15px"
+      ],
+      "sections": [
+        "AI Performance"
+      ],
+      "badges": [
+        "BUY",
+        "SELL"
+      ]
+    },
+    "render_symbol_detail": {
+      "hash": "46e7d5a6123377a85d7fd8088efefd8c",
+      "size": 8502,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "14px",
+        "18px",
+        "20px",
+        "30px"
+      ],
+      "sections": [],
+      "badges": [
+        "BUY"
+      ]
+    },
+    "render_whats_changed": {
+      "hash": "6fb51e99e40c02e37925aca009890f2c",
+      "size": 6273,
+      "colors": [],
+      "font_sizes": [
+        "12px",
+        "13px",
+        "15px",
+        "16px"
+      ],
+      "sections": [
+        "Since Yesterday"
+      ],
+      "badges": []
+    },
+    "render_portfolio_performance": {
+      "hash": "41770a96e69ce4860850f80a06c4fa8c",
+      "size": 3923,
+      "colors": [],
+      "font_sizes": [
+        "10px",
+        "11px",
+        "12px",
+        "13px",
+        "14px",
+        "15px",
+        "32px"
+      ],
+      "sections": [],
+      "badges": []
+    }
+  }
+}

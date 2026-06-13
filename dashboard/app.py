@@ -1,3 +1,10 @@
+# ================================================================
+# UI CHANGE TRACKING
+# After making ANY change to this file run:
+#   python tests/ui_changelog.py
+# This updates docs/UI_CHANGELOG.md automatically.
+# Do not skip this step.
+# ================================================================
 """Gradio dashboard — TradeGenius AI, hosted on HuggingFace Spaces."""
 from __future__ import annotations
 
@@ -833,7 +840,7 @@ def _get_sym_hist(symbol: str):
     return None
 
 
-def _sym_perf(hist, buy_date: str | None) -> dict:
+def _sym_perf(hist, buy_date) -> dict:
     """Compute pct returns (1D/1W/1M/1Y/All) from a yfinance history DataFrame."""
     if hist is None or hist.empty or "Close" not in hist.columns:
         return {}
