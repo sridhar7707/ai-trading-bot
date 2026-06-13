@@ -5,6 +5,12 @@
 # This updates docs/UI_CHANGELOG.md automatically.
 # Do not skip this step.
 # ================================================================
+# ================================================================
+# REQUIREMENTS TRACKING
+# After making ANY change to this file run:
+#   python tests/requirements_tracker.py
+# This updates docs/REQUIREMENTS.md automatically.
+# ================================================================
 """Gradio dashboard — TradeGenius AI, hosted on HuggingFace Spaces."""
 from __future__ import annotations
 

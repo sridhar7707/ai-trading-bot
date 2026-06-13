@@ -1,0 +1,180 @@
+{
+  "version": [
+    1,
+    0,
+    1
+  ],
+  "last_updated": "2026-06-13 15:30:45",
+  "features": [
+    {
+      "name": "Dashboard Hero & Health Cards",
+      "status": "complete",
+      "spec": "SPEC 1",
+      "last_updated": "2026-06-13",
+      "notes": "Portfolio value, P&L, cash, VIX, health score cards"
+    },
+    {
+      "name": "Portfolio Health Score",
+      "status": "complete",
+      "spec": "SPEC 1",
+      "last_updated": "2026-06-13",
+      "notes": "Score 0-100 from VIX/cash/concentration/drawdown"
+    },
+    {
+      "name": "Rich Telegram BUY/SELL Alerts",
+      "status": "complete",
+      "spec": "SPEC 2",
+      "last_updated": "2026-06-13",
+      "notes": "Confidence %, SHAP drivers, sector %, cash after"
+    },
+    {
+      "name": "Since Yesterday Panel",
+      "status": "complete",
+      "spec": "SPEC 3",
+      "last_updated": "2026-06-13",
+      "notes": "render_whats_changed(): ensemble/regime/sentiment delta"
+    },
+    {
+      "name": "AI Action Column (HOLD/TRIM/EXIT)",
+      "status": "complete",
+      "spec": "SPEC 4",
+      "last_updated": "2026-06-13",
+      "notes": "Per-position sell score 0-100, sub-row with top reasons"
+    },
+    {
+      "name": "Daily Summary Telegram Alert",
+      "status": "complete",
+      "spec": "SPEC 5",
+      "last_updated": "2026-06-13",
+      "notes": "4:05pm ET: portfolio value, best/worst trade, health score"
+    },
+    {
+      "name": "Portfolio Performance Periods",
+      "status": "complete",
+      "spec": "SPEC 6A",
+      "last_updated": "2026-06-13",
+      "notes": "1D/1W/1M/3M/YTD/1Y/All Time tabs with headline stats"
+    },
+    {
+      "name": "Per-Stock Performance Columns",
+      "status": "complete",
+      "spec": "SPEC 6B",
+      "last_updated": "2026-06-13",
+      "notes": "yfinance 1D/1W/1M/1Y/All Time % per position (1h cache)"
+    },
+    {
+      "name": "Sparkline Charts",
+      "status": "complete",
+      "spec": "SPEC 6C",
+      "last_updated": "2026-06-13",
+      "notes": "80\u00d732 SVG 30-day trend column in positions table"
+    },
+    {
+      "name": "UI/UX Test Suite",
+      "status": "complete",
+      "spec": "SPEC 7",
+      "last_updated": "2026-06-13",
+      "notes": "14 test files in tests/ including test_dashboard_render.py"
+    },
+    {
+      "name": "UI Change Log",
+      "status": "complete",
+      "spec": "SPEC 8",
+      "last_updated": "2026-06-13",
+      "notes": "tests/ui_changelog.py; 20 render_* components tracked"
+    },
+    {
+      "name": "Living Requirements Tracker",
+      "status": "in_progress",
+      "spec": "SPEC 9",
+      "last_updated": "2026-06-13",
+      "notes": "tests/requirements_tracker.py \u2014 this file"
+    }
+  ],
+  "bugs": [],
+  "enhancements": [
+    {
+      "date": "2026-06-13",
+      "title": "Portfolio Health Score (SPEC 1)",
+      "lines": [
+        "Added to render_dashboard_hero(); score from VIX, cash, concentration, drawdown",
+        "Green \u2265 75, purple \u2265 50, red < 50 with progress bar and weakest-component subtitle"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "Rich Telegram Alerts (SPEC 2)",
+      "lines": [
+        "BUY: ensemble %, XGBoost/LSTM %, SHAP drivers in plain English, sector %, cash %",
+        "SELL: exit reason label, freed cash %. Daily summary at 4:05pm ET (SPEC 5)"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "Since Yesterday Panel (SPEC 3)",
+      "lines": [
+        "render_whats_changed(): compares latest-per-symbol between today and yesterday",
+        "Detects ensemble_score (>0.05), regime label, sentiment direction changes"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "AI Action Column (SPEC 4)",
+      "lines": [
+        "HOLD/WATCH/TRIM/EXIT badge from sell score (size risk + profit + confidence + DD)",
+        "Sub-row below each position row shows top two scoring reasons in plain text"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "Portfolio Performance + yfinance + Sparklines (SPEC 6A/6B/6C)",
+      "lines": [
+        "1D/1W/1M/3M/YTD/1Y/All Time Radio tabs at top of Portfolio tab",
+        "Per-stock % columns in positions table via yfinance with 1-hour module-level cache",
+        "80\u00d732px SVG sparkline (last 30 closes) as second column in positions table"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "UI Change Tracker (SPEC 8)",
+      "lines": [
+        "tests/ui_changelog.py: snapshots all render_* functions via ast, diffs on each run",
+        "Appends entries to docs/UI_CHANGELOG.md; supports --diff, --history, --reset"
+      ]
+    }
+  ],
+  "technical_decisions": [
+    {
+      "title": "One Gradio app not three",
+      "body": "Single shared portfolio and AI committee view reduces maintenance overhead."
+    },
+    {
+      "title": "Pure Python / Gradio over React",
+      "body": "Matches ML codebase; all UI rendered as HTML strings inside gr.HTML components."
+    },
+    {
+      "title": "yfinance for historical prices (SPEC 6B/6C)",
+      "body": "Alpaca handles live intraday data; yfinance provides multi-year history for free."
+    },
+    {
+      "title": "SQLite synced via HuggingFace dataset repo",
+      "body": "Simple file-based persistence without external DB. trades.db pushed after each cycle."
+    },
+    {
+      "title": "Module-level _CACHE with 55-second TTL",
+      "body": "All render functions share one DB read per 60-second refresh to prevent N\u00d7DB calls."
+    },
+    {
+      "title": "GitHub Actions cron + HF Spaces auto-deploy",
+      "body": "Bot runs on scheduled GH Actions workflows. Dashboard auto-deploys from main branch."
+    }
+  ],
+  "known_limitations": [
+    "Day trading not implemented \u2014 intentional to avoid the PDT rule",
+    "Historical performance shows '\u2014' until enough bot history accumulates",
+    "yfinance slow on first load with 10+ open positions (cached for 1 hour after)",
+    "Dashboard refreshes every 60 seconds (Gradio Timer)",
+    "Paper trading only \u2014 real money deployment gated behind confidence threshold",
+    "SQLite not suitable for high-frequency writes; fine for swing-trading cadence"
+  ]
+}
