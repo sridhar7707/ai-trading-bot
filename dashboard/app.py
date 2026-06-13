@@ -13,7 +13,7 @@ from loguru import logger
 
 DB_PATH    = "trades.db"
 HF_TOKEN   = os.getenv("HF_TOKEN",   "")
-HF_REPO_ID = os.getenv("HF_REPO_ID", "ksri77/ai-trading-bot")
+HF_REPO_ID = os.getenv("HF_DB_REPO_ID", os.getenv("HF_REPO_ID", "ksri77/ai-trading-bot-db"))
 
 # ── Design tokens — Robinhood-inspired palette ────────────────────────────────
 BG        = "#0e0e0e"   # true near-black (Robinhood app background)
@@ -223,7 +223,7 @@ def _sync_db() -> None:
     try:
         from huggingface_hub import hf_hub_download
         cached = hf_hub_download(repo_id=HF_REPO_ID, filename="trades.db",
-                                  token=HF_TOKEN, force_download=True)
+                                  repo_type="dataset", token=HF_TOKEN, force_download=True)
         shutil.copy(cached, DB_PATH)
     except Exception as e:
         msg = str(e).lower()
@@ -242,7 +242,7 @@ def _sync_db() -> None:
         try:
             from huggingface_hub import hf_hub_download
             cached = hf_hub_download(repo_id=HF_REPO_ID, filename=filename,
-                                      token=HF_TOKEN, force_download=True)
+                                      repo_type="dataset", token=HF_TOKEN, force_download=True)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy(cached, dest)
         except Exception:
@@ -464,9 +464,12 @@ def _pnl(v: str, big=False) -> str:
             f'font-size:{sz};color:{c} !important;">{v}</span>')
 
 def _badge(action: str) -> str:
-    cfg = {"BUY": (GAIN_BG, GAIN, GAIN_BD), "SELL": (LOSS_BG, LOSS, LOSS_BD)}.get(
-        action, (NEURAL_BG, NEURAL, NEURAL_BD))
-    bg, fg, bd = cfg
+    if action == "BUY":
+        bg, fg, bd = GAIN_BG, GAIN, GAIN_BD
+    elif action.startswith("SELL"):
+        bg, fg, bd = LOSS_BG, LOSS, LOSS_BD
+    else:
+        bg, fg, bd = NEURAL_BG, NEURAL, NEURAL_BD
     return (f'<span style="display:inline-block;background:{bg};color:{fg};'
             f'border:1px solid {bd};padding:2px 10px;border-radius:4px;font-size:11px;'
             f'font-weight:700;letter-spacing:.3px;font-family:-apple-system,monospace;">{action}</span>')
@@ -708,7 +711,7 @@ def render_allocation_chart():
             legend=dict(orientation="v", x=1.02, y=0.5,
                         font=dict(color=TEXT2, size=10), bgcolor="rgba(0,0,0,0)"),
             **{k: v for k, v in PLOTLY_LAYOUT.items()
-               if k not in ("xaxis", "yaxis", "gridcolor", "zerolinecolor")},
+               if k not in ("xaxis", "yaxis", "legend")},
             height=300,
         )
         return fig
