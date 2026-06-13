@@ -247,6 +247,9 @@ _CACHE: dict = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TS: float = 0.0
 _CACHE_TTL: float = 55.0
+_price_cache: dict = {}
+_price_cache_time: dict = {}
+_PRICE_CACHE_TTL: float = 3600.0
 
 _EMPTY_CACHE: dict = {
     "open_pos": {}, "prices": {}, "trades_df": pd.DataFrame(),
@@ -813,6 +816,60 @@ def render_pnl_chart():
         return fig
 
 
+def _get_sym_hist(symbol: str):
+    """Fetch yfinance max-period history for symbol; cached for 1 h. Returns DataFrame or None."""
+    now = time.time()
+    if symbol in _price_cache and now - _price_cache_time.get(symbol, 0.0) < _PRICE_CACHE_TTL:
+        return _price_cache[symbol]
+    try:
+        import yfinance as _yf
+        hist = _yf.Ticker(symbol).history(period="max")
+        if hist is not None and not hist.empty:
+            _price_cache[symbol] = hist
+            _price_cache_time[symbol] = now
+            return hist
+    except Exception as _exc:
+        logger.warning(f"yfinance {symbol}: {_exc}")
+    return None
+
+
+def _sym_perf(hist, buy_date: str | None) -> dict:
+    """Compute pct returns (1D/1W/1M/1Y/All) from a yfinance history DataFrame."""
+    if hist is None or hist.empty or "Close" not in hist.columns:
+        return {}
+    today = datetime.date.today()
+    try:
+        dates = [d.date() if hasattr(d, "date") else d for d in hist.index]
+    except Exception:
+        return {}
+    closes = list(hist["Close"])
+    if not closes:
+        return {}
+    cur = float(closes[-1])
+
+    def _pct_at(cutoff: datetime.date):
+        for i in range(len(dates) - 1, -1, -1):
+            if dates[i] <= cutoff:
+                ref = float(closes[i])
+                return (cur - ref) / ref * 100 if ref > 0 else None
+        return None
+
+    result: dict = {
+        "1D": _pct_at(today - datetime.timedelta(days=1)),
+        "1W": _pct_at(today - datetime.timedelta(days=7)),
+        "1M": _pct_at(today - datetime.timedelta(days=30)),
+        "1Y": _pct_at(today - datetime.timedelta(days=365)),
+    }
+    if buy_date:
+        try:
+            result["All"] = _pct_at(datetime.date.fromisoformat(str(buy_date)[:10]))
+        except Exception:
+            result["All"] = None
+    else:
+        result["All"] = None
+    return result
+
+
 # ── Render: positions table ───────────────────────────────────────────────────
 def render_positions() -> str:
     d         = get_data()
@@ -836,8 +893,9 @@ def render_positions() -> str:
     except Exception:
         pass
 
-    # Batch-fetch latest ensemble_score per open symbol in one query
+    # Batch-fetch latest ensemble_score + earliest BUY date per open symbol
     _ens: dict[str, float] = {}
+    _buy_dates: dict[str, str] = {}
     if os.path.exists(DB_PATH):
         try:
             sym_list = list(open_syms.keys())
@@ -852,9 +910,20 @@ def render_positions() -> str:
                 sym_list,
             ).fetchall():
                 _ens[_r[0]] = float(_r[1])
+            for _r in con.execute(
+                f"SELECT symbol, MIN(timestamp) FROM trades "
+                f"WHERE symbol IN ({ph}) AND action = 'BUY' GROUP BY symbol",
+                sym_list,
+            ).fetchall():
+                _buy_dates[_r[0]] = str(_r[1])
             con.close()
         except Exception as _exc:
-            logger.warning(f"render_positions ens fetch: {_exc}")
+            logger.warning(f"render_positions ens/buy_date fetch: {_exc}")
+
+    # Pre-fetch yfinance history and compute perf dicts for all open symbols
+    _perfs: dict[str, dict] = {}
+    for _s in list(open_syms.keys()):
+        _perfs[_s] = _sym_perf(_get_sym_hist(_s), _buy_dates.get(_s))
 
     def _ai_action(sym: str, pnl_pct: float, pos_pct: float):
         ens = _ens.get(sym, 1.0)  # default confident if not yet in DB
@@ -887,6 +956,18 @@ def render_positions() -> str:
 
         return total, label, bc, bbg, reason
 
+    _td_perf = (f'style="padding:12px 10px 4px;vertical-align:middle;'
+                f'background:{SURFACE};text-align:right;"')
+
+    def _perf_cell(val) -> str:
+        if val is None:
+            return f'<td {_td_perf}><span style="color:{TEXT2} !important;">—</span></td>'
+        clr  = GAIN if val >= 0 else LOSS
+        sign = "+" if val >= 0 else ""
+        return (f'<td {_td_perf}>'
+                f'<span style="color:{clr} !important;font-weight:700;">'
+                f'{sign}{val:.1f}%</span></td>')
+
     rows  = ""
     items = list(open_syms.items())
     last  = len(items) - 1
@@ -917,6 +998,15 @@ def render_positions() -> str:
         td_sub  = (f'style="padding:2px 16px 10px;background:{SURFACE};'
                    f'{sub_sep}color:{TEXT2};font-size:11px;"')
 
+        pf         = _perfs.get(sym, {})
+        perf_cells = "".join([
+            _perf_cell(pf.get("1D")),
+            _perf_cell(pf.get("1W")),
+            _perf_cell(pf.get("1M")),
+            _perf_cell(pf.get("1Y")),
+            _perf_cell(pf.get("All")),
+        ])
+
         rows += (
             f'<tr {anim}>'
             f'<td {td_main}>{_sym(sym)}</td>'
@@ -925,11 +1015,13 @@ def render_positions() -> str:
             f'<td {td_main}>{_num(cv_str, bold=True)}</td>'
             f'<td {td_main}>{_pnl(p_str)}</td>'
             f'<td {td_main}>{_pnl(pct_str, big=True)}</td>'
+            f'{perf_cells}'
             f'<td {td_main}>{badge}</td>'
             f'</tr>'
-            f'<tr><td colspan="7" {td_sub}>{reason}</td></tr>'
+            f'<tr><td colspan="12" {td_sub}>{reason}</td></tr>'
         )
 
+    _th_perf = f'style="padding:10px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:.5px;color:{TEXT2};text-transform:uppercase;white-space:nowrap;"'
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th>'
@@ -938,6 +1030,11 @@ def render_positions() -> str:
         f'<th {TH}>Current Value  <span style="font-weight:400;text-transform:none;letter-spacing:0;">live price</span></th>'
         f'<th {TH}>P&amp;L $  <span style="font-weight:400;text-transform:none;letter-spacing:0;">unrealised</span></th>'
         f'<th {TH}>P&amp;L %</th>'
+        f'<th {_th_perf}>1D</th>'
+        f'<th {_th_perf}>1W</th>'
+        f'<th {_th_perf}>1M</th>'
+        f'<th {_th_perf}>1Y</th>'
+        f'<th {_th_perf}>All Time</th>'
         f'<th {TH}>AI Action</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
