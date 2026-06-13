@@ -813,29 +813,109 @@ def render_positions() -> str:
                 f'{_section("📊","Open Positions","mark-to-market · price updated every 60s")}'
                 f'{_wrap(empty)}</div>')
 
+    _AMBER = "#f59e0b"
+
+    # Portfolio value as float (needed for position-size %)
+    _pv = 0.0
+    try:
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    # Batch-fetch latest ensemble_score per open symbol in one query
+    _ens: dict[str, float] = {}
+    if os.path.exists(DB_PATH):
+        try:
+            sym_list = list(open_syms.keys())
+            ph  = ",".join("?" * len(sym_list))
+            con = sqlite3.connect(DB_PATH)
+            for _r in con.execute(
+                f"SELECT t.symbol, COALESCE(t.ensemble_score, 0.0) "
+                f"FROM trades t "
+                f"INNER JOIN (SELECT symbol, MAX(id) AS mid FROM trades "
+                f"            WHERE symbol IN ({ph}) GROUP BY symbol) m "
+                f"ON t.id = m.mid",
+                sym_list,
+            ).fetchall():
+                _ens[_r[0]] = float(_r[1])
+            con.close()
+        except Exception as _exc:
+            logger.warning(f"render_positions ens fetch: {_exc}")
+
+    def _ai_action(sym: str, pnl_pct: float, pos_pct: float):
+        ens = _ens.get(sym, 1.0)  # default confident if not yet in DB
+
+        # ── 4-component scoring ────────────────────────────────────────────────
+        size_pts   = 30 if pos_pct > 25 else (20 if pos_pct > 15 else (10 if pos_pct > 10 else 0))
+        profit_pts = (30 if pnl_pct > 50 else (20 if pnl_pct > 25 else (10 if pnl_pct > 10 else 0))
+                      ) if pnl_pct > 0 else 0
+        conf_pts   = 25 if ens < 0.55 else (15 if ens < 0.65 else 0)
+        dd_pts     = (15 if pnl_pct < -8 else (10 if pnl_pct < -5 else 0)) if pnl_pct < 0 else 0
+        total      = size_pts + profit_pts + conf_pts + dd_pts
+
+        # ── Top reasons ────────────────────────────────────────────────────────
+        scored: list[tuple[int, str]] = []
+        if size_pts:   scored.append((size_pts,   "Position oversized"))
+        if profit_pts:
+            lbl = ("Profit > 50%" if pnl_pct > 50 else
+                   "Profit > 25%" if pnl_pct > 25 else "Profit > 10%")
+            scored.append((profit_pts, lbl))
+        if conf_pts:   scored.append((conf_pts,   "AI confidence weakening"))
+        if dd_pts:     scored.append((dd_pts,     "Drawdown risk"))
+        scored.sort(key=lambda x: -x[0])
+        reason = " · ".join(r for _, r in scored[:2]) if scored else "All metrics healthy"
+
+        # ── Badge ──────────────────────────────────────────────────────────────
+        if total <= 30:   label, bc, bbg = "HOLD",  GAIN,   "#0a2010"
+        elif total <= 59: label, bc, bbg = "WATCH", NEURAL, "#1a1030"
+        elif total <= 79: label, bc, bbg = "TRIM",  _AMBER, "#2a1f08"
+        else:             label, bc, bbg = "EXIT",  LOSS,   "#2a0a0a"
+
+        return total, label, bc, bbg, reason
+
     rows  = ""
     items = list(open_syms.items())
+    last  = len(items) - 1
+
     for i, (sym, v) in enumerate(items):
         cur_price = prices.get(sym, 0.0)
         cur_val   = v["shares"] * cur_price
         invested  = v["invested"]
         pnl       = cur_val - invested
         pnl_pct   = (pnl / invested * 100) if invested > 0 else 0.0
-        cv_str  = f"${cur_val:.2f}"   if cur_price else "—"
-        p_str   = f"${pnl:+.2f}"     if cur_price else "—"
-        pct_str = f"{pnl_pct:+.2f}%" if cur_price else "—"
-        td   = TD if i < len(items) - 1 else TD0
-        anim = f'style="animation:slideInRow .35s ease both;animation-delay:{i*0.07:.2f}s;"'
+        pos_pct   = (cur_val / _pv * 100)   if _pv > 0      else 0.0
+        cv_str    = f"${cur_val:.2f}"   if cur_price else "—"
+        p_str     = f"${pnl:+.2f}"     if cur_price else "—"
+        pct_str   = f"{pnl_pct:+.2f}%" if cur_price else "—"
+
+        score, label, bc, bbg, reason = _ai_action(sym, pnl_pct, pos_pct)
+
+        badge = (
+            f'<span style="display:inline-block;background:{bbg};border:1px solid {bc};'
+            f'color:{bc};font-size:10px;font-weight:700;letter-spacing:.5px;'
+            f'padding:2px 8px;border-radius:4px;white-space:nowrap;">'
+            f'{label} ({score})</span>'
+        )
+        anim    = f'style="animation:slideInRow .35s ease both;animation-delay:{i*0.07:.2f}s;"'
+        td_main = (f'style="padding:12px 16px 4px;vertical-align:middle;'
+                   f'background:{SURFACE};color:{TEXT1};"')
+        sub_sep = f'border-bottom:1px solid {BORDER};' if i < last else ''
+        td_sub  = (f'style="padding:2px 16px 10px;background:{SURFACE};'
+                   f'{sub_sep}color:{TEXT2};font-size:11px;"')
+
         rows += (
             f'<tr {anim}>'
-            f'<td {td}>{_sym(sym)}</td>'
-            f'<td {td}>{_num(str(round(v["shares"],4)))}</td>'
-            f'<td {td}>{_num(f"${invested:.2f}",bold=True)}</td>'
-            f'<td {td}>{_num(cv_str,bold=True)}</td>'
-            f'<td {td}>{_pnl(p_str)}</td>'
-            f'<td {td}>{_pnl(pct_str,big=True)}</td>'
+            f'<td {td_main}>{_sym(sym)}</td>'
+            f'<td {td_main}>{_num(str(round(v["shares"], 4)))}</td>'
+            f'<td {td_main}>{_num(f"${invested:.2f}", bold=True)}</td>'
+            f'<td {td_main}>{_num(cv_str, bold=True)}</td>'
+            f'<td {td_main}>{_pnl(p_str)}</td>'
+            f'<td {td_main}>{_pnl(pct_str, big=True)}</td>'
+            f'<td {td_main}>{badge}</td>'
             f'</tr>'
+            f'<tr><td colspan="7" {td_sub}>{reason}</td></tr>'
         )
+
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th>'
@@ -844,6 +924,7 @@ def render_positions() -> str:
         f'<th {TH}>Current Value  <span style="font-weight:400;text-transform:none;letter-spacing:0;">live price</span></th>'
         f'<th {TH}>P&amp;L $  <span style="font-weight:400;text-transform:none;letter-spacing:0;">unrealised</span></th>'
         f'<th {TH}>P&amp;L %</th>'
+        f'<th {TH}>AI Action</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
     return (f'<div class="nt nt-wrap">'
