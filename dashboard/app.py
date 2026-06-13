@@ -40,8 +40,6 @@ PLOTLY_LAYOUT = dict(
     plot_bgcolor=SURFACE,
     font=dict(color=TEXT2, family="Inter, monospace", size=11),
     margin=dict(l=50, r=20, t=40, b=50),
-    gridcolor=BORDER,
-    zerolinecolor=BORDER,
     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=BORDER, font=dict(color=TEXT2)),
     xaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
     yaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
