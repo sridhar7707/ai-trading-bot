@@ -885,6 +885,16 @@ _WHY_MAP: dict[str, tuple[str, str]] = {
 }
 
 
+_SECTOR_MAP: dict[str, str] = {
+    "NVDA": "Tech",    "MSFT": "Tech",    "AAPL": "Tech",  "GOOGL": "Tech",
+    "META": "Tech",    "AMZN": "Consumer","TSLA": "Auto",  "AMD":   "Tech",
+    "INTC": "Tech",    "QCOM": "Tech",    "MU":   "Tech",  "AVGO":  "Tech",
+    "CRM":  "Tech",    "NOW":  "Tech",    "SNOW": "Tech",  "PLTR":  "Tech",
+    "JPM":  "Finance", "BAC":  "Finance", "GS":   "Finance","MS":   "Finance",
+    "XOM":  "Energy",  "CVX":  "Energy",  "SPY":  "Index", "QQQ":   "Index",
+}
+
+
 def _risk_level(vix: float, regime: str) -> tuple[str, str]:
     r = regime.lower()
     if vix > 30 or "bear" in r:
@@ -1108,15 +1118,31 @@ def render_ai_recommendation() -> str:
     conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
     conf_w   = int(conf * 100) if conf > 0 else 0
 
-    # Confidence bar + model sub-scores
+    # Ensemble agreement (how many signals/conditions fired strongly)
+    agree_count = sum([
+        xgb_p  >= 0.60,
+        lstm_p  >= 0.60,
+        sent    >= 0.05,
+        any(x in r_lower for x in ["bull", "trending up"]),
+        vix < 25,
+    ])
+    agree_c = GAIN if agree_count >= 4 else (NEURAL if agree_count >= 3 else LOSS)
+
+    # Confidence bar with ensemble agreement inline
     conf_bar = (
-        f'<div style="margin:10px 0;">'
+        f'<div style="margin:10px 0 8px;">'
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'
         f'<span style="font-size:11px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">AI Confidence</span>'
         f'<span style="font-size:28px;font-weight:700;color:{conf_c};letter-spacing:-1px;">{conf_pct}</span>'
         f'</div>'
         f'<div style="background:{BORDER};border-radius:4px;height:8px;overflow:hidden;">'
         f'<div style="background:{conf_c};height:100%;width:{conf_w}%;border-radius:4px;"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;margin-top:8px;">'
+        f'<span style="font-size:11px;color:{TEXT2};">Ensemble: '
+        f'<span style="color:{agree_c};font-weight:700;">{agree_count}/5 models agree</span></span>'
+        f'<span style="font-size:11px;color:{TEXT2};">Entry: '
+        f'<span style="color:{TEXT1};font-weight:700;">${entry:.2f}</span></span>'
         f'</div></div>'
     )
 
@@ -1150,43 +1176,71 @@ def render_ai_recommendation() -> str:
             f'</div>'
         )
 
-    # Build plain-English "Why" items from SHAP drivers
-    why_items: list[tuple[str, str]] = []
+    # SHAP contributor percentages (+ contributors) and risk factors (- contributors)
+    pos_items: list[tuple[str, float]] = []
+    neg_items: list[str] = []
     try:
         import json as _j
-        ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
-        for feat, shap_val in (ds or [])[:3]:
-            why = _WHY_MAP.get(feat)
-            if why:
-                title, detail = why
-                arrow = " ↑" if float(shap_val) > 0 else " ↓"
-                why_items.append((title + arrow, detail))
-            else:
-                label = _FI_LABELS.get(feat, feat)
-                arrow = " ↑" if float(shap_val) > 0 else " ↓"
-                why_items.append((label + arrow, "Contributed to the AI signal"))
+        ds  = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
+        pos = [(f, float(v)) for f, v in (ds or []) if float(v) > 0]
+        neg = [(f, float(v)) for f, v in (ds or []) if float(v) < 0]
+        tot = sum(v for _, v in pos) or 1.0
+        for feat, val in sorted(pos, key=lambda x: -x[1])[:4]:
+            why  = _WHY_MAP.get(feat)
+            name = why[0] if why else _FI_LABELS.get(feat, feat)
+            pos_items.append((name, val / tot * 100))
+        for feat, _ in sorted(neg, key=lambda x: x[1])[:2]:
+            why  = _WHY_MAP.get(feat)
+            name = why[0] if why else _FI_LABELS.get(feat, feat)
+            neg_items.append(name)
     except Exception:
         pass
 
-    if any(x in r_lower for x in ["bull"]):
-        why_items.append(("Bull market regime", "AI detected a favorable macro uptrend"))
-    elif any(x in r_lower for x in ["bear"]):
-        why_items.append(("Caution: bear regime", "Bot sized position down for safety"))
-
-    if not why_items:
-        why_items = [("All risk gates passed", "Position sizing confirmed by ATR volatility model")]
+    if any(x in r_lower for x in ["bull"]) and not any("regime" in p[0].lower() for p in pos_items):
+        pos_items.append(("Bull market regime", 15.0))
 
     why_html = ""
-    for i, (title, detail) in enumerate(why_items[:4]):
+    if pos_items:
         why_html += (
-            f'<div style="display:flex;gap:12px;margin:10px 0;align-items:flex-start;">'
-            f'<span style="font-size:15px;font-weight:700;color:{GAIN};flex-shrink:0;'
-            f'width:22px;text-align:center;line-height:1.4;">{i+1}</span>'
-            f'<div>'
-            f'<div style="font-size:13px;font-weight:700;color:{TEXT1};">{title}</div>'
-            f'<div style="font-size:12px;color:{TEXT2};margin-top:2px;line-height:1.5;">{detail}</div>'
-            f'</div></div>'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:8px;">Contributors</div>'
         )
+        for name, pct in pos_items:
+            bar_w = min(int(pct), 100)
+            why_html += (
+                f'<div style="display:flex;align-items:center;gap:6px;margin:5px 0;">'
+                f'<span style="font-size:14px;color:{GAIN};width:14px;flex-shrink:0;'
+                f'font-weight:700;line-height:1;">+</span>'
+                f'<span style="font-size:12px;color:{TEXT1};flex:1;overflow:hidden;'
+                f'text-overflow:ellipsis;white-space:nowrap;">{name}</span>'
+                f'<div style="background:{BORDER};border-radius:2px;height:4px;'
+                f'width:56px;overflow:hidden;flex-shrink:0;">'
+                f'<div style="background:{GAIN};height:100%;width:{bar_w}%;"></div></div>'
+                f'<span style="font-size:11px;color:{GAIN};width:36px;text-align:right;'
+                f'flex-shrink:0;">+{pct:.0f}%</span>'
+                f'</div>'
+            )
+    else:
+        why_html += (
+            f'<div style="color:{TEXT2};font-size:12px;line-height:1.6;">'
+            f'Signal fired after all risk gates passed.<br>'
+            f'<span style="font-size:11px;">SHAP % breakdown available after next model retrain.</span>'
+            f'</div>'
+        )
+
+    if neg_items:
+        why_html += (
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-top:12px;margin-bottom:8px;">Risk Factors</div>'
+        )
+        for name in neg_items:
+            why_html += (
+                f'<div style="display:flex;align-items:center;gap:6px;margin:4px 0;">'
+                f'<span style="font-size:14px;color:{LOSS};width:14px;flex-shrink:0;'
+                f'font-weight:700;line-height:1;">−</span>'
+                f'<span style="font-size:12px;color:{TEXT2};">{name}</span>'
+                f'</div>'
+            )
 
     risk_badge = (
         f'<span style="background:{SURFACE2};border:1px solid {risk_color};'
@@ -1380,6 +1434,206 @@ def render_signals_tab() -> str:
             f'{_wrap(table_inner)}</div>')
 
 
+# ── Render: risk controls panel ──────────────────────────────────────────────
+def render_risk_panel() -> str:
+    d        = get_data()
+    open_pos = d["open_pos"]
+    prices   = d["prices"]
+    vix      = d.get("vix", 0.0)
+    df       = d["trades_df"]
+
+    # Portfolio value as float
+    pv = 0.0
+    try:
+        pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    total_invested = sum(v["invested"] for v in open_pos.values())
+    cash_pct = ((pv - total_invested) / pv * 100) if pv > 0 else 100.0
+
+    # Max drawdown from portfolio history
+    max_dd = 0.0
+    if not df.empty and "portfolio_value" in df.columns:
+        vals = df["portfolio_value"].dropna()
+        if len(vals) > 1:
+            peak  = vals.cummax()
+            max_dd = float(((peak - vals) / peak.replace(0, float("nan"))).max()) * 100
+
+    # Daily loss (today's sells, average pnl_pct)
+    daily_pnl = 0.0
+    if not df.empty:
+        today_str  = str(datetime.date.today())
+        sells_today = df[
+            df["action"].isin(["SELL", "SELL_STOP"]) &
+            (df["date"].astype(str) == today_str)
+        ]
+        if not sells_today.empty and "pnl_pct" in sells_today.columns:
+            daily_pnl = float(sells_today["pnl_pct"].mean()) * 100
+
+    # Sector exposure
+    sector_exp: dict[str, float] = {}
+    for sym, pos in open_pos.items():
+        cur = prices.get(sym, 0.0)
+        val = pos["shares"] * cur if cur > 0 else pos["invested"]
+        sector = _SECTOR_MAP.get(sym.upper(), "Other")
+        sector_exp[sector] = sector_exp.get(sector, 0.0) + val
+    total_eq = sum(sector_exp.values()) or 1.0
+    sector_pcts = {s: v / total_eq * 100 for s, v in sorted(sector_exp.items(), key=lambda x: -x[1])}
+
+    # Largest position concentration
+    max_conc = 0.0
+    if open_pos and pv > 0:
+        for sym, pos in open_pos.items():
+            cur = prices.get(sym, 0.0)
+            val = pos["shares"] * cur if cur > 0 else pos["invested"]
+            max_conc = max(max_conc, val / pv * 100)
+
+    # Overall risk
+    risk_pts = sum([vix > 25, max_dd > 8, cash_pct < 15, max_conc > 20])
+    if risk_pts >= 3: overall_risk, risk_c = "High",   LOSS
+    elif risk_pts >= 1: overall_risk, risk_c = "Medium", NEURAL
+    else: overall_risk, risk_c = "Low", GAIN
+
+    dd_c  = GAIN if max_dd < 5 else (NEURAL if max_dd < 12 else LOSS)
+    dl_c  = GAIN if daily_pnl >= 0 else (NEURAL if daily_pnl > -2 else LOSS)
+    cc_c  = GAIN if max_conc < 15 else (NEURAL if max_conc < 20 else LOSS)
+    ca_c  = GAIN if cash_pct > 30 else (NEURAL if cash_pct > 15 else LOSS)
+
+    cards = (
+        f'<div class="nt-cards">'
+        + _card("Portfolio Risk",  overall_risk,       TEXT2, risk_c,
+                "VIX + drawdown + concentration", 0.00)
+        + _card("Max Drawdown",    f"{max_dd:.1f}%",   TEXT2, dd_c,
+                "Peak-to-trough all-time",        0.06)
+        + _card("Today's P&L",     f"{daily_pnl:+.2f}%", TEXT2, dl_c,
+                "Realised from closed trades",    0.12)
+        + _card("Cash Reserve",    f"{cash_pct:.1f}%", TEXT2, ca_c,
+                "Uninvested capital buffer",      0.18)
+        + f'</div>'
+    )
+
+    sector_rows = ""
+    for sector, pct in list(sector_pcts.items())[:5]:
+        bar_c = LOSS if pct > 50 else (NEURAL if pct > 30 else GAIN)
+        sector_rows += (
+            f'<div style="display:flex;align-items:center;gap:8px;margin:5px 0;">'
+            f'<span style="font-size:11px;color:{TEXT2};width:70px;flex-shrink:0;">{sector}</span>'
+            f'<div style="background:{BORDER};border-radius:2px;height:5px;flex:1;overflow:hidden;">'
+            f'<div style="background:{bar_c};height:100%;width:{min(pct,100):.0f}%;"></div></div>'
+            f'<span style="font-size:11px;color:{TEXT1};width:36px;text-align:right;">{pct:.0f}%</span>'
+            f'</div>'
+        )
+    if not sector_rows:
+        sector_rows = f'<div style="color:{TEXT2};font-size:12px;">No open positions — fully in cash</div>'
+
+    note = (f'Concentration: <span style="color:{cc_c};font-weight:700;">{max_conc:.1f}%</span>'
+            f' largest position')
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🛡","Risk Controls","real-time")}'
+            f'{cards}'
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};'
+            f'border-radius:8px;padding:14px 16px;margin-top:8px;">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+            f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">Sector Exposure</div>'
+            f'<div style="font-size:11px;color:{TEXT2};">{note}</div>'
+            f'</div>'
+            f'{sector_rows}</div></div>')
+
+
+# ── Render: institutional metrics ─────────────────────────────────────────────
+def render_institutional_metrics() -> str:
+    d  = get_data()
+    df = d["trades_df"]
+
+    if df.empty or "portfolio_value" not in df.columns:
+        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">No trade history yet.</div>'
+        return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
+
+    daily = (df.dropna(subset=["portfolio_value"])
+               .groupby("date")["portfolio_value"].last()
+               .reset_index()
+               .sort_values("date"))
+    daily.columns = ["date", "value"]
+
+    if len(daily) < 3:
+        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">Need ≥ 3 days of history.</div>'
+        return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
+
+    rets   = daily["value"].pct_change().dropna()
+    mean_r = float(rets.mean())
+    std_r  = float(rets.std())
+
+    # Sharpe (annualised, 252 trading days)
+    sharpe = (mean_r / std_r * (252 ** 0.5)) if std_r > 0 else 0.0
+
+    # Sortino (downside std only)
+    neg_rets = rets[rets < 0]
+    down_std = float(neg_rets.std()) if len(neg_rets) > 1 else std_r
+    sortino  = (mean_r / down_std * (252 ** 0.5)) if down_std > 0 else 0.0
+
+    # Max drawdown
+    vals  = daily["value"]
+    peak  = vals.cummax()
+    max_dd = float(((peak - vals) / peak.replace(0, float("nan"))).max())
+
+    # CAGR
+    n_days  = (pd.to_datetime(daily["date"].iloc[-1]) - pd.to_datetime(daily["date"].iloc[0])).days
+    start_v = float(daily["value"].iloc[0])
+    end_v   = float(daily["value"].iloc[-1])
+    cagr    = ((end_v / start_v) ** (365.0 / n_days) - 1) if n_days > 0 and start_v > 0 else 0.0
+
+    # Calmar
+    calmar = (cagr / max_dd) if max_dd > 0 else 0.0
+
+    # VaR 95% (1-day)
+    var_95 = float(rets.quantile(0.05)) if len(rets) >= 5 else 0.0
+
+    # Win rate
+    sells    = df[df["action"].isin(["SELL", "SELL_STOP"])]
+    win_rate = float((sells["pnl_pct"] > 0).sum() / len(sells)) if len(sells) > 0 else 0.0
+
+    def _row(label, val_str, color, desc):
+        return (
+            f'<tr><td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
+            f'background:{SURFACE};color:{TEXT2};font-size:11px;font-weight:600;">{label}</td>'
+            f'<td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
+            f'background:{SURFACE};font-family:-apple-system,monospace;'
+            f'color:{color};font-weight:700;">{val_str}</td>'
+            f'<td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
+            f'background:{SURFACE};color:{TEXT2};font-size:11px;">{desc}</td></tr>'
+        )
+
+    sh_c = GAIN if sharpe > 1 else (NEURAL if sharpe > 0.5 else LOSS)
+    so_c = GAIN if sortino > 1.5 else (NEURAL if sortino > 0.8 else LOSS)
+    dd_c = GAIN if max_dd < 0.05 else (NEURAL if max_dd < 0.12 else LOSS)
+    ca_c = GAIN if calmar > 2 else (NEURAL if calmar > 1 else LOSS)
+    vr_c = GAIN if var_95 > -0.02 else (NEURAL if var_95 > -0.04 else LOSS)
+    wr_c = GAIN if win_rate > 0.55 else (NEURAL if win_rate > 0.45 else LOSS)
+
+    rows = (
+        _row("Sharpe Ratio",    f"{sharpe:.2f}",  sh_c, ">1.0 = good · >2.0 = excellent")
+        + _row("Sortino Ratio", f"{sortino:.2f}", so_c, "Like Sharpe but penalises only downside vol")
+        + _row("Max Drawdown",  f"{max_dd:.1%}",  dd_c, "Worst peak-to-trough in account history")
+        + _row("CAGR",          f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
+               "Compound Annual Growth Rate over tracked period")
+        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown — higher is better")
+        + _row("VaR (95%, 1d)", f"{var_95:.2%}",  vr_c, "Worst expected 1-day loss at 95% confidence")
+        + _row("Win Rate",      f"{win_rate:.1%}", wr_c, "% of closed trades that returned a profit")
+    )
+    help_block = (
+        f'<div style="background:{BG};border-top:1px solid {BORDER};'
+        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'Metrics computed from all trade history since launch. '
+        f'Short history (&lt;30 days) may produce unreliable Sharpe / Sortino estimates.'
+        f'</div>'
+    )
+    n_str = f"{n_days} days of history" if n_days > 0 else "—"
+    table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_block)
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("📐","Institutional Metrics", n_str)}{table}</div>')
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -1389,6 +1643,7 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
         with gr.TabItem("📊 Dashboard"):
             ai_rec_out    = gr.HTML(value=render_ai_recommendation)   # hero — first thing visible
             hero_out      = gr.HTML(value=render_dashboard_hero)
+            risk_panel_out = gr.HTML(value=render_risk_panel)
             with gr.Row():
                 with gr.Column(scale=50):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
@@ -1409,6 +1664,7 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
             trades_out = gr.HTML(value=render_trades)
 
         with gr.TabItem("🔬 Models"):
+            metrics_out = gr.HTML(value=render_institutional_metrics)
             with gr.Row():
                 with gr.Column(scale=65):
                     fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
@@ -1419,18 +1675,20 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    timer.tick(fn=render_dashboard_hero,          outputs=hero_out)
-    timer.tick(fn=render_ai_recommendation,       outputs=ai_rec_out)
-    timer.tick(fn=render_market_intelligence,     outputs=mkt_intel_out)
-    timer.tick(fn=render_watchlist,               outputs=watchlist_out)
-    timer.tick(fn=render_signals_tab,             outputs=signals_out)
-    timer.tick(fn=render_equity_chart,            outputs=eq_plot)
-    timer.tick(fn=render_allocation_chart,        outputs=alloc_plot)
-    timer.tick(fn=render_pnl_chart,               outputs=pnl_plot)
-    timer.tick(fn=render_positions,               outputs=pos_out)
-    timer.tick(fn=render_trades,                  outputs=trades_out)
-    timer.tick(fn=render_feature_importance_chart,outputs=fi_plot)
-    timer.tick(fn=render_validation_report,       outputs=val_out)
+    timer.tick(fn=render_dashboard_hero,           outputs=hero_out)
+    timer.tick(fn=render_ai_recommendation,        outputs=ai_rec_out)
+    timer.tick(fn=render_risk_panel,               outputs=risk_panel_out)
+    timer.tick(fn=render_market_intelligence,      outputs=mkt_intel_out)
+    timer.tick(fn=render_watchlist,                outputs=watchlist_out)
+    timer.tick(fn=render_signals_tab,              outputs=signals_out)
+    timer.tick(fn=render_equity_chart,             outputs=eq_plot)
+    timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
+    timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
+    timer.tick(fn=render_positions,                outputs=pos_out)
+    timer.tick(fn=render_trades,                   outputs=trades_out)
+    timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
+    timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
+    timer.tick(fn=render_validation_report,        outputs=val_out)
 
 if __name__ == "__main__":
     demo.launch()

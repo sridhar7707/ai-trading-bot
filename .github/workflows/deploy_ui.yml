@@ -37,7 +37,7 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Manual dispatch — deploying."
           elif git diff --name-only HEAD~1 HEAD \
-                | grep -Eq '^(scripts/dashboard\.py|bot/monitor/dashboard_data\.py|requirements_space\.txt|config\.py)$'; then
+                | grep -Eq '^(dashboard/app\.py|bot/monitor/dashboard_data\.py|requirements_space\.txt|config\.py)$'; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Dashboard/requirements/config changed — deploying."
           else
@@ -84,8 +84,8 @@ jobs:
               shutil.rmtree(staging)
           staging.mkdir()
 
-          # dashboard.py → app.py  (Gradio Spaces entry point)
-          shutil.copy("scripts/dashboard.py", staging / "app.py")
+          # dashboard/app.py → app.py  (Gradio Spaces entry point)
+          shutil.copy("dashboard/app.py", staging / "app.py")
 
           # Full bot package (dashboard imports from many submodules)
           shutil.copytree("bot", staging / "bot")
