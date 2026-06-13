@@ -56,6 +56,33 @@ GRADIO_CSS = f"""
 .contain {{ padding: 8px 12px !important; }}
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
+
+/* ── Tab navigation ───────────────────────────────────────────────────────── */
+.tabs > .tab-nav {{
+  background: {SURFACE} !important;
+  border-bottom: 1px solid {BORDER} !important;
+  padding: 0 12px !important;
+}}
+.tabs > .tab-nav > button {{
+  color: {TEXT2} !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  padding: 10px 18px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  transition: color .15s, border-color .15s !important;
+}}
+.tabs > .tab-nav > button:hover {{
+  color: {TEXT1} !important;
+  border-bottom-color: {BORDER} !important;
+}}
+.tabs > .tab-nav > button.selected {{
+  color: {PRIMARY} !important;
+  border-bottom-color: {PRIMARY} !important;
+  background: transparent !important;
+}}
+.tabitem {{ background: transparent !important; border: none !important; }}
 """
 
 # ── Stylesheet (injected once via static HEADER_HTML) ────────────────────────
