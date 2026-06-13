@@ -30,7 +30,8 @@ def db():
             ensemble_score REAL DEFAULT 0.0,
             realized_pnl REAL DEFAULT 0.0,
             order_id TEXT DEFAULT NULL,
-            holding_days INTEGER DEFAULT 0
+            holding_days INTEGER DEFAULT 0,
+            feature_drivers TEXT DEFAULT NULL
         )
     """)
     con.execute("""

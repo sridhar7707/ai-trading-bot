@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trading App Test Suite</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  header { background: linear-gradient(135deg, #1a1f2e, #0d1321); border-bottom: 1px solid #2d3748; padding: 20px 32px; }
+  header h1 { font-size: 1.4rem; font-weight: 700; color: #fff; }
+  header p { color: #718096; margin-top: 4px; font-size: 0.85rem; }
+
+  .tab-bar { display: flex; gap: 0; background: #0f1117; border-bottom: 1px solid #2d3748; padding: 0 24px; }
+  .tab { padding: 14px 28px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; color: #718096; transition: all 0.2s; user-select: none; }
+  .tab:hover { color: #e2e8f0; }
+  .tab.active-paper { color: #818cf8; border-bottom-color: #818cf8; }
+  .tab.active-live { color: #f59e0b; border-bottom-color: #f59e0b; }
+
+  .mode-badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-left: 8px; vertical-align: middle; }
+  .badge-paper { background: #1e1b4b; color: #818cf8; }
+  .badge-live { background: #431407; color: #f59e0b; }
+
+  .progress-bar-wrap { background: #1a202c; padding: 14px 32px; border-bottom: 1px solid #2d3748; display: flex; align-items: center; gap: 16px; }
+  .progress-track { flex: 1; height: 6px; background: #2d3748; border-radius: 99px; overflow: hidden; }
+  .progress-fill-paper { height: 100%; background: linear-gradient(90deg, #818cf8, #a78bfa); border-radius: 99px; transition: width 0.4s ease; }
+  .progress-fill-live { height: 100%; background: linear-gradient(90deg, #f59e0b, #ef4444); border-radius: 99px; transition: width 0.4s ease; }
+  .progress-label { font-size: 0.82rem; color: #718096; white-space: nowrap; }
+  .score-badge { background: #1a202c; border: 1px solid #2d3748; border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; color: #e2e8f0; font-weight: 600; }
+
+  .mode-note { margin: 16px 32px 0; padding: 12px 16px; border-radius: 8px; font-size: 0.82rem; line-height: 1.6; }
+  .mode-note-paper { background: #1e1b4b33; border: 1px solid #818cf844; color: #c4b5fd; }
+  .mode-note-live { background: #43140733; border: 1px solid #f59e0b44; color: #fde68a; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 24px 32px; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .category { margin-bottom: 28px; }
+  .category-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .category-icon { font-size: 1.1rem; }
+  .category-title { font-size: 1rem; font-weight: 700; color: #fff; }
+  .category-score { margin-left: auto; font-size: 0.78rem; color: #718096; }
+
+  .test-card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 16px 18px; margin-bottom: 8px; transition: border-color 0.2s; }
+  .test-card:hover { border-color: #4a5568; }
+  .test-card.built { border-left: 3px solid #4ade80; }
+  .test-card.inprogress { border-left: 3px solid #818cf8; }
+  .test-card.notstarted { border-left: 3px solid #ef4444; }
+  .test-card.pass { border-left: 3px solid #4ade80; }
+  .test-card.partial { border-left: 3px solid #fbbf24; }
+  .test-card.fail { border-left: 3px solid #f87171; }
+
+  .test-header { display: flex; align-items: flex-start; gap: 10px; }
+  .test-id { font-size: 0.68rem; font-weight: 700; color: #4a5568; background: #0f1117; padding: 2px 7px; border-radius: 4px; flex-shrink: 0; margin-top: 3px; }
+  .test-question { font-size: 0.9rem; color: #e2e8f0; flex: 1; line-height: 1.5; }
+  .test-controls { display: flex; gap: 5px; margin-left: auto; flex-shrink: 0; }
+
+  .btn { border: none; cursor: pointer; border-radius: 6px; font-size: 0.75rem; font-weight: 600; padding: 5px 10px; transition: all 0.15s; white-space: nowrap; }
+
+  /* Paper buttons */
+  .btn-built { background: #14532d; color: #4ade80; }
+  .btn-built:hover, .btn-built.active { background: #4ade80; color: #0f1117; }
+  .btn-inprogress { background: #1e1b4b; color: #818cf8; }
+  .btn-inprogress:hover, .btn-inprogress.active { background: #818cf8; color: #0f1117; }
+  .btn-notstarted { background: #450a0a; color: #f87171; }
+  .btn-notstarted:hover, .btn-notstarted.active { background: #f87171; color: #0f1117; }
+
+  /* Live buttons */
+  .btn-pass { background: #14532d; color: #4ade80; }
+  .btn-pass:hover, .btn-pass.active { background: #4ade80; color: #0f1117; }
+  .btn-partial { background: #451a03; color: #fbbf24; }
+  .btn-partial:hover, .btn-partial.active { background: #fbbf24; color: #0f1117; }
+  .btn-fail { background: #450a0a; color: #f87171; }
+  .btn-fail:hover, .btn-fail.active { background: #f87171; color: #0f1117; }
+
+  .test-prompt { margin-top: 10px; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 12px 14px; font-size: 0.8rem; color: #94a3b8; line-height: 1.6; display: none; }
+  .test-prompt.open { display: block; }
+  .test-prompt strong { color: #cbd5e1; display: block; margin-bottom: 4px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .test-prompt .warn { color: #fbbf24; font-size: 0.75rem; margin-top: 8px; display: block; }
+
+  .toggle-prompt { background: none; border: none; color: #4a5568; font-size: 0.73rem; cursor: pointer; margin-top: 7px; padding: 0; }
+  .toggle-prompt:hover { color: #718096; }
+
+  .notes-input { width: 100%; margin-top: 8px; background: #0f1117; border: 1px solid #2d3748; border-radius: 6px; padding: 8px 10px; color: #94a3b8; font-size: 0.78rem; resize: vertical; min-height: 40px; display: none; font-family: inherit; }
+  .notes-input.open { display: block; }
+
+  .summary-panel { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 24px; margin-top: 32px; }
+  .summary-panel h2 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; color: #fff; }
+  .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .summary-stat { background: #0f1117; border-radius: 10px; padding: 14px; text-align: center; }
+  .summary-stat .val { font-size: 1.8rem; font-weight: 800; }
+  .summary-stat .lbl { font-size: 0.72rem; color: #718096; margin-top: 4px; }
+  .val-a { color: #4ade80; } .val-b { color: #818cf8; } .val-c { color: #f87171; }
+  .val-pass { color: #4ade80; } .val-partial { color: #fbbf24; } .val-fail { color: #f87171; }
+
+  .export-btn { background: linear-gradient(135deg, #3b82f6, #6366f1); color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer; width: 100%; }
+  .export-btn:hover { opacity: 0.9; }
+
+  .verdict { margin-top: 16px; padding: 14px; border-radius: 8px; font-size: 0.85rem; line-height: 1.6; }
+  .verdict.strong { background: #14532d22; border: 1px solid #4ade8044; color: #86efac; }
+  .verdict.medium { background: #45310322; border: 1px solid #fbbf2444; color: #fde68a; }
+  .verdict.weak { background: #450a0a22; border: 1px solid #f8717144; color: #fca5a5; }
+
+  @media (max-width: 600px) {
+    .container { padding: 16px; }
+    .tab { padding: 12px 16px; font-size: 0.8rem; }
+    .summary-grid { grid-template-columns: repeat(2, 1fr); }
+    .test-controls { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧪 AI Trading App — Test Suite</h1>
+  <p>Two stages: build & verify in Paper Trading, then validate in Live Trading.</p>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active-paper" id="tab-paper" onclick="switchTab('paper')">
+    📋 Paper Trading
+    <span class="mode-badge badge-paper">Builder Checklist</span>
+  </div>
+  <div class="tab" id="tab-live" onclick="switchTab('live')">
+    🔴 Live Trading
+    <span class="mode-badge badge-live">Investor Validation</span>
+  </div>
+</div>
+
+<div id="progress-wrap" class="progress-bar-wrap">
+  <div class="progress-track"><div id="progressFill" class="progress-fill-paper" style="width:0%"></div></div>
+  <div class="progress-label" id="progressLabel">0 / 0 answered</div>
+  <div class="score-badge" id="scoreBadge">Score: —</div>
+</div>
+
+<div id="mode-note-paper" class="mode-note mode-note-paper" style="margin-bottom:0;">
+  💡 <strong>Paper Trading mode</strong> — Use these as a <em>builder's checklist</em>. Mark each feature as <strong>Built</strong>, <strong>In Progress</strong>, or <strong>Not Started</strong>. These tests focus on logic, rules, and backtesting — things verifiable without real money.
+</div>
+<div id="mode-note-live" class="mode-note mode-note-live" style="display:none; margin-bottom:0;">
+  ⚠️ <strong>Live Trading mode</strong> — These tests require real execution data. Run them after you've deployed with real capital (even a small amount). Mark Pass / Partial / Fail based on actual observed behavior, not expected behavior.
+</div>
+
+<div class="container">
+  <div class="tab-content active" id="content-paper"></div>
+  <div class="tab-content" id="content-live"></div>
+</div>
+
+<script>
+let currentTab = 'paper';
+
+const paperCategories = [
+  {
+    icon: "🏗️", title: "Core Logic — Built?",
+    tests: [
+      { q: "Have you coded a stop-loss rule that applies to every trade automatically?", prompt: "Check your code: Is there a function that sets a stop-loss on every order placed? What is the default % and can it be overridden per trade?", why: "Foundation of risk control. Must be in place before any other testing." },
+      { q: "Have you implemented position sizing — max % of capital per trade?", prompt: "Verify: Does your system calculate position size before placing each order? What is the formula (e.g., 1% of capital / distance to stop-loss)?", why: "Position sizing is what keeps a losing streak from becoming catastrophic." },
+      { q: "Have you defined clear entry AND exit rules (not just buy signals)?", prompt: "Document your exit logic: Is there a take-profit target? A trailing stop? A time-based exit? What happens if neither is triggered?", why: "Many systems have good entry logic but no exit plan — profits evaporate." },
+      { q: "Have you implemented a risk/reward filter — minimum 2:1 before taking a trade?", prompt: "Check: Before placing a trade, does your code calculate the potential gain vs. potential loss? Does it skip trades below a threshold R:R ratio?", why: "Enforcing R:R at entry is what makes a strategy mathematically profitable over time." },
+      { q: "Have you coded a maximum drawdown circuit breaker that halts trading?", prompt: "Verify: If the portfolio drops by X% from its peak, does trading stop or reduce automatically? What is the threshold and what exactly happens?", why: "Without a circuit breaker, a bad run can drain the entire account." }
+    ]
+  },
+  {
+    icon: "📊", title: "Backtesting & Data Quality",
+    tests: [
+      { q: "Have you backtested across at least 3 distinct market periods (bull, bear, sideways)?", prompt: "Run your backtest over: (1) 2017–2019 bull market, (2) 2022 rate-hike bear market, (3) 2015–2016 choppy sideways market. Compare results across each.", why: "A strategy that only works in one market type will fail when conditions change." },
+      { q: "Have you backtested through major crashes (2008, 2020 COVID)?", prompt: "Run specifically over March 2020 (COVID crash) and Sep–Nov 2008 (financial crisis). What was your max drawdown and recovery time in each?", why: "Crashes are the stress test that matters most to investors." },
+      { q: "Have you split data into training and out-of-sample test sets?", prompt: "Confirm your split: What percentage of historical data was used for training vs. reserved purely for testing? Did you use walk-forward validation or a fixed split?", why: "Training and testing on the same data produces fake performance numbers." },
+      { q: "Have you checked for look-ahead bias in your backtests?", prompt: "Audit your code: Are there any indicators or signals that use future data to make past decisions? Do you use point-in-time data for fundamentals?", why: "Look-ahead bias is the #1 reason backtests look great but live trading fails." },
+      { q: "Have you accounted for survivorship bias — only using stocks that exist today?", prompt: "Check your data source: Does your historical stock universe include companies that were delisted, went bankrupt, or were acquired? If not, your results are optimistic.", why: "Survivorship bias inflates backtest returns by 1–2% per year on average." }
+    ]
+  },
+  {
+    icon: "📈", title: "Performance Metrics — Calculated?",
+    tests: [
+      { q: "Is Sharpe ratio being calculated correctly (risk-free rate subtracted)?", prompt: "Verify formula: Sharpe = (Portfolio Return − Risk-Free Rate) / Standard Deviation of Returns. Are you using annualized figures? What risk-free rate are you using (e.g., current T-bill rate)?", why: "Sharpe without risk-free rate subtraction overstates performance." },
+      { q: "Have you implemented Sortino ratio (downside deviation only)?", prompt: "Check: Does your metrics module calculate Sortino = (Return − Risk-Free Rate) / Downside Deviation? Downside deviation only counts returns below the target (usually 0).", why: "Sortino is more relevant than Sharpe for conservative investors — it ignores upside volatility." },
+      { q: "Are you tracking maximum drawdown (peak-to-trough) continuously?", prompt: "Verify: Is max drawdown calculated as the largest % drop from any portfolio peak to any subsequent trough? Is it tracked on a rolling basis during live paper trading?", why: "Max drawdown is the clearest single number for worst-case loss." },
+      { q: "Are you calculating win rate, average win, and average loss separately?", prompt: "Confirm your stats module outputs: (1) % of trades that are profitable, (2) average $ gain on winners, (3) average $ loss on losers, (4) profit factor = gross profit / gross loss.", why: "A 90% win rate is meaningless if one loss wipes 10 wins." },
+      { q: "Are you benchmarking returns against the S&P 500 (Alpha calculation)?", prompt: "Check: For every period you measure, do you compare your strategy's return against SPY buy-and-hold? Do you calculate Alpha = Strategy Return − (Beta × Market Return)?", why: "If your app underperforms an index fund, there's no case for the complexity." }
+    ]
+  },
+  {
+    icon: "🤖", title: "AI Model Quality",
+    tests: [
+      { q: "Can your AI explain WHY it made each trade in plain language?", prompt: "Trigger a paper trade and ask the model: 'Why did you buy this stock? What signals triggered it? What would have stopped you from taking this trade?'", why: "Explainability is required for investor trust and for catching model errors." },
+      { q: "Have you tested for overfitting — does it perform similarly in-sample vs. out-of-sample?", prompt: "Compare: In-sample Sharpe ratio vs. out-of-sample Sharpe ratio. If in-sample is dramatically higher, the model is overfit. Aim for out-of-sample to be within 70% of in-sample.", why: "Overfit models look great in backtests and fail immediately in live trading." },
+      { q: "Does the AI adapt its behavior based on detected market regime?", prompt: "Test: Put the model in a clearly trending market vs. a range-bound market. Does it change its strategy, position sizes, or frequency? Show the difference in behavior.", why: "A single strategy for all market conditions is fragile." }
+    ]
+  },
+  {
+    icon: "🧩", title: "Diversification Rules",
+    tests: [
+      { q: "Is there a hard cap on maximum allocation to any single stock?", prompt: "Verify in code: Is there a rule that prevents any single position from exceeding X% of total portfolio value? What happens if a position grows above the cap due to price appreciation?", why: "Position concentration is one of the most common sources of catastrophic loss." },
+      { q: "Is there sector diversification logic — max % per sector?", prompt: "Check: Does the system track sector exposure? What is the maximum allowed allocation to any one sector (e.g., tech, energy, financials)?", why: "Sector concentration means one industry event can wreck the whole portfolio." },
+      { q: "Does the system auto-rebalance when allocations drift?", prompt: "Test: Simulate a position growing from 10% to 25% of portfolio. Does the system trim it automatically? What triggers rebalancing — time-based, threshold-based, or both?", why: "Drift rebalancing prevents accidental over-concentration after a winning run." }
+    ]
+  }
+];
+
+const liveCategories = [
+  {
+    icon: "🛑", title: "Risk Controls — Real Execution",
+    tests: [
+      { q: "Do stop-losses actually execute at or near the expected price in live markets?", prompt: "After a live stop-loss triggers, compare: (1) your intended stop price, (2) actual fill price. Is slippage within acceptable range (< 0.5% for liquid stocks)?", why: "Paper trading fills stops perfectly. Live markets have slippage — especially in fast-moving conditions.", warn: "⚠️ This cannot be tested in paper trading — requires real execution data." },
+      { q: "Does the circuit breaker halt trading correctly when max drawdown is hit?", prompt: "When the portfolio drops to your drawdown threshold, does trading actually stop? Test by reviewing your live trading log for the threshold breach moment.", why: "In paper trading, there's no emotional pressure. The circuit breaker must be verified in live conditions.", warn: "⚠️ Live-only test — paper trading doesn't replicate real account behavior." },
+      { q: "Does it handle gap-down opens without exceeding max loss per trade?", prompt: "Find any trade where the stock gapped down at open past your stop-loss. What was the actual loss vs. the intended stop-loss loss? How does your system handle this?", why: "Stocks can open 10–20% lower than expected. Stop-losses don't protect against gaps.", warn: "⚠️ Requires real market open data — not testable in paper trading." },
+      { q: "Does leverage / margin behave correctly under real broker margin rules?", prompt: "If using margin: What margin call threshold does your broker use? Has your system been tested near or at margin limits? Does it reduce positions automatically before a call?", why: "Broker margin rules differ from paper account simulations significantly.", warn: "⚠️ Paper trading margin simulation is often unrealistic." }
+    ]
+  },
+  {
+    icon: "📊", title: "Live Performance Metrics",
+    tests: [
+      { q: "Is live Sharpe ratio consistent with your backtested Sharpe ratio (within ~30%)?", prompt: "Compare: Backtested Sharpe vs. live trading Sharpe over the same market period. A drop of more than 30–40% suggests overfitting or execution issues.", why: "The gap between backtest and live performance is the single biggest red flag for investors." },
+      { q: "Is live max drawdown within the range predicted by backtesting?", prompt: "Compare your live maximum drawdown to your backtested worst drawdown. If live drawdown exceeds backtest by more than 20%, investigate why — likely slippage, overfitting, or regime change.", why: "If live losses exceed backtest predictions, the model is not behaving as designed." },
+      { q: "Is the live win rate and profit factor consistent with backtest results?", prompt: "After at least 50 live trades, compare: live win rate vs. backtest win rate. Live profit factor vs. backtest profit factor. Acceptable variance is ±10–15%.", why: "Large divergence indicates the model is not generalizing — a serious investor concern." },
+      { q: "Is live Alpha positive — are you actually beating the S&P 500?", prompt: "Over the same period as your live trading, compare your return to SPY. Calculate Alpha. If Alpha is negative after costs, an index fund beats your app.", why: "This is the ultimate investor test. If costs eat your edge, the whole thesis fails." }
+    ]
+  },
+  {
+    icon: "⚡", title: "Execution Quality",
+    tests: [
+      { q: "Is average slippage per trade within acceptable limits (< 0.3% for liquid stocks)?", prompt: "Track for every trade: intended entry/exit price vs. actual fill price. Calculate average slippage across 50+ trades. Factor this into your real Sharpe and profit calculations.", why: "Slippage not accounted for in backtests is a hidden cost that erodes returns." },
+      { q: "Does the system handle partial fills correctly without leaving unintended positions?", prompt: "Check: When a large order is partially filled, does your system track the unfilled portion? Does it retry, cancel, or adjust position sizing accordingly?", why: "Partial fills are common in live markets and can cause unintended risk exposure." },
+      { q: "Does the system handle API downtime or broker outages without leaving open risk?", prompt: "Test: What happens if your data feed goes down mid-session? Does the system close open positions, hold, or alert you? Is there a failsafe for broker API failures?", why: "Broker outages happen. An unmonitored open position during an outage can be catastrophic." }
+    ]
+  },
+  {
+    icon: "💼", title: "Investor Stress Questions",
+    tests: [
+      { q: "Can you show a real $100K simulation: worst-case scenario with live data?", prompt: "Using live trading results (even if small capital), extrapolate: If $100K were deployed under identical conditions, what would the max drawdown have been? What mechanisms capped it?", why: "Investors want this answered with real numbers, not backtest projections.", warn: "⚠️ Paper trading can only estimate this — live data makes it credible." },
+      { q: "Has the strategy been live for at least 3 months with consistent results?", prompt: "Document: How many trading days has the live system been running? Has it experienced a market correction (5%+ S&P drop) during this period? How did it perform?", why: "3 months minimum, including at least one volatile period, is the baseline for investor credibility.", warn: "⚠️ Cannot be faked or simulated — requires real time in market." },
+      { q: "Are all live trading costs accounted for (commissions, spreads, taxes)?", prompt: "Calculate your all-in cost per trade: commission + average spread cost + estimated tax drag. Recalculate your Sharpe and Alpha after these costs. Is the strategy still profitable?", why: "Net-of-cost returns are what investors actually receive. Gross returns are misleading." }
+    ]
+  }
+];
+
+let results = { paper: {}, live: {} };
+let notes = { paper: {}, live: {} };
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-paper').className = 'tab' + (tab === 'paper' ? ' active-paper' : '');
+  document.getElementById('tab-live').className = 'tab' + (tab === 'live' ? ' active-live' : '');
+  document.getElementById('content-paper').className = 'tab-content' + (tab === 'paper' ? ' active' : '');
+  document.getElementById('content-live').className = 'tab-content' + (tab === 'live' ? ' active' : '');
+  document.getElementById('mode-note-paper').style.display = tab === 'paper' ? '' : 'none';
+  document.getElementById('mode-note-live').style.display = tab === 'live' ? '' : 'none';
+  document.getElementById('progressFill').className = tab === 'paper' ? 'progress-fill-paper' : 'progress-fill-live';
+  updateSummary();
+}
+
+function renderTab(tab, categories, btnSet) {
+  const container = document.getElementById('content-' + tab);
+  let html = '';
+  let totalNum = 0;
+  categories.forEach((cat, ci) => {
+    html += `<div class="category">
+      <div class="category-header">
+        <span class="category-icon">${cat.icon}</span>
+        <span class="category-title">${cat.title}</span>
+        <span class="category-score" id="${tab}-cat-score-${ci}"></span>
+      </div>`;
+    cat.tests.forEach((test, ti) => {
+      const id = `${tab}-${ci}-${ti}`;
+      totalNum++;
+      const num = totalNum;
+      if (tab === 'paper') {
+        html += `<div class="test-card" id="card-${id}">
+          <div class="test-header">
+            <span class="test-id">P${String(num).padStart(2,'0')}</span>
+            <span class="test-question">${test.q}</span>
+            <div class="test-controls">
+              <button class="btn btn-built" id="built-${id}" onclick="setResult('${id}','built','${tab}')">✓ Built</button>
+              <button class="btn btn-inprogress" id="inprogress-${id}" onclick="setResult('${id}','inprogress','${tab}')">⟳ In Progress</button>
+              <button class="btn btn-notstarted" id="notstarted-${id}" onclick="setResult('${id}','notstarted','${tab}')">✗ Not Started</button>
+            </div>
+          </div>
+          <button class="toggle-prompt" onclick="togglePrompt('${id}')">▸ How to verify this</button>
+          <div class="test-prompt" id="prompt-${id}">
+            <strong>Verification step:</strong>${test.prompt}
+            ${test.why ? `<br><br><strong>Why it matters:</strong>${test.why}` : ''}
+          </div>
+          <textarea class="notes-input" id="notes-${id}" placeholder="Dev notes..." oninput="saveNote('${id}','${tab}',this.value)">${(notes[tab]||{})[id]||''}</textarea>
+        </div>`;
+      } else {
+        html += `<div class="test-card" id="card-${id}">
+          <div class="test-header">
+            <span class="test-id">L${String(num).padStart(2,'0')}</span>
+            <span class="test-question">${test.q}</span>
+            <div class="test-controls">
+              <button class="btn btn-pass" id="pass-${id}" onclick="setResult('${id}','pass','${tab}')">✓ Pass</button>
+              <button class="btn btn-partial" id="partial-${id}" onclick="setResult('${id}','partial','${tab}')">~ Partial</button>
+              <button class="btn btn-fail" id="fail-${id}" onclick="setResult('${id}','fail','${tab}')">✗ Fail</button>
+            </div>
+          </div>
+          <button class="toggle-prompt" onclick="togglePrompt('${id}')">▸ What to check</button>
+          <div class="test-prompt" id="prompt-${id}">
+            <strong>How to test:</strong>${test.prompt}
+            ${test.why ? `<br><br><strong>Why it matters:</strong>${test.why}` : ''}
+            ${test.warn ? `<span class="warn">${test.warn}</span>` : ''}
+          </div>
+          <textarea class="notes-input" id="notes-${id}" placeholder="Observations from live trading..." oninput="saveNote('${id}','${tab}',this.value)">${(notes[tab]||{})[id]||''}</textarea>
+        </div>`;
+      }
+    });
+    html += `</div>`;
+  });
+
+  // Summary
+  const s1 = tab === 'paper' ? 'val-a' : 'val-pass';
+  const s2 = tab === 'paper' ? 'val-b' : 'val-partial';
+  const s3 = tab === 'paper' ? 'val-c' : 'val-fail';
+  const l1 = tab === 'paper' ? 'Built' : 'Passed';
+  const l2 = tab === 'paper' ? 'In Progress' : 'Partial';
+  const l3 = tab === 'paper' ? 'Not Started' : 'Failed / Untested';
+
+  html += `<div class="summary-panel">
+    <h2>${tab === 'paper' ? '🏗️ Build Readiness' : '✅ Live Trading Readiness'}</h2>
+    <div class="summary-grid">
+      <div class="summary-stat"><div class="val ${s1}" id="${tab}-sum-a">0</div><div class="lbl">${l1}</div></div>
+      <div class="summary-stat"><div class="val ${s2}" id="${tab}-sum-b">0</div><div class="lbl">${l2}</div></div>
+      <div class="summary-stat"><div class="val ${s3}" id="${tab}-sum-c">0</div><div class="lbl">${l3}</div></div>
+    </div>
+    <div class="verdict" id="${tab}-verdict"></div>
+    <br>
+    <button class="export-btn" onclick="exportReport('${tab}')">⬇ Export ${tab === 'paper' ? 'Build Checklist' : 'Live Results'} Report</button>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+function togglePrompt(id) {
+  const el = document.getElementById('prompt-' + id);
+  const note = document.getElementById('notes-' + id);
+  const btn = el.previousElementSibling;
+  const open = el.classList.toggle('open');
+  note.classList.toggle('open', open);
+  btn.textContent = open ? '▾ Hide' : '▸ ' + (currentTab === 'paper' ? 'How to verify this' : 'What to check');
+}
+
+function setResult(id, val, tab) {
+  results[tab][id] = val;
+  const card = document.getElementById('card-' + id);
+  const stateClass = val === 'built' ? 'built' : val === 'inprogress' ? 'inprogress' : val === 'notstarted' ? 'notstarted' : val;
+  card.className = 'test-card ' + stateClass;
+  const btns = tab === 'paper' ? ['built','inprogress','notstarted'] : ['pass','partial','fail'];
+  btns.forEach(v => {
+    const btn = document.getElementById(v + '-' + id);
+    if(btn) btn.classList.toggle('active', v === val);
+  });
+  updateSummary();
+}
+
+function saveNote(id, tab, val) { notes[tab][id] = val; }
+
+function countResults(tab, cats) {
+  const allKeys = [];
+  cats.forEach((cat, ci) => cat.tests.forEach((_, ti) => allKeys.push(`${tab}-${ci}-${ti}`)));
+  const total = allKeys.length;
+  const res = results[tab];
+  const aKeys = tab === 'paper' ? ['built'] : ['pass'];
+  const bKeys = tab === 'paper' ? ['inprogress'] : ['partial'];
+  const cKeys = tab === 'paper' ? ['notstarted'] : ['fail'];
+  let a=0,b=0,c=0;
+  allKeys.forEach(k => {
+    const v = res[k];
+    if(aKeys.includes(v)) a++;
+    else if(bKeys.includes(v)) b++;
+    else if(cKeys.includes(v)) c++;
+  });
+  return {total, a, b, c, answered: a+b+c};
+}
+
+function updateSummary() {
+  const tab = currentTab;
+  const cats = tab === 'paper' ? paperCategories : liveCategories;
+  const {total, a, b, c, answered} = countResults(tab, cats);
+  const score = answered ? Math.round((a * 100 + b * 50) / (answered * 100) * 100) : null;
+
+  document.getElementById('progressFill').style.width = (answered / total * 100) + '%';
+  document.getElementById('progressLabel').textContent = `${answered} / ${total} answered`;
+  document.getElementById('scoreBadge').textContent = score !== null ? `Score: ${score}%` : 'Score: —';
+  document.getElementById(`${tab}-sum-a`).textContent = a;
+  document.getElementById(`${tab}-sum-b`).textContent = b;
+  document.getElementById(`${tab}-sum-c`).textContent = total - a - b;
+
+  cats.forEach((cat, ci) => {
+    let ca=0; const ct = cat.tests.length;
+    cat.tests.forEach((_, ti) => { if(results[tab][`${tab}-${ci}-${ti}`] === (tab==='paper'?'built':'pass')) ca++; });
+    const el = document.getElementById(`${tab}-cat-score-${ci}`);
+    const ans = cat.tests.filter((_,ti) => results[tab][`${tab}-${ci}-${ti}`]).length;
+    if(el) el.textContent = ans ? `${ca}/${ct} ${tab==='paper'?'built':'passed'}` : '';
+  });
+
+  const verdict = document.getElementById(`${tab}-verdict`);
+  if(!verdict || score === null) { if(verdict) verdict.textContent=''; return; }
+  if(tab === 'paper') {
+    if(score >= 80) { verdict.className='verdict strong'; verdict.textContent=`✅ Strong build progress (${score}%). Most features are built or in progress. Focus on completing remaining items before moving to live testing.`; }
+    else if(score >= 50) { verdict.className='verdict medium'; verdict.textContent=`⚠️ Moderate progress (${score}%). Several critical features are not yet started. Don't move to live trading until Risk Management and Backtesting sections are fully built.`; }
+    else { verdict.className='verdict weak'; verdict.textContent=`🚨 Early stage (${score}%). Many core features are missing. Complete the builder checklist before any live testing — even with small capital.`; }
+  } else {
+    if(score >= 80) { verdict.className='verdict strong'; verdict.textContent=`✅ Investor-ready (${score}%). Live trading results validate your design. Document these results clearly for any investor conversation.`; }
+    else if(score >= 50) { verdict.className='verdict medium'; verdict.textContent=`⚠️ Partially validated (${score}%). Some live results are promising but key gaps remain. Address execution and consistency issues before approaching investors.`; }
+    else { verdict.className='verdict weak'; verdict.textContent=`🚨 Not yet investor-ready (${score}%). Live trading has revealed gaps in the strategy. Return to paper trading fixes before scaling capital.`; }
+  }
+}
+
+function exportReport(tab) {
+  const cats = tab === 'paper' ? paperCategories : liveCategories;
+  const {total, a, b, c, answered} = countResults(tab, cats);
+  const score = answered ? Math.round((a*100+b*50)/(answered*100)*100) : 0;
+  let lines = [`AI TRADING APP — ${tab.toUpperCase()} TRADING TEST REPORT`, '='.repeat(55), ''];
+  let num = 1;
+  cats.forEach(cat => {
+    lines.push(`\n${cat.icon} ${cat.title.toUpperCase()}`);
+    lines.push('-'.repeat(45));
+    cat.tests.forEach((test, ti) => {
+      const id = `${tab}-${cats.indexOf(cat)}-${ti}`;
+      const r = results[tab][id] || 'not tested';
+      const icon = tab === 'paper'
+        ? (r==='built'?'✓':r==='inprogress'?'⟳':r==='notstarted'?'✗':'?')
+        : (r==='pass'?'✓':r==='partial'?'~':r==='fail'?'✗':'?');
+      lines.push(`\n${tab==='paper'?'P':'L'}${String(num).padStart(2,'0')} [${icon}] ${test.q}`);
+      if((notes[tab]||{})[id]) lines.push(`     Notes: ${notes[tab][id]}`);
+      num++;
+    });
+  });
+  const l1 = tab==='paper'?'Built':'Passed', l2=tab==='paper'?'In Progress':'Partial';
+  lines.push('\n' + '='.repeat(55));
+  lines.push(`SUMMARY: ${a} ${l1} | ${b} ${l2} | Score: ${score}%`);
+  lines.push(`Generated: ${new Date().toLocaleDateString()}`);
+
+  const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `trading_app_${tab}_results.txt`;
+  link.click();
+}
+
+renderTab('paper', paperCategories);
+renderTab('live', liveCategories);
+updateSummary();
+</script>
+</body>
+</html>

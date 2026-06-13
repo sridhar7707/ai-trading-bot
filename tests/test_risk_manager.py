@@ -208,20 +208,20 @@ def test_update_portfolio_high_initialised_from_constructor():
 
 def test_portfolio_drawdown_passes_within_limit():
     rm = RiskManager(portfolio_high=10_000.0)
-    # 15% below peak — limit is 20%
-    assert rm.check_portfolio_drawdown(8_500.0) is True
+    # 9% below peak — limit is 12%
+    assert rm.check_portfolio_drawdown(9_100.0) is True
 
 
 def test_portfolio_drawdown_blocks_at_limit():
     rm = RiskManager(portfolio_high=10_000.0)
-    # Exactly 20% below peak
-    assert rm.check_portfolio_drawdown(8_000.0) is False
+    # Exactly 12% below peak
+    assert rm.check_portfolio_drawdown(8_800.0) is False
 
 
 def test_portfolio_drawdown_blocks_below_limit():
     rm = RiskManager(portfolio_high=10_000.0)
-    # 25% below peak
-    assert rm.check_portfolio_drawdown(7_500.0) is False
+    # 15% below peak
+    assert rm.check_portfolio_drawdown(8_500.0) is False
 
 
 def test_portfolio_drawdown_passes_when_no_high():

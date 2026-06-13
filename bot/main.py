@@ -180,7 +180,8 @@ def init_db():
             ensemble_score REAL DEFAULT 0.0,
             realized_pnl REAL DEFAULT 0.0,
             order_id TEXT DEFAULT NULL,
-            holding_days INTEGER DEFAULT 0
+            holding_days INTEGER DEFAULT 0,
+            feature_drivers TEXT DEFAULT NULL
         )
     """)
     # Migration: add columns to existing DBs (safe no-op if already present)
@@ -193,6 +194,7 @@ def init_db():
         "realized_pnl REAL DEFAULT 0.0",
         "order_id TEXT DEFAULT NULL",
         "holding_days INTEGER DEFAULT 0",
+        "feature_drivers TEXT DEFAULT NULL",
     ):
         try:
             con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
@@ -369,7 +371,7 @@ def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_va
               xgb_prob: float = 0.0, lstm_prob: float = 0.0,
               sentiment_score: float = 0.0, macro_score: float = 0.0,
               entry_price: float = 0.0, order_id: str | None = None,
-              holding_days: int = 0):
+              holding_days: int = 0, feature_drivers: str | None = None):
     sentiment_norm  = (sentiment_score + 1.0) / 2.0
     ensemble_score  = (WEIGHTS["xgb"]  * xgb_prob + WEIGHTS["lstm"] * lstm_prob
                        + WEIGHTS["sentiment"] * sentiment_norm + WEIGHTS["macro"] * macro_score)
@@ -378,12 +380,12 @@ def log_trade(con, symbol, action, shares, price, notional, regime, portfolio_va
         """INSERT INTO trades
            (timestamp, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
             xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
-            order_id, holding_days)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            order_id, holding_days, feature_drivers)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (datetime.now(timezone.utc).isoformat(),
          symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
          xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
-         order_id, holding_days),
+         order_id, holding_days, feature_drivers),
     )
     con.commit()
 
@@ -1470,12 +1472,14 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     tg.alert_buy(symbol, fill_shares, fill_price,
                                  regime_name, portfolio_value, vs_spy_today * 100,
                                  notional=notional)
+                    _drivers = xgb.explain(latest)
                     log_trade(con, symbol, "BUY", fill_shares,
                               fill_price, notional, regime_name, portfolio_value, 0,
                               xgb_prob=xgb_prob, lstm_prob=lstm_prob,
                               sentiment_score=sentiments.get(symbol, 0.0),
                               macro_score=macro_score,
-                              order_id=result.get("order_id"))
+                              order_id=result.get("order_id"),
+                              feature_drivers=json.dumps(_drivers) if _drivers else None)
                     _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)
                     available_cash -= notional
                     buy_order_syms.discard(symbol)  # order is now filled, not pending

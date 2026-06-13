@@ -21,8 +21,19 @@ from backtest.engine  import run_backtest
 from backtest.metrics import compute_metrics
 from config import TRAINING_SYMBOLS, INITIAL_CAPITAL
 
-DATA_DIR    = "data/raw"
+DATA_DIR     = "data/raw"
 TRAIN_CUTOFF = "2023-01-01"
+
+# Named stress periods — run with --stress to test these explicitly.
+# Requires data back to 2007 (scripts/download_data.py already sets START_DATE=2007).
+STRESS_WINDOWS = {
+    "2008 Financial Crisis":   ("2008-09-01", "2009-03-31"),
+    "2010 Flash Crash":        ("2010-04-01", "2010-07-31"),
+    "2015-16 Correction":      ("2015-08-01", "2016-02-29"),
+    "2018 Rate-Hike Sell-off": ("2018-10-01", "2019-01-31"),
+    "2020 COVID Crash":        ("2020-02-01", "2020-04-30"),
+    "2022 Bear Market":        ("2022-01-01", "2022-12-31"),
+}
 
 
 def _load_symbol(sym: str, start: str | None = None, end: str | None = None) -> pd.DataFrame:
@@ -44,6 +55,7 @@ def _print_metrics(label: str, m: dict):
     print(f"  Total Return:    {m['total_return']:>+8.2%}")
     print(f"  Ann. Return:     {m['ann_return']:>+8.2%}")
     print(f"  Sharpe Ratio:    {m['sharpe']:>8.2f}")
+    print(f"  Sortino Ratio:   {m['sortino']:>8.2f}")
     print(f"  Calmar Ratio:    {m['calmar']:>8.2f}")
     print(f"  Max Drawdown:    {m['max_drawdown']:>8.2%}")
     print(f"  Profit Factor:   {m['profit_factor']:>8.2f}")
@@ -140,16 +152,74 @@ def run_rolling(symbol: str, train_months: int = 12, test_months: int = 3):
         print(f"  Avg Return: {avg_ret:>+.2%}   Avg Sharpe: {avg_sharpe:.2f}   Avg DD: {avg_dd:.2%}")
 
 
+def run_stress(symbol: str):
+    """Test the strategy against historical crash and stress periods.
+
+    Each window is run independently so a single bad period doesn't contaminate
+    the others. Results include Sortino (downside-only risk) so you can see
+    whether losses were due to normal volatility or genuine crashes.
+
+    Run scripts/download_data.py first — requires data back to 2007.
+    """
+    try:
+        df_all = _load_symbol(symbol)
+    except FileNotFoundError:
+        print(f"  No data for {symbol}. Run: python scripts/download_data.py")
+        return
+    df_all.index = pd.to_datetime(df_all.index)
+
+    print(f"\n{'═'*60}")
+    print(f"  Stress Test — {symbol}  (each window run independently)")
+    print(f"{'═'*60}")
+
+    passed = failed = 0
+    for name, (start, end) in STRESS_WINDOWS.items():
+        df_win = df_all.loc[start:end]
+        if len(df_win) < 50:
+            print(f"  ⚪ {name}: no data — re-run scripts/download_data.py with START_DATE=2007")
+            failed += 1
+            continue
+        try:
+            m = run_backtest(df_win, initial_balance=INITIAL_CAPITAL)
+            # Pass = survived with ≤25% drawdown and ≤30% total loss
+            ok = m["max_drawdown"] <= 0.25 and m["total_return"] > -0.30
+            icon = "✓" if ok else "⚠"
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+            print(
+                f"  {icon} {name}\n"
+                f"      Return={m['total_return']:>+.1%}  Sharpe={m['sharpe']:>5.2f}  "
+                f"Sortino={m['sortino']:>5.2f}  MaxDD={m['max_drawdown']:>.1%}  "
+                f"WinRate={m['win_rate']:.0%}  Trades={m['num_trades']}"
+            )
+        except Exception as exc:
+            print(f"  ✗ {name}: {exc}")
+            failed += 1
+
+    print(f"\n  {'─'*56}")
+    print(f"  Passed: {passed}   Failed/Skipped: {failed}")
+    if failed > 0:
+        print("  ⚠  Review risk parameters — some stress periods underperformed.")
+    else:
+        print("  ✓  Strategy survived all historical stress periods.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Walk-forward backtest validation")
     parser.add_argument("--symbol", default="SPY", help="Symbol to validate (default: SPY)")
     parser.add_argument("--rolling",       action="store_true",
                         help="Rolling walk-forward instead of single train/test split")
+    parser.add_argument("--stress",        action="store_true",
+                        help="Run across historical crash/stress windows (2008, 2020, etc.)")
     parser.add_argument("--train-months",  type=int, default=12)
     parser.add_argument("--test-months",   type=int, default=3)
     args = parser.parse_args()
 
-    if args.rolling:
+    if args.stress:
+        run_stress(args.symbol)
+    elif args.rolling:
         run_rolling(args.symbol, args.train_months, args.test_months)
     else:
         run_simple(args.symbol)

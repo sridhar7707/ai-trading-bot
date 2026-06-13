@@ -417,9 +417,16 @@ def test_performance_max_drawdown_positive(dash_db):
 def test_performance_md_renders_na_and_return(dash_db):
     md = dd.performance_md(dd.get_performance_metrics(60))
     assert "+2.00%" in md                          # total return
-    assert "n/a (need more history)" in md         # sharpe
+    assert "n/a (need more history)" in md         # sharpe + sortino (not enough history)
     assert "n/a (no closed trades yet)" not in md  # we DO have closed trades
     assert "50.0%" in md                           # win rate
+    assert "Sortino Ratio" in md
+    assert "Avg Win / Avg Loss" in md
+    assert "+5.00%" in md                          # avg_win = +5% (ZZZB trade)
+    assert "-3.00%" in md                          # avg_loss = -3% (ZZZC trade)
+    assert "Max Drawdown" in md
+    assert "Calmar Ratio" in md
+    assert "Alpha vs S&P 500" in md
 
 
 # ── Compliance ────────────────────────────────────────────────────────────────

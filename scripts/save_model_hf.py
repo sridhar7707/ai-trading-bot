@@ -49,6 +49,18 @@ def push():
         logger.error("No model files found — aborting push")
         return
 
+    # JSON artefacts (validation report + feature importance) — no size gate needed
+    for path in ["models/validation_report.json", "models/feature_importance.json"]:
+        if not os.path.exists(path):
+            logger.warning(f"JSON artefact not found (skipping): {path}")
+            continue
+        ops.append(CommitOperationAdd(
+            path_in_repo=os.path.basename(path),
+            path_or_fileobj=path,
+        ))
+        uploaded.append(os.path.basename(path))
+        logger.info(f"Queued {path} for upload")
+
     info = {"timestamp": timestamp, "github_run_id": run_id, "files": uploaded}
     ops.append(CommitOperationAdd(
         path_in_repo="model_info.json",

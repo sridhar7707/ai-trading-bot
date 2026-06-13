@@ -1,4 +1,13 @@
-"""Quality gate: run backtest on holdout data and block model push if metrics fail."""
+"""Quality gate: run backtest on holdout data and block model push if metrics fail.
+
+Two-stage check:
+  1. Recent performance gate (BLOCKS CI): 60-day 5-min bars across all SYMBOLS.
+     If average Sharpe/return/drawdown/win_rate miss thresholds → sys.exit(1).
+  2. Historical stress check (INFORMATIONAL only): daily bars for 3 crisis windows
+     (2008, 2020, 2022).  Logs WARNING if strategy would have underperformed but
+     does NOT block the push — daily bars use a different regime distribution than
+     the 5-min intraday model was trained on.
+"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -80,7 +89,47 @@ def main():
         sys.exit(1)
 
     logger.info("Backtest gate PASSED — model meets all thresholds.")
+    run_stress_check()
     sys.exit(0)
+
+
+def run_stress_check():
+    """Download daily bars for 3 key crisis windows and log strategy performance.
+
+    Informational only — does NOT block CI.  Daily-bar regime distribution differs
+    from the 5-min intraday model; treat results as robustness context, not a gate.
+    Pass = max drawdown ≤ 25% AND total return > -30%.
+    """
+    STRESS_WINDOWS = {
+        "2008 Financial Crisis": ("2008-09-01", "2009-03-31"),
+        "2020 COVID Crash":      ("2020-02-01", "2020-04-30"),
+        "2022 Bear Market":      ("2022-01-01", "2022-12-31"),
+    }
+    stress_sym = SYMBOLS[0] if SYMBOLS else "SPY"
+    logger.info(f"--- Informational stress check ({stress_sym}, daily bars) ---")
+
+    for name, (start, end) in STRESS_WINDOWS.items():
+        try:
+            df = yf.download(stress_sym, start=start, end=end, interval="1d",
+                             progress=False, auto_adjust=True)
+            if df is None or len(df) < 30:
+                logger.warning(f"Stress [{name}]: insufficient data — skipping")
+                continue
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = [col[0].lower() for col in df.columns]
+            else:
+                df.columns = [c.lower() for c in df.columns]
+            df = df[["open", "high", "low", "close", "volume"]].dropna()
+            m = run_backtest(df, initial_balance=INITIAL_CAPITAL)
+            ok = m["max_drawdown"] <= 0.25 and m["total_return"] > -0.30
+            msg = (
+                f"Stress [{name}]: return={m['total_return']:+.1%}  "
+                f"sharpe={m['sharpe']:.2f}  maxDD={m['max_drawdown']:.1%}  "
+                f"{'✓ survived' if ok else '⚠ underperformed (informational — no CI block)'}"
+            )
+            logger.info(msg) if ok else logger.warning(msg)
+        except Exception as exc:
+            logger.warning(f"Stress [{name}]: error — {exc}")
 
 
 if __name__ == "__main__":

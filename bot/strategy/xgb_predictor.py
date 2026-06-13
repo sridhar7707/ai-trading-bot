@@ -14,6 +14,7 @@ MIN_MOVE_PCT    = 0.003  # require ≥0.3% move to label as "up" — filters 5-m
 class XGBPredictor:
     def __init__(self):
         self.model = None
+        self.val_auc: float = 0.0  # populated by train(); read by train_model.py for report
         self._load()
 
     def _load(self):
@@ -73,6 +74,7 @@ class XGBPredictor:
         if len(X_val) > 0:
             val_proba = self.model.predict_proba(X_val)[:, 1]
             val_auc   = float(roc_auc_score(y_val, val_proba))
+            self.val_auc = val_auc
             if val_auc < 0.52:
                 logger.warning(
                     f"XGBoost val AUC-ROC {val_auc:.3f} is near random — "
@@ -95,3 +97,24 @@ class XGBPredictor:
         except Exception as e:
             logger.error(f"XGBoost predict failed: {e}")
             return 0.5
+
+    def explain(self, row: pd.Series) -> list:
+        """Return top-3 [(feature_name, shap_value), ...] driving this prediction.
+
+        Uses XGBoost's built-in tree SHAP — no extra library required.
+        Positive shap_value = pushed toward BUY; negative = pushed away.
+        Returns [] if model is unavailable or SHAP computation fails.
+        """
+        if self.model is None:
+            return []
+        try:
+            from xgboost import DMatrix
+            X = row[FEATURE_COLS].values.reshape(1, -1).astype(float)
+            dmat = DMatrix(X, feature_names=FEATURE_COLS)
+            # pred_contribs shape: (1, n_features+1) — last column is the bias term
+            contribs = self.model.get_booster().predict(dmat, pred_contribs=True)[0][:-1]
+            idx = np.argsort(np.abs(contribs))[::-1][:3]
+            return [(FEATURE_COLS[i], round(float(contribs[i]), 4)) for i in idx]
+        except Exception as exc:
+            logger.warning(f"XGBoost explain failed: {exc}")
+            return []

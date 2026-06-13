@@ -17,6 +17,8 @@ def pull():
         ("xgb_predictor.pkl", "models/saved/xgb_predictor.pkl"),
         ("lstm_predictor.pt", "models/saved/lstm_predictor.pt"),
         ("lstm_scaler.pkl", "models/saved/lstm_scaler.pkl"),
+        ("validation_report.json", "models/validation_report.json"),
+        ("feature_importance.json", "models/feature_importance.json"),
     ]:
         try:
             cached = hf_hub_download(repo_id=HF_REPO_ID, filename=filename, token=HF_TOKEN)

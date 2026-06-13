@@ -11,6 +11,10 @@ def compute_metrics(portfolio_values: List[float], trades: list, initial_balance
     ann_return   = (1 + total_return) ** (252 / trading_days) - 1
     sharpe       = (float(np.mean(returns)) / (float(np.std(returns)) + 1e-8)
                     * np.sqrt(252 * 78)) if len(returns) > 1 else 0.0  # 78 five-min bars/day
+    downside     = returns[returns < 0]
+    down_std     = float(np.std(downside)) if len(downside) > 1 else 0.0
+    sortino      = (float(np.mean(returns)) / (down_std + 1e-8)
+                    * np.sqrt(252 * 78)) if len(returns) > 1 else 0.0
 
     max_dd   = _max_drawdown(values)
     calmar   = ann_return / (max_dd + 1e-8) if max_dd > 0 else 0.0
@@ -31,6 +35,7 @@ def compute_metrics(portfolio_values: List[float], trades: list, initial_balance
         "total_return":   total_return,
         "ann_return":     ann_return,
         "sharpe":         sharpe,
+        "sortino":        sortino,
         "calmar":         calmar,
         "max_drawdown":   max_dd,
         "profit_factor":  profit_factor,

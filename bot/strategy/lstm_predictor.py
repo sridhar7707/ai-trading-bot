@@ -48,6 +48,7 @@ class LSTMPredictor:
     def __init__(self):
         self.model:  _LSTMModel | None   = None
         self.scaler: StandardScaler | None = None
+        self.val_loss: float = 1.0  # populated by train(); read by train_model.py for report
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._load()
 
@@ -185,6 +186,7 @@ class LSTMPredictor:
                     )
                     break
 
+        self.val_loss = best_val_loss
         self.model.load_state_dict(torch.load(LSTM_MODEL_PATH, map_location=self.device))
         self.model.eval()
         logger.info(f"LSTM training complete — best val_loss={best_val_loss:.4f}")

@@ -159,7 +159,7 @@ HEADER_HTML = f"""{STYLES}
       -webkit-background-clip:text;-webkit-text-fill-color:transparent;
       background-clip:text;color:{PRIMARY};">TradeGenius AI</div>
     <div style="font-size:12px;color:{TEXT2} !important;margin-top:3px;">
-      Autonomous Paper Trading &nbsp;·&nbsp; PPO &nbsp;·&nbsp; XGBoost &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT
+      Autonomous Paper Trading &nbsp;·&nbsp; XGBoost + SHAP &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT &nbsp;·&nbsp; Walk-Forward Validated
     </div>
   </div>
   <div style="display:flex;gap:10px;align-items:center;">
@@ -180,7 +180,7 @@ FOOTER_HTML = f"""<div class="nt nt-wrap">
 <div style="text-align:center;color:{TEXT2} !important;font-size:11px;
   margin-top:8px;padding:14px;border-top:1px solid {BORDER};">
   Refreshes every 60 s &nbsp;·&nbsp; Paper trading only &nbsp;·&nbsp;
-  Alpaca Markets &nbsp;·&nbsp; TradeGenius AI v1
+  Alpaca Markets &nbsp;·&nbsp; Stress-tested · Walk-forward validated &nbsp;·&nbsp; TradeGenius AI v2
 </div></div>"""
 
 # ── Shared data cache (55-second TTL) ─────────────────────────────────────────
@@ -210,6 +210,19 @@ def _sync_db() -> None:
         shutil.copy(cached, DB_PATH)
     except Exception as e:
         logger.warning(f"DB sync: {e}")
+    # Pull validation / explainability artefacts — non-fatal if absent
+    for filename, dest in [
+        ("validation_report.json",  "models/validation_report.json"),
+        ("feature_importance.json", "models/feature_importance.json"),
+    ]:
+        try:
+            from huggingface_hub import hf_hub_download
+            cached = hf_hub_download(repo_id=HF_REPO_ID, filename=filename,
+                                      token=HF_TOKEN, force_download=True)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy(cached, dest)
+        except Exception:
+            pass  # charts show placeholder until model has been retrained + pushed
 
 
 def _current_prices(symbols: list[str]) -> dict[str, float]:
@@ -756,6 +769,111 @@ def render_trades() -> str:
             f'{_section("⚡","Recent Trades", note)}{table}</div>')
 
 
+# ── Feature-name display labels (XGB feature_importances_ key → readable text) ─
+_FI_LABELS: dict[str, str] = {
+    "rsi": "RSI", "rsi_15m": "RSI 15m", "stoch_k": "Stoch %K",
+    "macd_diff_pct": "MACD Cross", "volume_ratio": "Volume Ratio",
+    "mfi": "Money Flow", "bb_width": "BB Width", "atr_pct": "Volatility",
+    "norm_close": "Price Pos", "ema20_pct": "EMA20 Dev",
+    "ema50_pct": "EMA50 Dev", "vwap_dev": "VWAP Dev", "hl_ratio": "H/L Range",
+}
+
+
+# ── Render: XGBoost feature importance chart ──────────────────────────────────
+def render_feature_importance_chart():
+    try:
+        import json as _json
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fi_path = "models/feature_importance.json"
+        if not os.path.exists(fi_path):
+            fig.add_annotation(
+                text="Feature importance not yet available — run train_model.py first",
+                xref="paper", yref="paper", x=0.5, y=0.5,
+                showarrow=False, font=dict(color=TEXT2, size=12))
+        else:
+            with open(fi_path) as fh:
+                importances = _json.load(fh)
+            top = sorted(importances.items(), key=lambda x: x[1], reverse=True)[:15]
+            # Reverse so highest importance is at top of horizontal bar chart
+            features = [_FI_LABELS.get(k, k) for k, _ in reversed(top)]
+            values   = [v for _, v in reversed(top)]
+            max_v    = top[0][1] if top else 1.0
+            colors   = [GAIN if v >= max_v * 0.5 else
+                        (PRIMARY if v >= max_v * 0.25 else TEXT2) for v in values]
+            fig.add_trace(go.Bar(
+                x=values, y=features, orientation="h",
+                marker_color=colors, marker_line=dict(width=0),
+                hovertemplate="<b>%{y}</b><br>Importance: %{x:.4f}<extra></extra>",
+                name="Importance",
+            ))
+        fig.update_layout(
+            title=dict(text="XGBoost Feature Importance (Top 15)",
+                       font=dict(color=TEXT1, size=13), x=0.01),
+            xaxis=dict(title="Gain", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
+            yaxis=dict(title="", **PLOTLY_LAYOUT["yaxis"], tickfont=dict(color=TEXT1)),
+            **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
+            height=380,
+        )
+        return fig
+    except Exception as e:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.update_layout(**{k: v for k, v in PLOTLY_LAYOUT.items()
+                             if k not in ("xaxis", "yaxis")}, height=380)
+        fig.add_annotation(text=f"Chart error: {e}", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=LOSS))
+        return fig
+
+
+# ── Render: model validation report ──────────────────────────────────────────
+def render_validation_report() -> str:
+    import json as _json
+    vr_path = "models/validation_report.json"
+    if not os.path.exists(vr_path):
+        msg = (f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">'
+               f'No validation report yet.<br>Run: python scripts/train_model.py</div>')
+        return f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}{_wrap(msg)}</div>'
+    try:
+        with open(vr_path) as fh:
+            r = _json.load(fh)
+    except Exception as exc:
+        return (f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}'
+                f'<span style="color:{LOSS}">{exc}</span></div>')
+
+    auc      = r.get("xgb_val_auc",  0.0)
+    val_loss = r.get("lstm_val_loss", 1.0)
+    auc_c    = GAIN if auc >= 0.60 else (NEURAL if auc >= 0.55 else LOSS)
+    loss_c   = GAIN if val_loss < 0.65 else (NEURAL if val_loss < 0.70 else LOSS)
+    dr       = r.get("date_range", {})
+
+    def _vr(label: str, val: str, color: str = TEXT1) -> str:
+        return (
+            f'<tr>'
+            f'<td style="padding:9px 14px;border-bottom:1px solid #0d1218;background:#000;'
+            f'color:{TEXT2};font-size:11px;font-weight:700;">{label}</td>'
+            f'<td style="padding:9px 14px;border-bottom:1px solid #0d1218;background:#000;'
+            f'font-family:Courier New,monospace;color:{color};font-weight:800;">{val}</td>'
+            f'</tr>'
+        )
+
+    rows = (
+        _vr("XGB Val AUC",    f"{auc:.3f}",                    auc_c)
+        + _vr("LSTM Val Loss",f"{val_loss:.4f}",               loss_c)
+        + _vr("Train Rows",   f"{r.get('training_rows',0):,}")
+        + _vr("Symbols",      str(r.get("training_symbols","—")))
+        + _vr("Cutoff",       r.get("train_cutoff", "—"))
+        + _vr("Data From",    dr.get("from", "—"))
+        + _vr("Data To",      dr.get("to",   "—"))
+        + _vr("Generated",    r.get("generated_at","")[:10])
+    )
+    table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>')
+    auc_note = "≥0.60 good · ≥0.55 acceptable · <0.52 near-random"
+    note = (f'<div style="font-size:10px;color:{TEXT2};padding:2px 0 6px;">'
+            f'AUC: {auc_note}</div>')
+    return f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}{note}{table}</div>'
+
+
 # ── Gradio layout ─────────────────────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -771,18 +889,28 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
             alloc_plot = gr.Plot(value=render_allocation_chart, label="")
 
     pnl_plot   = gr.Plot(value=render_pnl_chart, label="")
+
+    # Feature importance (65%) + validation report (35%) — updated on model retrain
+    with gr.Row():
+        with gr.Column(scale=65):
+            fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
+        with gr.Column(scale=35):
+            val_out = gr.HTML(value=render_validation_report)
+
     pos_out    = gr.HTML(value=render_positions)
     trades_out = gr.HTML(value=render_trades)
     gr.HTML(value=FOOTER_HTML)
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    timer.tick(fn=render_metrics,          outputs=metrics_out)
-    timer.tick(fn=render_equity_chart,     outputs=eq_plot)
-    timer.tick(fn=render_allocation_chart, outputs=alloc_plot)
-    timer.tick(fn=render_pnl_chart,        outputs=pnl_plot)
-    timer.tick(fn=render_positions,        outputs=pos_out)
-    timer.tick(fn=render_trades,           outputs=trades_out)
+    timer.tick(fn=render_metrics,                  outputs=metrics_out)
+    timer.tick(fn=render_equity_chart,             outputs=eq_plot)
+    timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
+    timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
+    timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
+    timer.tick(fn=render_validation_report,        outputs=val_out)
+    timer.tick(fn=render_positions,                outputs=pos_out)
+    timer.tick(fn=render_trades,                   outputs=trades_out)
 
 if __name__ == "__main__":
     demo.launch()

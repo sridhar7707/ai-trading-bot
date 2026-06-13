@@ -762,8 +762,9 @@ def get_performance_metrics(days: int = 60) -> dict:
     if con is None:
         return {}
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    _empty = {"sharpe": None, "win_rate": 0.0, "max_drawdown": 0.0,
-              "total_return": 0.0, "trade_count": 0, "closed_trades": 0}
+    _empty = {"sharpe": None, "sortino": None, "win_rate": 0.0, "max_drawdown": 0.0,
+              "total_return": 0.0, "trade_count": 0, "closed_trades": 0,
+              "avg_win": 0.0, "avg_loss": 0.0, "calmar": None, "alpha": None}
 
     # Portfolio-value trajectory: union trade rows AND heartbeat snapshots, ordered
     # by time — same source as Overview and the equity chart. Using trades alone
@@ -799,28 +800,48 @@ def get_performance_metrics(days: int = 60) -> dict:
     if len(vals) == 0:
         return _empty
     rets   = np.diff(vals) / (vals[:-1] + 1e-8)
-    # Annualized Sharpe assumes ~uniform 5-min bar returns (sqrt(252*78)). With only
-    # a few hours of intraday snapshots it produces absurd values (e.g. 24), so it's
-    # reported only once there are enough observations AND enough distinct trading
+    # Annualized Sharpe/Sortino assume ~uniform 5-min bar returns (sqrt(252*78)).
+    # Reported only once there are enough observations AND enough distinct trading
     # days for the annualization to mean something.
     distinct_days = len({ts[:10] for ts, _ in pv_rows if ts})
-    if (len(rets) >= _MIN_SHARPE_OBS and distinct_days >= _MIN_SHARPE_DAYS
-            and np.std(rets) > 0):
+    qualified = len(rets) >= _MIN_SHARPE_OBS and distinct_days >= _MIN_SHARPE_DAYS
+    if qualified and np.std(rets) > 0:
         sharpe = float(np.mean(rets) / np.std(rets) * np.sqrt(252 * 78))
     else:
         sharpe = None
+    downside = rets[rets < 0]
+    down_std = float(np.std(downside)) if len(downside) > 1 else 0.0
+    if qualified and down_std > 0:
+        sortino = float(np.mean(rets) / down_std * np.sqrt(252 * 78))
+    else:
+        sortino = None
     peak = vals[0]; max_dd = 0.0
     for v in vals:
         peak   = max(peak, v)
         max_dd = max(max_dd, (peak - v) / (peak + 1e-8))
+    total_return = float((vals[-1] - vals[0]) / (vals[0] + 1e-8))
+    ann_return   = (1 + total_return) ** (252 / max(distinct_days, 1)) - 1
+    calmar = round(ann_return / (max_dd + 1e-8), 2) if max_dd > 0 else None
+    pnl_values = [r[0] for r in sells if r[0] is not None]
+    wins_pnl   = [p for p in pnl_values if p > 0]
+    losses_pnl = [p for p in pnl_values if p <= 0]
     closed   = len(sells)
-    wins     = sum(1 for r in sells if r[0] is not None and r[0] > 0)
-    win_rate = wins / closed if closed else 0.0
+    win_rate = len(wins_pnl) / closed if closed else 0.0
+    avg_win  = float(np.mean(wins_pnl))   if wins_pnl   else 0.0
+    avg_loss = float(np.mean(losses_pnl)) if losses_pnl else 0.0
+    since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    spy_ret  = spy_return_since(since_day)
+    alpha    = round(total_return - spy_ret, 4) if spy_ret is not None else None
     return {
         "sharpe":        round(sharpe, 2) if sharpe is not None else None,
+        "sortino":       round(sortino, 2) if sortino is not None else None,
         "win_rate":      round(win_rate, 4),
+        "avg_win":       round(avg_win, 4),
+        "avg_loss":      round(avg_loss, 4),
         "max_drawdown":  round(max_dd, 4),
-        "total_return":  round((vals[-1] - vals[0]) / (vals[0] + 1e-8), 4),
+        "calmar":        calmar,
+        "alpha":         alpha,
+        "total_return":  round(total_return, 4),
         "trade_count":   trade_count,
         "closed_trades": closed,
     }
@@ -830,15 +851,22 @@ def performance_md(m: dict) -> str:
     if not m:
         return f"No performance data yet. {_EMPTY_HINT}"
     closed = m.get("closed_trades", 0)
-    # 0% win rate with no closed trades isn't "losing" — make that explicit.
-    win_str = f"{m['win_rate']:.1%}" if closed else "n/a (no closed trades yet)"
-    # Sharpe is None until there's enough history to annualize meaningfully.
-    sharpe_str = f"{m['sharpe']:.2f}" if m.get("sharpe") is not None else "n/a (need more history)"
+    win_str    = f"{m['win_rate']:.1%}" if closed else "n/a (no closed trades yet)"
+    sharpe_str = f"{m['sharpe']:.2f}"   if m.get("sharpe")  is not None else "n/a (need more history)"
+    sortino_str= f"{m['sortino']:.2f}"  if m.get("sortino") is not None else "n/a (need more history)"
+    calmar_str = f"{m['calmar']:.2f}"   if m.get("calmar")  is not None else "n/a"
+    alpha_str  = f"{m['alpha']:+.2%}"   if m.get("alpha")   is not None else "n/a (no benchmark data)"
+    avg_win_str  = f"{m.get('avg_win', 0):+.2%}"  if closed else "n/a"
+    avg_loss_str = f"{m.get('avg_loss', 0):+.2%}" if closed else "n/a"
     return (
         f"| Metric | Value |\n|--------|-------|\n"
         f"| Sharpe Ratio | **{sharpe_str}** |\n"
+        f"| Sortino Ratio | **{sortino_str}** |\n"
         f"| Win Rate | **{win_str}** |\n"
+        f"| Avg Win / Avg Loss | **{avg_win_str} / {avg_loss_str}** |\n"
         f"| Max Drawdown | **{m['max_drawdown']:.1%}** |\n"
+        f"| Calmar Ratio | **{calmar_str}** |\n"
+        f"| Alpha vs S&P 500 | **{alpha_str}** |\n"
         f"| Total Return | **{m['total_return']:+.2%}** |\n"
         f"| Trades Analysed | {m['trade_count']} ({closed} closed) |"
     )
@@ -1072,6 +1100,20 @@ def compliance_gauges_html(c: dict) -> str:
 
 # ── Color-coded Trade Log HTML (Subscriber+) ──────────────────────────────────
 
+_FEATURE_LABELS: dict[str, str] = {
+    "rsi":           "RSI",        "rsi_15m":       "RSI(15m)",
+    "stoch_k":       "Stoch %K",   "stoch_d":       "Stoch %D",
+    "macd_diff_pct": "MACD cross", "macd_pct":      "MACD",
+    "macd_sig_pct":  "MACD sig",   "volume_ratio":  "Volume",
+    "obv":           "OBV",        "mfi":           "Money Flow",
+    "bb_width":      "BB width",   "bb_high_pct":   "BB high",
+    "bb_low_pct":    "BB low",     "atr_pct":       "Volatility",
+    "norm_close":    "Price pos",  "ema20_pct":     "EMA20",
+    "ema50_pct":     "EMA50",      "sma20_pct":     "SMA20",
+    "returns":       "Returns",    "vwap_dev":      "VWAP dev",
+    "hl_ratio":      "H/L range",
+}
+
 _ACTION_COLOR = {
     "BUY":                "#388e3c",   # green
     "SELL":               "#1565c0",   # blue — planned signal exit
@@ -1121,6 +1163,20 @@ def _trade_rationale(row) -> str:
         strength += " · negative news"
     if regime and regime not in ("", "Unknown"):
         strength += f" · {regime.replace('_', ' ').title()}"
+    # Top-2 SHAP feature drivers logged on BUY entries
+    drivers_json = row.get("feature_drivers")
+    if drivers_json:
+        try:
+            import json as _json
+            drivers = _json.loads(drivers_json)
+            labels = []
+            for name, shap_val in drivers[:2]:
+                label = _FEATURE_LABELS.get(name, name)
+                labels.append(f"{label}{'↑' if shap_val > 0 else '↓'}")
+            if labels:
+                strength += " · " + ", ".join(labels)
+        except Exception:
+            pass
     return strength
 
 
@@ -1131,7 +1187,7 @@ def trades_html_table(days: int = 30) -> str:
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     df = pd.read_sql_query(
         "SELECT timestamp, symbol, action, shares, price, notional, pnl_pct, "
-        "realized_pnl, xgb_prob, lstm_prob, sentiment_score, regime "
+        "realized_pnl, xgb_prob, lstm_prob, sentiment_score, regime, feature_drivers "
         "FROM trades WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT 200",
         con, params=(since,),
     )

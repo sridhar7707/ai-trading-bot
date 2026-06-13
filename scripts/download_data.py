@@ -10,9 +10,10 @@ OUTPUT_DIR = "data/raw"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 import datetime
-# 2015 captures: 2015-16 correction, 2018 rate-hike volatility,
-# 2020 COVID crash+recovery, 2022 bear market — diverse regimes improve all models
-START_DATE = "2015-01-01"
+# 2007 captures: 2008 financial crisis, 2010 flash crash, 2015-16 correction,
+# 2018 rate-hike sell-off, 2020 COVID crash+recovery, 2022 bear market —
+# diverse regimes improve model generalisation and enable stress-period backtesting
+START_DATE = "2007-01-01"
 END_DATE = datetime.date.today().isoformat()
 
 
