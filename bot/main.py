@@ -850,6 +850,7 @@ def end_of_day_summary():
     con    = init_db()
     client = AlpacaClient()
     today  = date.today().isoformat()
+
     trades_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
     ).fetchone()[0]
@@ -858,11 +859,60 @@ def end_of_day_summary():
     portfolio_value, available_cash = client.get_account_summary()
     positions = client.get_positions()
     day_return = ((portfolio_value - daily_start) / daily_start) if daily_start else 0.0
+
     try:
         spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
         vs_spy   = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
     except Exception:
         vs_spy = 0.0
+
+    # ── Best / worst trade today ───────────────────────────────────────────────
+    best_trade: tuple | None  = None
+    worst_trade: tuple | None = None
+    try:
+        sells_today = con.execute(
+            "SELECT symbol, pnl_pct, notional FROM trades "
+            "WHERE timestamp LIKE ? AND action LIKE 'SELL%' AND action != 'SELL_RECONCILE'",
+            (today + "%",),
+        ).fetchall()
+        if sells_today:
+            best  = max(sells_today, key=lambda r: float(r[1] or 0))
+            worst = min(sells_today, key=lambda r: float(r[1] or 0))
+            best_trade  = (best[0],  float(best[1]  or 0), float(best[1]  or 0) * float(best[2]  or 0))
+            worst_trade = (worst[0], float(worst[1] or 0), float(worst[1] or 0) * float(worst[2] or 0))
+    except Exception as _e:
+        logger.warning(f"best/worst trade fetch failed: {_e}")
+
+    # ── Portfolio Health Score (same formula as dashboard) ────────────────────
+    health_score = 0
+    try:
+        macro_score_val, _, macro_halt = _get_macro_from_db(con)
+        _vix_pts  = 5 if macro_halt else (25 if macro_score_val > 0.65 else (15 if macro_score_val > 0.40 else 5))
+        cash_pct  = available_cash / portfolio_value * 100 if portfolio_value > 0 else 100.0
+        _cash_pts = 25 if cash_pct > 30 else (15 if cash_pct > 15 else 5)
+        max_conc  = 0.0
+        if positions and portfolio_value > 0:
+            max_conc = max(
+                float(getattr(p, "market_value", 0) or 0) / portfolio_value * 100
+                for p in positions.values()
+            )
+        _conc_pts = 25 if max_conc < 15 else (15 if max_conc < 25 else 5)
+        max_dd    = 0.0
+        pv_rows   = con.execute(
+            "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id"
+        ).fetchall()
+        if len(pv_rows) > 1:
+            vals = [float(r[0]) for r in pv_rows]
+            pk   = vals[0]
+            for v in vals:
+                pk     = max(pk, v)
+                max_dd = max(max_dd, (pk - v) / pk * 100 if pk > 0 else 0)
+        _dd_pts   = 25 if max_dd < 3 else (15 if max_dd < 8 else 5)
+        health_score = _vix_pts + _cash_pts + _conc_pts + _dd_pts
+    except Exception as _e:
+        logger.warning(f"health score calc failed: {_e}")
+        cash_pct = 0.0
+
     tg.alert_daily_summary(
         day_return=day_return,
         vs_spy=vs_spy,
@@ -870,8 +920,13 @@ def end_of_day_summary():
         cash=available_cash,
         trades=trades_count,
         day_trades=day_trade_count,
+        portfolio_value=portfolio_value,
+        best_trade=best_trade,
+        worst_trade=worst_trade,
+        cash_pct=cash_pct,
+        health_score=health_score,
     )
-    logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}")
+    logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}, health={health_score}")
 
     # Friday weekly report — Portfolio Manager visibility into week performance
     et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
@@ -1623,6 +1678,17 @@ def run_loop(mode: str = "paper"):
                 break
 
     logger.info("Market closed — loop complete.")
+    # Wait until 4:05pm ET so late fills settle before sending the summary
+    try:
+        import zoneinfo as _zi
+        _et  = datetime.now(_zi.ZoneInfo("America/New_York"))
+        _tgt = _et.replace(hour=16, minute=5, second=0, microsecond=0)
+        _wait = (_tgt - _et).total_seconds()
+        if 0 < _wait < 600:   # max 10 min — guard against clock drift
+            logger.info(f"Waiting {_wait:.0f}s for 4:05pm ET before sending daily summary.")
+            time.sleep(_wait)
+    except Exception:
+        pass
     try:
         end_of_day_summary()
     except Exception as e:

@@ -134,21 +134,47 @@ def alert_vix_halt():
     _send("🔴 <b>VIX EMERGENCY HALT</b> — VIX ≥ 40\n   No new buys this cycle. Existing positions still managed.")
 
 
-def alert_daily_summary(day_return: float, vs_spy: float, positions: list, cash: float, trades: int, day_trades: int):
-    now = datetime.now()
-    today = now.strftime(f"%B {now.day}, %Y")
+def alert_daily_summary(
+    day_return: float, vs_spy: float, positions: list, cash: float,
+    trades: int, day_trades: int,
+    portfolio_value: float = 0.0,
+    best_trade: tuple | None = None,
+    worst_trade: tuple | None = None,
+    cash_pct: float = 0.0,
+    health_score: int = 0,
+):
+    now     = datetime.now()
+    today   = now.strftime(f"%B {now.day}, %Y")
     outperf = day_return - vs_spy
     trophy  = " 🏆" if outperf > 0 else ""
-    _send(
-        f"📊 <b>Daily P&amp;L Report — {today}</b>\n"
-        f"   Day Return:       {day_return:+.2%}\n"
-        f"   vs S&amp;P 500:       {vs_spy:+.2%}\n"
-        f"   Outperformed:     {outperf:+.2%}{trophy}\n"
-        f"   Open Positions:  {', '.join(positions) or 'None'}\n"
-        f"   Cash Available:  ${cash:,.2f}\n"
-        f"   Trades Today:    {trades}\n"
-        f"   Day Trades Used: {day_trades}/3 (PDT)"
-    )
+
+    pv_str = f"${portfolio_value:,.2f}  " if portfolio_value > 0 else ""
+
+    lines = [
+        f"📊 <b>Daily Summary — {today}</b>",
+        f"   Portfolio:       {pv_str}{day_return:+.2%} vs S&amp;P {vs_spy:+.2%}{trophy}",
+        f"   Trades Today:    {trades}  ·  Day Trades: {day_trades}/3 (PDT)",
+    ]
+
+    if best_trade:
+        sym, pct, usd = best_trade
+        lines.append(f"   Best Trade:      {sym}  {pct:+.1%}  (${usd:+,.2f})")
+    if worst_trade:
+        sym, pct, usd = worst_trade
+        lines.append(f"   Worst Trade:     {sym}  {pct:+.1%}  (${usd:+,.2f})")
+
+    lines.append(f"   Open Positions:  {', '.join(positions) or 'None'}")
+
+    if cash_pct > 0:
+        lines.append(f"   Cash:            ${cash:,.2f}  ({cash_pct:.0f}% of portfolio)")
+    else:
+        lines.append(f"   Cash:            ${cash:,.2f}")
+
+    if health_score > 0:
+        h_icon = "🟢" if health_score >= 75 else ("🟡" if health_score >= 50 else "🔴")
+        lines.append(f"   Portfolio Health: {h_icon} {health_score}/100")
+
+    _send("\n".join(lines))
 
 
 def alert_bot_offline():
