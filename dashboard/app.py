@@ -1105,6 +1105,64 @@ def render_dashboard_hero() -> str:
             f'</div>'
         )
 
+    # ── Portfolio Health Score ──────────────────────────────────────────────
+    pv_float = 0.0
+    try:
+        pv_float = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    cash_pct_h = ((pv_float - total_invested) / pv_float * 100) if pv_float > 0 else 100.0
+
+    max_dd_h = 0.0
+    df_h = d["trades_df"]
+    if not df_h.empty and "portfolio_value" in df_h.columns:
+        vals_h = df_h["portfolio_value"].dropna()
+        if len(vals_h) > 1:
+            peak_h  = vals_h.cummax()
+            max_dd_h = float(((peak_h - vals_h) / peak_h.replace(0, float("nan"))).max()) * 100
+
+    max_conc_h = 0.0
+    if open_syms and pv_float > 0:
+        for _s, _p in open_syms.items():
+            _cur = d["prices"].get(_s, 0.0)
+            _val = _p["shares"] * _cur if _cur > 0 else _p["invested"]
+            max_conc_h = max(max_conc_h, _val / pv_float * 100)
+
+    _vix_pts  = 25 if vix < 15  else (15 if vix < 25  else 5)
+    _cash_pts = 25 if cash_pct_h > 30 else (15 if cash_pct_h > 15 else 5)
+    _conc_pts = 25 if max_conc_h < 15 else (15 if max_conc_h < 25 else 5)
+    _dd_pts   = 25 if max_dd_h < 3  else (15 if max_dd_h < 8   else 5)
+    health    = _vix_pts + _cash_pts + _conc_pts + _dd_pts
+
+    health_c = GAIN if health >= 75 else (NEURAL if health >= 50 else LOSS)
+
+    _components = [
+        ("VIX",          _vix_pts),
+        ("Cash Reserve", _cash_pts),
+        ("Concentration", _conc_pts),
+        ("Drawdown",     _dd_pts),
+    ]
+    weakest_name, weakest_pts = min(_components, key=lambda x: x[1])
+    if weakest_pts == 25:
+        weak_sub = "All risk factors look healthy"
+    else:
+        weak_sub = f"⚠ {weakest_name} is your biggest risk"
+
+    health_card = (
+        f'<div class="nt-card" style="padding:20px 18px;">'
+        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:10px;">Portfolio Health</div>'
+        f'<div style="font-size:34px;font-weight:700;letter-spacing:-1.5px;'
+        f'color:{health_c};line-height:1;">{health}<span style="font-size:16px;'
+        f'color:{TEXT2};font-weight:400;">/100</span></div>'
+        f'<div style="margin:8px 0 6px;background:{BORDER};border-radius:3px;height:4px;">'
+        f'<div style="background:{health_c};height:100%;width:{health}%;'
+        f'border-radius:3px;transition:width .4s;"></div></div>'
+        f'<div style="font-size:11px;color:{TEXT2};">{weak_sub}</div>'
+        f'</div>'
+    )
+
     val_color = pnl_color if total_invested > 0 else TEXT1
     cards = (
         f'<div class="nt-cards">'
@@ -1112,6 +1170,7 @@ def render_dashboard_hero() -> str:
         + _big("Open Positions",   str(len(open_syms)), "Stocks held now (max 8)",  TEXT1)
         + _big("AI Confidence",    conf_str,          "Avg signal strength · last 5 buys", conf_color)
         + _big("VIX",              vix_str,           "Fear gauge · <15 calm · >30 fear",  vix_color)
+        + health_card
         + f'</div>'
     )
 
