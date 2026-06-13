@@ -200,6 +200,8 @@ _EMPTY_CACHE: dict = {
     "portfolio": "—", "regime_raw": "Unknown",
     "total_trades": 0, "buy_count": 0, "sell_count": 0, "win_count": 0,
     "recent_trades": [],
+    "vix": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
+    "latest_buy_signal": {}, "today_buy_signals": [],
 }
 
 
@@ -258,10 +260,21 @@ def _refresh_cache() -> dict:
         return result
     try:
         con = sqlite3.connect(DB_PATH)
-        df = pd.read_sql(
-            "SELECT id,timestamp,symbol,action,shares,price,notional,"
-            "pnl_pct,portfolio_value,regime FROM trades ORDER BY id",
-            con)
+        try:
+            df = pd.read_sql(
+                "SELECT id,timestamp,symbol,action,shares,price,notional,"
+                "pnl_pct,portfolio_value,regime,"
+                "COALESCE(ensemble_score,0.0) AS ensemble_score,"
+                "COALESCE(sentiment_score,0.0) AS sentiment_score,"
+                "feature_drivers "
+                "FROM trades ORDER BY id", con)
+        except Exception:
+            df = pd.read_sql(
+                "SELECT id,timestamp,symbol,action,shares,price,notional,"
+                "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
+            df["ensemble_score"] = 0.0
+            df["sentiment_score"] = 0.0
+            df["feature_drivers"] = None
         con.close()
     except Exception as e:
         logger.warning(f"DB read: {e}")
@@ -311,9 +324,23 @@ def _refresh_cache() -> dict:
     ]
     result["recent_trades"] = list(recent.itertuples(index=False, name=None))
 
-    # Current prices — single yfinance batch call
-    if result["open_pos"]:
-        result["prices"] = _current_prices(list(result["open_pos"].keys()))
+    # Current prices + VIX in one batch call (always runs, even with no open positions)
+    fetch_syms = list(result["open_pos"].keys()) + ["^VIX"]
+    all_prices = _current_prices(fetch_syms)
+    result["prices"] = {k: v for k, v in all_prices.items() if k != "^VIX"}
+    result["vix"]    = all_prices.get("^VIX", 0.0)
+
+    # Signal intelligence — confidence, sentiment, latest BUY, today's signals
+    buys_df = df[df["action"] == "BUY"]
+    if not buys_df.empty:
+        result["avg_confidence"] = float(buys_df.tail(5)["ensemble_score"].mean())
+        result["sentiment_avg"]  = float(buys_df.tail(20)["sentiment_score"].mean())
+        result["latest_buy_signal"] = buys_df.iloc[-1].to_dict()
+        today_str  = str(datetime.date.today())
+        today_buys = buys_df[buys_df["date"].astype(str) == today_str]
+        if today_buys.empty:
+            today_buys = buys_df.tail(10)  # fallback: last 10 signals
+        result["today_buy_signals"] = today_buys.iloc[::-1].to_dict("records")
 
     return result
 
@@ -477,11 +504,15 @@ def render_metrics() -> str:
     portfolio_val = d["portfolio"]
     pnl_sign      = "+" if total_pnl >= 0 else ""
     hero_chg      = (f'{pnl_sign}${total_pnl:,.2f} ({pnl_pct_all:+.2f}%)'
-                     if total_invested > 0 else "no open positions")
+                     if total_invested > 0 else "No open positions")
     hero = (
         f'<div class="nt-hero">'
+        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:6px;">Alpaca Paper Account Balance</div>'
         f'<div class="nt-hero-val">{portfolio_val}</div>'
         f'<div class="nt-hero-chg" style="color:{pnl_color};">{hero_chg}</div>'
+        f'<div style="font-size:10px;color:{TEXT2};margin-top:4px;">'
+        f'Unrealized gain / loss on open positions vs. what the bot paid</div>'
         f'</div>'
     )
 
@@ -501,12 +532,25 @@ def render_metrics() -> str:
         f'</div>'
     )
 
+    legend = (
+        f'<div style="display:flex;gap:18px;padding:4px 2px 8px;font-size:10px;color:{TEXT2};">'
+        f'<span><span style="color:{GAIN};">●</span> Gain / Bull regime</span>'
+        f'<span><span style="color:{LOSS};">●</span> Loss / Bear regime</span>'
+        f'<span><span style="color:{NEURAL};">●</span> Neutral / Ranging</span>'
+        f'<span style="margin-left:auto;font-style:italic;">Paper money — no real funds at risk</span>'
+        f'</div>'
+    )
+
     row1 = (
         f'<div class="nt-cards">'
-        + _card("Unrealized P&amp;L",  pnl_str,                pnl_color, pnl_color, pnl_sub,                    0.00)
-        + _card("Total Invested",      invested_str,            TEXT2,     TEXT1,     "across open positions",    0.06)
-        + _card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,   "",                         0.12)
-        + _card("Market",              mkt_label,               TEXT2,     mkt_color, "",                         0.18)
+        + _card("Unrealized P&amp;L",  pnl_str,                pnl_color, pnl_color,
+                "Open trade gain/loss vs. cost basis",         0.00)
+        + _card("Total Invested",      invested_str,            TEXT2,     TEXT1,
+                "Capital currently deployed in open trades",   0.06)
+        + _card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,
+                "AI-detected trend — drives position sizing",  0.12)
+        + _card("Market Session",      mkt_label,               TEXT2,     mkt_color,
+                "NYSE/NASDAQ open 9:30am–4pm ET, Mon–Fri",    0.18)
         + f'</div>'
     )
 
@@ -514,18 +558,18 @@ def render_metrics() -> str:
         f'<div class="nt-cards">'
         + _card("Open Positions", str(open_count),
                 TEXT2, TEXT1,
-                f"{open_count} held" if open_count else "none", 0.24)
+                f"Unique stocks held now (max 8 allowed)", 0.24)
         + _card("Win Rate",       wr_str,
                 TEXT2, wr_color,
-                f"{win_count} / {sell_count} closed", 0.30)
+                f"% of closed trades that made money · {win_count}/{sell_count}", 0.30)
         + _card("Total Trades",   str(d["total_trades"]),
-                TEXT2, TEXT1, "all-time", 0.36)
+                TEXT2, TEXT1, "All BUY + SELL orders since launch", 0.36)
         + _card("Buys / Sells",   f"{d['buy_count']} / {d['sell_count']}",
-                TEXT2, TEXT1, "lifetime split", 0.42)
+                TEXT2, TEXT1, "Entry orders vs. exit orders placed", 0.42)
         + f'</div>'
     )
 
-    return f'<div class="nt nt-wrap">{hero}{status}{row1}{row2}</div>'
+    return f'<div class="nt nt-wrap">{hero}{status}{legend}{row1}{row2}</div>'
 
 
 # ── Render: equity chart (65% width) ─────────────────────────────────────────
@@ -539,9 +583,9 @@ def render_equity_chart():
                     and df["portfolio_value"].notna().any())
         if not has_data:
             fig.add_annotation(
-                text="Building history — bot runs 9:30am–4pm ET, Mon–Fri",
+                text="Building history — bot trades 9:30am–4pm ET, Mon–Fri. Chart appears after the first trading day.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
-                showarrow=False, font=dict(color=TEXT2, size=13))
+                showarrow=False, font=dict(color=TEXT2, size=12))
         else:
             daily = df.groupby("date")["portfolio_value"].last().reset_index()
             daily.columns = ["date", "value"]
@@ -564,9 +608,10 @@ def render_equity_chart():
                     font=dict(color=GAIN, size=10), bgcolor=GAIN_BG, bordercolor=GAIN_BD)
 
         fig.update_layout(
-            title=dict(text="Portfolio Equity Curve", font=dict(color=TEXT1, size=13), x=0.01),
+            title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>— end-of-day snapshots, includes cash + open positions</span>",
+                       font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
-            yaxis=dict(title="Value ($)", **PLOTLY_LAYOUT["yaxis"],
+            yaxis=dict(title="Account Value ($)", **PLOTLY_LAYOUT["yaxis"],
                        tickformat="$,.0f", tickfont=dict(color=TEXT2)),
             **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
             height=300,
@@ -645,9 +690,9 @@ def render_pnl_chart():
 
         if sells.empty or "pnl_pct" not in sells.columns or sells["pnl_pct"].isna().all():
             fig.add_annotation(
-                text="No closed trades yet — realized P&L appears here after first sell",
+                text="Realized P&L appears here after the first sell. Each bar = sum of all closed trades on that day.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
-                showarrow=False, font=dict(color=TEXT2, size=13))
+                showarrow=False, font=dict(color=TEXT2, size=12))
         else:
             sells["pnl_dollar"] = sells["pnl_pct"] * sells["notional"].fillna(0)
             daily_pnl = sells.groupby("date")["pnl_dollar"].sum().reset_index()
@@ -662,7 +707,8 @@ def render_pnl_chart():
             ))
 
         fig.update_layout(
-            title=dict(text="Daily Realized P&L", font=dict(color=TEXT1, size=13), x=0.01),
+            title=dict(text="Daily Realized P&L  <span style='font-size:11px;'>— profit/loss from SELL trades only (unrealized not included)</span>",
+                       font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
             yaxis=dict(title="P&L ($)", **PLOTLY_LAYOUT["yaxis"], tickformat="$+,.0f",
                        tickfont=dict(color=TEXT2), zeroline=True,
@@ -689,9 +735,12 @@ def render_positions() -> str:
     prices    = d["prices"]
 
     if not open_syms:
-        empty = (f'<div style="color:{TEXT2} !important;text-align:center;'
-                 f'padding:40px;font-size:14px;">No open positions yet.</div>')
-        return f'<div class="nt nt-wrap">{_section("📊","Open Positions")}{_wrap(empty)}</div>'
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
+                 f'No open positions right now. The bot will enter trades during market hours '
+                 f'(9:30am–4pm ET, Mon–Fri) when its signals align.</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("📊","Open Positions","mark-to-market · price updated every 60s")}'
+                f'{_wrap(empty)}</div>')
 
     rows  = ""
     items = list(open_syms.items())
@@ -718,12 +767,17 @@ def render_positions() -> str:
         )
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th><th {TH}>Shares</th>'
-        f'<th {TH}>Invested</th><th {TH}>Current Value</th>'
-        f'<th {TH}>P&amp;L $</th><th {TH}>P&amp;L %</th>'
+        f'<th {TH}>Symbol</th>'
+        f'<th {TH}>Shares  <span style="font-weight:400;text-transform:none;letter-spacing:0;">held</span></th>'
+        f'<th {TH}>Invested  <span style="font-weight:400;text-transform:none;letter-spacing:0;">cost basis</span></th>'
+        f'<th {TH}>Current Value  <span style="font-weight:400;text-transform:none;letter-spacing:0;">live price</span></th>'
+        f'<th {TH}>P&amp;L $  <span style="font-weight:400;text-transform:none;letter-spacing:0;">unrealised</span></th>'
+        f'<th {TH}>P&amp;L %</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
-    return f'<div class="nt nt-wrap">{_section("📊","Open Positions")}{table}</div>'
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("📊","Open Positions","mark-to-market · price updated every 60s")}'
+            f'{table}</div>')
 
 
 # ── Render: trades table ──────────────────────────────────────────────────────
@@ -764,13 +818,23 @@ def render_trades() -> str:
             f'font-weight:600;">{reg_str}</span></td>'
             f'</tr>'
         )
+    legend_row = (
+        f'<tr><td colspan="8" style="padding:6px 16px 4px;background:{BG};'
+        f'font-size:10px;color:{TEXT2};border-bottom:1px solid {BORDER};">'
+        f'BUY = bot entered a position &nbsp;·&nbsp; '
+        f'SELL = normal exit (target hit or stop) &nbsp;·&nbsp; '
+        f'SELL_STOP = stop-loss triggered &nbsp;·&nbsp; '
+        f'P&amp;L shown on exit trades only &nbsp;·&nbsp; '
+        f'Regime = market trend at time of trade'
+        f'</td></tr>'
+    )
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Time (CT)</th><th {TH}>Symbol</th>'
         f'<th {TH}>Action</th><th {TH}>Qty</th>'
         f'<th {TH}>Price</th><th {TH}>Value</th>'
         f'<th {TH}>P&amp;L</th><th {TH}>Regime</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table>'
+        f'</tr>{legend_row}</thead><tbody>{rows}</tbody></table>'
     )
     return (f'<div class="nt nt-wrap">'
             f'{_section("⚡","Recent Trades", note)}{table}</div>')
@@ -795,7 +859,7 @@ def render_feature_importance_chart():
         fi_path = "models/feature_importance.json"
         if not os.path.exists(fi_path):
             fig.add_annotation(
-                text="Feature importance not yet available — run train_model.py first",
+                text="Feature importance not yet available — run scripts/train_model.py first, then push models to HF.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
                 showarrow=False, font=dict(color=TEXT2, size=12))
         else:
@@ -815,9 +879,11 @@ def render_feature_importance_chart():
                 name="Importance",
             ))
         fig.update_layout(
-            title=dict(text="XGBoost Feature Importance (Top 15)",
-                       font=dict(color=TEXT1, size=13), x=0.01),
-            xaxis=dict(title="Gain", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
+            title=dict(
+                text="Which signals drive the AI's BUY decisions  <span style='font-size:11px;'>— longer bar = more influence on each trade</span>",
+                font=dict(color=TEXT1, size=13), x=0.01),
+            xaxis=dict(title="Importance (normalised gain)", **PLOTLY_LAYOUT["xaxis"],
+                       tickfont=dict(color=TEXT2)),
             yaxis=dict(title="", **PLOTLY_LAYOUT["yaxis"], tickfont=dict(color=TEXT1)),
             **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
             height=380,
@@ -874,50 +940,351 @@ def render_validation_report() -> str:
         + _vr("Data To",      dr.get("to",   "—"))
         + _vr("Generated",    r.get("generated_at","")[:10])
     )
-    table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>')
-    auc_note = "≥0.60 good · ≥0.55 acceptable · <0.52 near-random"
+    help_html = (
+        f'<div style="background:{BG};border-top:1px solid {BORDER};'
+        f'padding:10px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'<strong style="color:{TEXT1};">How to read this:</strong><br>'
+        f'<b>XGB Val AUC</b> — How well XGBoost predicts the right direction on data it '
+        f'<em>never trained on</em>. 0.50 = random guessing. 0.60+ = meaningfully predictive. '
+        f'1.0 = perfect (never achieved in practice).<br>'
+        f'<b>LSTM Val Loss</b> — Prediction error on unseen data. Lower is better. '
+        f'A random classifier scores ~0.69; a well-trained model scores below 0.65.<br>'
+        f'<b>Train Cutoff</b> — All data <em>after</em> this date was held out during training '
+        f'to test real-world performance.'
+        f'</div>'
+    )
+    table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_html)
     note = (f'<div style="font-size:10px;color:{TEXT2};padding:2px 0 6px;">'
-            f'AUC: {auc_note}</div>')
+            f'AUC ≥ 0.60 = good · ≥ 0.55 = acceptable · &lt; 0.52 = near-random</div>')
     return f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}{note}{table}</div>'
 
 
-# ── Gradio layout ─────────────────────────────────────────────────────────────
+# ── Render: dashboard hero (Bloomberg-style 4-pack + status bar) ─────────────
+def render_dashboard_hero() -> str:
+    d = get_data()
+    open_syms = d["open_pos"]
+    prices    = d["prices"]
+    total_invested = sum(v["invested"] for v in open_syms.values())
+    total_cur      = sum(v["shares"] * prices.get(s, 0.0) for s, v in open_syms.items())
+    total_pnl      = total_cur - total_invested
+    pnl_pct_all    = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
+    pnl_color      = GAIN if total_pnl >= 0 else LOSS
+    portfolio_val  = d["portfolio"]
+    pnl_sign       = "+" if total_pnl >= 0 else ""
+    hero_chg       = (f'{pnl_sign}${total_pnl:,.2f} ({pnl_pct_all:+.2f}%)'
+                      if total_invested > 0 else "No open positions")
+
+    avg_conf   = d.get("avg_confidence", 0.0)
+    conf_str   = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—"
+    conf_color = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
+
+    vix = d.get("vix", 0.0)
+    vix_str = f"{vix:.1f}" if vix > 0 else "—"
+    if vix == 0: vix_color = TEXT2
+    elif vix < 15: vix_color = GAIN
+    elif vix < 25: vix_color = NEURAL
+    else: vix_color = LOSS
+
+    mkt_label, mkt_color = _market_status()
+
+    def _big(label, value, sub, color):
+        return (
+            f'<div class="nt-card" style="padding:20px 18px;">'
+            f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:10px;">{label}</div>'
+            f'<div style="font-size:34px;font-weight:700;letter-spacing:-1.5px;'
+            f'color:{color};line-height:1;">{value}</div>'
+            f'<div style="font-size:11px;color:{TEXT2};margin-top:6px;">{sub}</div>'
+            f'</div>'
+        )
+
+    val_color = pnl_color if total_invested > 0 else TEXT1
+    cards = (
+        f'<div class="nt-cards">'
+        + _big("Portfolio Value",  portfolio_val,     f"Unrealized: {hero_chg}", val_color)
+        + _big("Open Positions",   str(len(open_syms)), "Stocks held now (max 8)",  TEXT1)
+        + _big("AI Confidence",    conf_str,          "Avg signal strength · last 5 buys", conf_color)
+        + _big("VIX",              vix_str,           "Fear gauge · <15 calm · >30 fear",  vix_color)
+        + f'</div>'
+    )
+
+    status = (
+        f'<div class="nt-status">'
+        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
+        f'<span style="display:inline-flex;align-items:center;gap:5px;">'
+        f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
+        f'display:inline-block;"></span>'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
+        f'{mkt_label}</span></span>'
+        f'<span style="color:{TEXT2};font-size:11px;">60s refresh &nbsp;·&nbsp; Paper money only</span>'
+        f'</div>'
+    )
+    return f'<div class="nt nt-wrap">{cards}{status}</div>'
+
+
+# ── Render: AI recommendation card (latest BUY signal) ───────────────────────
+def render_ai_recommendation() -> str:
+    d  = get_data()
+    lb = d.get("latest_buy_signal", {})
+
+    if not lb or not lb.get("symbol"):
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:12px;">'
+                 f'No BUY signals yet.<br>Bot trades Mon–Fri 9:30am–4pm ET.</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("🤖","Latest AI Signal","—")}{_wrap(empty)}</div>')
+
+    sym    = lb.get("symbol", "—")
+    conf   = float(lb.get("ensemble_score", 0.0) or 0.0)
+    entry  = float(lb.get("price",          0.0) or 0.0)
+    regime = str(lb.get("regime") or "—").replace("_", " ").title()
+    ts     = lb.get("timestamp", "")
+    drv_raw = lb.get("feature_drivers")
+
+    conf_color = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
+    conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "—"
+
+    bullets = ""
+    try:
+        import json as _j
+        ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
+        for feat, shap_val in (ds or [])[:3]:
+            label = _FI_LABELS.get(feat, feat)
+            arrow = "↑" if float(shap_val) > 0 else "↓"
+            bullets += f'<div style="padding:2px 0;">• {label} {arrow}</div>'
+    except Exception:
+        pass
+    if regime and regime not in ("—", "Unknown"):
+        bullets += f'<div style="padding:2px 0;">• {regime} market regime</div>'
+    if not bullets:
+        bullets = (f'<div style="color:{TEXT2};font-size:12px;">'
+                   f'SHAP drivers available after next model retrain</div>')
+
+    card = (
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};'
+        f'border-left:3px solid {GAIN};border-radius:8px;padding:18px 16px;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+        f'{_sym(sym)}{_badge("BUY")}'
+        f'</div>'
+        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:6px;">'
+        f'AI Confidence: <strong style="color:{conf_color};font-size:22px;">{conf_pct}</strong></div>'
+        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:12px;">'
+        f'Entry Price: <strong style="color:{TEXT1};">${entry:.2f}</strong></div>'
+        f'<div style="border-top:1px solid {BORDER};padding-top:10px;">'
+        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:6px;">Why the AI bought:</div>'
+        f'<div style="font-size:13px;color:{TEXT1};line-height:1.9;">{bullets}</div>'
+        f'</div></div>'
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🤖","Latest AI Signal", _to_ct(ts))}'
+            f'<div style="padding-top:4px;">{card}</div></div>')
+
+
+# ── Render: market intelligence (VIX / regime / confidence / sentiment) ───────
+def render_market_intelligence() -> str:
+    d        = get_data()
+    vix      = d.get("vix", 0.0)
+    regime   = d.get("regime_raw", "—")
+    avg_conf = d.get("avg_confidence", 0.0)
+    sent     = d.get("sentiment_avg", 0.0)
+
+    if vix == 0: vix_label, vix_color = "N/A", TEXT2
+    elif vix < 15: vix_label, vix_color = "Low Fear", GAIN
+    elif vix < 25: vix_label, vix_color = "Moderate", NEURAL
+    elif vix < 35: vix_label, vix_color = "High Fear", LOSS
+    else: vix_label, vix_color = "Extreme Fear", LOSS
+
+    r_lower = regime.lower()
+    if any(x in r_lower for x in ["bull", "trending up"]):   r_color = GAIN
+    elif any(x in r_lower for x in ["bear", "trending down"]): r_color = LOSS
+    else: r_color = NEURAL
+
+    conf_color = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
+
+    if sent == 0: sent_label, sent_color = "No data", TEXT2
+    elif sent > 0.05: sent_label, sent_color = "Positive", GAIN
+    elif sent < -0.05: sent_label, sent_color = "Negative", LOSS
+    else: sent_label, sent_color = "Neutral", NEURAL
+
+    cards = (
+        f'<div class="nt-cards">'
+        + _card("VIX", f"{vix:.1f}" if vix > 0 else "—",
+                TEXT2, vix_color, f"{vix_label} · <15=calm, >30=fear", 0.00)
+        + _card("Market Regime", regime.replace("_", " ").title(),
+                TEXT2, r_color, "AI-detected trend · drives position size", 0.06)
+        + _card("Signal Strength", f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—",
+                TEXT2, conf_color, "Avg confidence · last 5 buy signals", 0.12)
+        + _card("News Sentiment", sent_label,
+                TEXT2, sent_color, "FinBERT score · recent headlines", 0.18)
+        + f'</div>'
+    )
+    return f'<div class="nt nt-wrap">{_section("📡","Market Intelligence","live")}{cards}</div>'
+
+
+# ── Render: watchlist (open positions with live return vs avg cost) ────────────
+def render_watchlist() -> str:
+    d        = get_data()
+    open_pos = d["open_pos"]
+    prices   = d["prices"]
+
+    if not open_pos:
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
+                 f'No open positions — bot is in cash</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("👁","Watchlist","open positions · vs avg cost")}'
+                f'{_wrap(empty)}</div>')
+
+    rows  = ""
+    items = list(open_pos.items())[:8]
+    for i, (sym, pos) in enumerate(items):
+        cur      = prices.get(sym, 0.0)
+        shares   = pos["shares"]
+        invested = pos["invested"]
+        avg_cost = invested / shares if shares > 0 else 0
+        chg_pct  = ((cur - avg_cost) / avg_cost * 100) if avg_cost > 0 and cur > 0 else 0.0
+        arrow    = "↑" if chg_pct >= 0 else "↓"
+        chg_c    = GAIN if chg_pct >= 0 else LOSS
+        td = TD if i < len(items) - 1 else TD0
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_sym(sym)}</td>'
+            f'<td {td}><span style="font-family:Courier New,monospace;font-weight:600;'
+            f'color:{TEXT1};">${cur:.2f}</span></td>'
+            f'<td {td}><span style="font-weight:700;font-size:14px;color:{chg_c};">'
+            f'{arrow} {chg_pct:+.1f}%</span></td>'
+            f'</tr>'
+        )
+    table = _wrap(
+        f'<table class="nt-tbl" style="width:100%"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Price</th><th {TH}>vs Avg Cost</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("👁","Watchlist","vs avg cost · live")}{table}</div>')
+
+
+# ── Render: signals tab (recent BUY signals with confidence + SHAP) ───────────
+def render_signals_tab() -> str:
+    d    = get_data()
+    buys = d.get("today_buy_signals", [])
+
+    if not buys:
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
+                 f'No buy signals yet.<br>The AI generates signals during market hours '
+                 f'(9:30am–4pm ET, Mon–Fri) when all entry gates pass.</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("⚡","AI Buy Signals","recent")}{_wrap(empty)}</div>')
+
+    rows  = ""
+    shown = buys[:20]
+    for i, sig in enumerate(shown):
+        ts      = sig.get("timestamp", "")
+        sym     = sig.get("symbol", "—")
+        price   = float(sig.get("price",          0.0) or 0.0)
+        conf    = float(sig.get("ensemble_score",  0.0) or 0.0)
+        regime  = str(sig.get("regime") or "—").replace("_", " ").title()
+        drv_raw = sig.get("feature_drivers")
+        driver_text = "—"
+        try:
+            import json as _j
+            ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
+            parts = [
+                f"{_FI_LABELS.get(f, f)}{'↑' if float(v) > 0 else '↓'}"
+                for f, v in (ds or [])[:2]
+            ]
+            driver_text = " · ".join(parts) if parts else "—"
+        except Exception:
+            pass
+        conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
+        conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
+        td   = TD if i < len(shown) - 1 else TD0
+        anim = f'style="animation:slideInRow .3s ease both;animation-delay:{i*0.04:.2f}s;"'
+        rows += (
+            f'<tr {anim}>'
+            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{_to_ct(ts)}</span></td>'
+            f'<td {td}>{_sym(sym)}</td>'
+            f'<td {td}>{_badge("BUY")}</td>'
+            f'<td {td}><span style="font-family:Courier New,monospace;color:{TEXT1};">'
+            f'${price:.2f}</span></td>'
+            f'<td {td}><span style="font-weight:700;color:{conf_c};">{conf_pct}</span></td>'
+            f'<td {td}><span style="font-size:12px;color:{TEXT2};">{regime}</span></td>'
+            f'<td {td}><span style="font-size:12px;color:{TEXT2};">{driver_text}</span></td>'
+            f'</tr>'
+        )
+    note = f"last {len(shown)} signals · confidence = XGBoost + LSTM + sentiment ensemble"
+    help_block = (
+        f'<div style="background:{BG};border-top:1px solid {BORDER};'
+        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.7;">'
+        f'<b>Confidence</b> ≥75% strong · 60–75% moderate · &lt;60% weak &nbsp;·&nbsp;'
+        f'<b>Top Drivers</b> show which indicators pushed the AI to BUY &nbsp;·&nbsp;'
+        f'<b>Regime</b> = macro trend when signal fired'
+        f'</div>'
+    )
+    table_inner = (
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Time (CT)</th><th {TH}>Symbol</th>'
+        f'<th {TH}>Signal</th><th {TH}>Entry</th>'
+        f'<th {TH}>Confidence</th><th {TH}>Regime</th>'
+        f'<th {TH}>Top Drivers</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>' + help_block
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("⚡","AI Buy Signals", note)}'
+            f'{_wrap(table_inner)}</div>')
+
+
+# ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
     gr.HTML(HEADER_HTML)
 
-    metrics_out = gr.HTML(value=render_metrics)
+    with gr.Tabs():
+        with gr.TabItem("📊 Dashboard"):
+            hero_out = gr.HTML(value=render_dashboard_hero)
+            with gr.Row():
+                with gr.Column(scale=40):
+                    ai_rec_out    = gr.HTML(value=render_ai_recommendation)
+                with gr.Column(scale=60):
+                    mkt_intel_out = gr.HTML(value=render_market_intelligence)
+                    watchlist_out = gr.HTML(value=render_watchlist)
 
-    # 65 / 35 split: equity curve dominates, donut is supplemental
-    with gr.Row():
-        with gr.Column(scale=65):
-            eq_plot = gr.Plot(value=render_equity_chart, label="")
-        with gr.Column(scale=35):
-            alloc_plot = gr.Plot(value=render_allocation_chart, label="")
+        with gr.TabItem("⚡ Signals"):
+            signals_out = gr.HTML(value=render_signals_tab)
 
-    pnl_plot   = gr.Plot(value=render_pnl_chart, label="")
+        with gr.TabItem("💼 Portfolio"):
+            with gr.Row():
+                with gr.Column(scale=65):
+                    eq_plot    = gr.Plot(value=render_equity_chart, label="")
+                with gr.Column(scale=35):
+                    alloc_plot = gr.Plot(value=render_allocation_chart, label="")
+            pnl_plot   = gr.Plot(value=render_pnl_chart, label="")
+            pos_out    = gr.HTML(value=render_positions)
+            trades_out = gr.HTML(value=render_trades)
 
-    # Feature importance (65%) + validation report (35%) — updated on model retrain
-    with gr.Row():
-        with gr.Column(scale=65):
-            fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
-        with gr.Column(scale=35):
-            val_out = gr.HTML(value=render_validation_report)
+        with gr.TabItem("🔬 Models"):
+            with gr.Row():
+                with gr.Column(scale=65):
+                    fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
+                with gr.Column(scale=35):
+                    val_out = gr.HTML(value=render_validation_report)
 
-    pos_out    = gr.HTML(value=render_positions)
-    trades_out = gr.HTML(value=render_trades)
     gr.HTML(value=FOOTER_HTML)
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    timer.tick(fn=render_metrics,                  outputs=metrics_out)
-    timer.tick(fn=render_equity_chart,             outputs=eq_plot)
-    timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
-    timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
-    timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
-    timer.tick(fn=render_validation_report,        outputs=val_out)
-    timer.tick(fn=render_positions,                outputs=pos_out)
-    timer.tick(fn=render_trades,                   outputs=trades_out)
+    timer.tick(fn=render_dashboard_hero,          outputs=hero_out)
+    timer.tick(fn=render_ai_recommendation,       outputs=ai_rec_out)
+    timer.tick(fn=render_market_intelligence,     outputs=mkt_intel_out)
+    timer.tick(fn=render_watchlist,               outputs=watchlist_out)
+    timer.tick(fn=render_signals_tab,             outputs=signals_out)
+    timer.tick(fn=render_equity_chart,            outputs=eq_plot)
+    timer.tick(fn=render_allocation_chart,        outputs=alloc_plot)
+    timer.tick(fn=render_pnl_chart,               outputs=pnl_plot)
+    timer.tick(fn=render_positions,               outputs=pos_out)
+    timer.tick(fn=render_trades,                  outputs=trades_out)
+    timer.tick(fn=render_feature_importance_chart,outputs=fi_plot)
+    timer.tick(fn=render_validation_report,       outputs=val_out)
 
 if __name__ == "__main__":
     demo.launch()
