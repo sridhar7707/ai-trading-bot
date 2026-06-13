@@ -795,8 +795,10 @@ def _trim_position(con, client, symbol, trim_qty, current_price,
         log_trade(con, symbol, "SELL_TRIM", trim_qty, current_price, trim_notional,
                   regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                   order_id=result.get("order_id"))
+        _trim_freed_pct = trim_notional / portfolio_value * 100 if portfolio_value > 0 else 0.0
         tg.alert_sell(symbol, trim_qty, current_price, pnl_pct,
-                      reason="drift-trim", notional=trim_notional)
+                      reason="drift-trim", notional=trim_notional,
+                      cash_freed_pct=_trim_freed_pct)
         logger.info(f"TRIM {symbol}: sold {trim_qty:.3f} shares @ ${current_price:.2f} "
                     f"(position drifted above {MAX_POSITION_DRIFT_PCT:.0%} of portfolio)")
         return True
@@ -827,7 +829,9 @@ def _signal_sell(con, client, symbol, pos_qty, current_price,
                       order_id=order_id, holding_days=holding_days)
         else:
             action_tag = "SELL" if reason == "signal" else f"SELL_{reason.upper().replace('-','_')}"
-            tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason, notional=sell_notional)
+            _freed_pct = sell_notional / portfolio_value * 100 if portfolio_value > 0 else 0.0
+            tg.alert_sell(symbol, pos_qty, current_price, pnl_pct, reason=reason,
+                          notional=sell_notional, cash_freed_pct=_freed_pct)
             log_trade(con, symbol, action_tag, pos_qty, current_price, sell_notional,
                       regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                       order_id=order_id, holding_days=holding_days)
@@ -1488,10 +1492,35 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                             f"({slippage_bps:+.1f} bps vs limit ${current_price:.2f})"
                         )
                     fill_shares = notional / fill_price
+                    _drivers = xgb.explain(latest)
+                    _sent_s = sentiments.get(symbol, 0.0)
+                    _ens_score = (
+                        WEIGHTS["xgb"]       * xgb_prob +
+                        WEIGHTS["lstm"]      * lstm_prob +
+                        WEIGHTS["sentiment"] * ((_sent_s + 1.0) / 2.0) +
+                        WEIGHTS["macro"]     * macro_score
+                    )
+                    _sym_sector_tg = SECTOR_MAP.get(symbol, "")
+                    _sect_pct_tg = 0.0
+                    if _sym_sector_tg and _sym_sector_tg not in ("Unknown", "Broad_ETF") and portfolio_value > 0:
+                        _existing_sv = sum(
+                            float(getattr(p, "market_value", 0) or 0)
+                            for s2, p in positions.items()
+                            if SECTOR_MAP.get(s2, "") == _sym_sector_tg
+                        )
+                        _sect_pct_tg = (_existing_sv + notional) / portfolio_value * 100
+                    _cash_pct_tg = ((available_cash - notional) / portfolio_value * 100
+                                    if portfolio_value > 0 else 0.0)
                     tg.alert_buy(symbol, fill_shares, fill_price,
                                  regime_name, portfolio_value, vs_spy_today * 100,
-                                 notional=notional)
-                    _drivers = xgb.explain(latest)
+                                 notional=notional,
+                                 xgb_prob=xgb_prob, lstm_prob=lstm_prob,
+                                 sentiment_score=_sent_s,
+                                 ensemble_score=_ens_score,
+                                 drivers=_drivers,
+                                 sector=_sym_sector_tg,
+                                 sector_pct_after=_sect_pct_tg,
+                                 cash_pct_after=_cash_pct_tg)
                     log_trade(con, symbol, "BUY", fill_shares,
                               fill_price, notional, regime_name, portfolio_value, 0,
                               xgb_prob=xgb_prob, lstm_prob=lstm_prob,

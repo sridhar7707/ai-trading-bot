@@ -15,34 +15,94 @@ def _send(text: str):
         logger.error(f"Telegram send failed: {e}")
 
 
+# Human-readable labels for SHAP feature drivers (mirrors dashboard/_WHY_MAP)
+_WHY_LABELS: dict[str, str] = {
+    "rsi":           "RSI momentum building",
+    "rsi_15m":       "15-min RSI aligned",
+    "macd_diff_pct": "MACD bullish crossover",
+    "volume_ratio":  "Unusual buying volume",
+    "mfi":           "Money Flow positive",
+    "bb_width":      "Volatility expanding",
+    "atr_pct":       "Volatility confirmed",
+    "norm_close":    "Closing near day's high",
+    "ema20_pct":     "Above 20-period EMA",
+    "ema50_pct":     "Above 50-period EMA",
+    "vwap_dev":      "Trading above VWAP",
+    "hl_ratio":      "Strong intraday range",
+    "stoch_k":       "Stochastic momentum",
+}
+
+_SELL_REASON_LABELS: dict[str, str] = {
+    "signal":        "Signal exit",
+    "stop-loss":     "Stop-loss hit",
+    "trailing-stop": "Trailing stop hit",
+    "drift-trim":    "Position drift trim",
+    "time-exit":     "Time-based exit",
+    "gap-down":      "Gap-down floor",
+    "risk":          "Risk limit triggered",
+    "manual":        "Manual exit",
+}
+
+
 def alert_bot_started(mode: str, portfolio: float):
     _send(f"🟢 <b>Trading Day Started</b> — {mode.upper()}\n   Portfolio: ${portfolio:,.2f}")
 
 
 def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: float,
-              vs_spy: float, notional: float = 0.0):
-    pct          = f"+{vs_spy:.1f}%" if vs_spy >= 0 else f"{vs_spy:.1f}%"
-    notional_str = f"   Notional: ${notional:,.2f}\n" if notional else ""
-    _send(
-        f"🟢 <b>BUY — {symbol}</b>\n"
-        f"   Shares: {shares:.4f}  |  Price: ${price:.2f}\n"
-        + notional_str +
-        f"   Regime: {regime}\n"
-        f"   Portfolio: ${portfolio:,.2f}\n"
-        f"   vs S&amp;P 500 today: {pct}"
-    )
+              vs_spy: float, notional: float = 0.0,
+              xgb_prob: float = 0.0, lstm_prob: float = 0.0,
+              sentiment_score: float = 0.0, ensemble_score: float = 0.0,
+              drivers: list | None = None,
+              sector: str = "", sector_pct_after: float = 0.0,
+              cash_pct_after: float = 0.0):
+    regime_label = regime.replace("_", " ").title()
+    sent_str     = f"+{sentiment_score:.2f}" if sentiment_score >= 0 else f"{sentiment_score:.2f}"
+
+    # Top 2 SHAP drivers in plain English
+    why_parts: list[str] = []
+    if drivers:
+        try:
+            pos_d = sorted(
+                [(f, float(v)) for f, v in drivers if float(v) > 0],
+                key=lambda x: -x[1],
+            )[:2]
+            for feat, _ in pos_d:
+                why_parts.append(_WHY_LABELS.get(feat, feat))
+        except Exception:
+            pass
+    why_str = " · ".join(why_parts) if why_parts else "Ensemble consensus"
+
+    lines = [
+        f"🟢 <b>BUY EXECUTED — {symbol}</b>",
+        f"   Entry: ${price:.2f} | Confidence: {ensemble_score * 100:.0f}%",
+        f"   Models: XGBoost {xgb_prob * 100:.0f}% · LSTM {lstm_prob * 100:.0f}% · Sentiment {sent_str}",
+        f"   Regime: {regime_label}",
+        f"   Why: {why_str}",
+    ]
+    if sector and sector_pct_after > 0:
+        lines.append(f"   Risk: {sector} now {sector_pct_after:.0f}% of portfolio")
+    if cash_pct_after > 0:
+        lines.append(f"   Cash remaining: {cash_pct_after:.0f}%")
+
+    _send("\n".join(lines))
 
 
 def alert_sell(symbol: str, shares: float, price: float, pnl_pct: float,
-               reason: str = "signal", notional: float = 0.0):
-    emoji       = "🟢" if pnl_pct >= 0 else "🔴"
-    pnl_dollars = f" (${notional * pnl_pct:+,.2f})" if notional else ""
-    _send(
-        f"{emoji} <b>SELL — {symbol}</b>\n"
-        f"   Shares: {shares:.4f}  |  Price: ${price:.2f}\n"
-        f"   P&amp;L: {pnl_pct:+.2%}{pnl_dollars}\n"
-        f"   Reason: {reason}"
-    )
+               reason: str = "signal", notional: float = 0.0,
+               cash_freed_pct: float = 0.0):
+    emoji        = "🟢" if pnl_pct >= 0 else "🔴"
+    pnl_dollars  = f" (${notional * pnl_pct:+,.2f})" if notional else ""
+    reason_label = _SELL_REASON_LABELS.get(reason, reason.replace("-", " ").title())
+
+    lines = [
+        f"{emoji} <b>SELL — {symbol}</b>",
+        f"   Exit: ${price:.2f} | P&amp;L: {pnl_pct:+.2%}{pnl_dollars}",
+        f"   Reason: {reason_label}",
+    ]
+    if cash_freed_pct > 0:
+        lines.append(f"   Freed to cash: {cash_freed_pct:.0f}% of portfolio")
+
+    _send("\n".join(lines))
 
 
 def alert_hold(symbol: str, regime: str):
