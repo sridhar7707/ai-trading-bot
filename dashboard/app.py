@@ -870,6 +870,43 @@ def _sym_perf(hist, buy_date: str | None) -> dict:
     return result
 
 
+def _sparkline(symbol: str) -> str:
+    """Return an 80×32 inline SVG sparkline from the last 30 days of cached price data."""
+    hist = _price_cache.get(symbol)
+    if hist is None or hist.empty or "Close" not in hist.columns:
+        return f'<span style="color:{TEXT2};">—</span>'
+    try:
+        prices = [float(p) for p in hist["Close"].iloc[-30:]]
+    except Exception:
+        return f'<span style="color:{TEXT2};">—</span>'
+    if not prices:
+        return f'<span style="color:{TEXT2};">—</span>'
+
+    color = GAIN if prices[-1] >= prices[0] else LOSS
+
+    if len(prices) == 1:
+        pts       = "2,16 78,16"
+        lx, ly    = 78.0, 16.0
+    else:
+        min_p   = min(prices)
+        max_p   = max(prices)
+        range_p = (max_p - min_p) or 1.0
+        n       = len(prices) - 1
+        xy      = [(2.0 + (i / n) * 76.0,
+                    30.0 - ((p - min_p) / range_p) * 28.0)
+                   for i, p in enumerate(prices)]
+        pts     = " ".join(f"{x:.1f},{y:.1f}" for x, y in xy)
+        lx, ly  = xy[-1]
+
+    return (
+        f'<svg width="80" height="32" style="display:block;overflow:visible;">'
+        f'<polyline points="{pts}" fill="none" stroke="{color}" '
+        f'stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>'
+        f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="2" fill="{color}"/>'
+        f'</svg>'
+    )
+
+
 # ── Render: positions table ───────────────────────────────────────────────────
 def render_positions() -> str:
     d         = get_data()
@@ -1007,9 +1044,12 @@ def render_positions() -> str:
             _perf_cell(pf.get("All")),
         ])
 
+        _td_spark = (f'style="padding:8px 12px 4px;vertical-align:middle;'
+                     f'background:{SURFACE};"')
         rows += (
             f'<tr {anim}>'
             f'<td {td_main}>{_sym(sym)}</td>'
+            f'<td {_td_spark}>{_sparkline(sym)}</td>'
             f'<td {td_main}>{_num(str(round(v["shares"], 4)))}</td>'
             f'<td {td_main}>{_num(f"${invested:.2f}", bold=True)}</td>'
             f'<td {td_main}>{_num(cv_str, bold=True)}</td>'
@@ -1018,13 +1058,14 @@ def render_positions() -> str:
             f'{perf_cells}'
             f'<td {td_main}>{badge}</td>'
             f'</tr>'
-            f'<tr><td colspan="12" {td_sub}>{reason}</td></tr>'
+            f'<tr><td colspan="13" {td_sub}>{reason}</td></tr>'
         )
 
     _th_perf = f'style="padding:10px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:.5px;color:{TEXT2};text-transform:uppercase;white-space:nowrap;"'
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th>'
+        f'<th style="padding:10px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;color:{TEXT2};text-transform:uppercase;">30D Trend</th>'
         f'<th {TH}>Shares  <span style="font-weight:400;text-transform:none;letter-spacing:0;">held</span></th>'
         f'<th {TH}>Invested  <span style="font-weight:400;text-transform:none;letter-spacing:0;">cost basis</span></th>'
         f'<th {TH}>Current Value  <span style="font-weight:400;text-transform:none;letter-spacing:0;">live price</span></th>'
