@@ -755,7 +755,7 @@ def render_pnl_chart():
             title=dict(text="Daily Realized P&L  <span style='font-size:11px;'>— profit/loss from SELL trades only (unrealized not included)</span>",
                        font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
-            yaxis=dict(title="P&L ($)", **PLOTLY_LAYOUT["yaxis"], tickformat="+$,.0f",
+            yaxis=dict(title="P&L ($)", **PLOTLY_LAYOUT["yaxis"], tickformat="$,.0f",
                        tickfont=dict(color=TEXT2), zeroline=True, zerolinewidth=1),
             bargap=0.3,
             **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
