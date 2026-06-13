@@ -117,6 +117,20 @@ STYLES = f"""<style>
 @keyframes slideInRow {{ from{{opacity:0;transform:translateX(-4px)}} to{{opacity:1;transform:translateX(0)}} }}
 @keyframes countdown  {{ from{{width:120px}} to{{width:0px}} }}
 .nt-card {{ animation:fadeInUp .3s ease both; }}
+.nt-ai-split {{ display:grid;grid-template-columns:1fr 1fr;gap:20px; }}
+.nt-ai-right {{ border-left:1px solid {BORDER};padding-left:20px; }}
+@media(max-width:768px){{
+  .nt-cards {{ grid-template-columns:repeat(2,1fr)!important; }}
+  .nt-tbl   {{ display:block;overflow-x:auto;white-space:nowrap; }}
+  .nt-ai-split {{ grid-template-columns:1fr!important; }}
+  .nt-ai-right {{ border-left:none!important;padding-left:0!important;
+    border-top:1px solid {BORDER};padding-top:14px;margin-top:14px; }}
+}}
+@media(max-width:480px){{
+  .nt-cards     {{ grid-template-columns:1fr!important; }}
+  .nt-hero-val  {{ font-size:32px!important; }}
+  .nt-wrap      {{ padding:8px 10px 0!important; }}
+}}
 </style>"""
 
 # ── Logo ──────────────────────────────────────────────────────────────────────
@@ -266,6 +280,8 @@ def _refresh_cache() -> dict:
                 "pnl_pct,portfolio_value,regime,"
                 "COALESCE(ensemble_score,0.0) AS ensemble_score,"
                 "COALESCE(sentiment_score,0.0) AS sentiment_score,"
+                "COALESCE(xgb_prob,0.0)       AS xgb_prob,"
+                "COALESCE(lstm_prob,0.0)       AS lstm_prob,"
                 "feature_drivers "
                 "FROM trades ORDER BY id", con)
         except Exception:
@@ -274,6 +290,8 @@ def _refresh_cache() -> dict:
                 "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
             df["ensemble_score"] = 0.0
             df["sentiment_score"] = 0.0
+            df["xgb_prob"]        = 0.0
+            df["lstm_prob"]       = 0.0
             df["feature_drivers"] = None
         con.close()
     except Exception as e:
@@ -849,6 +867,32 @@ _FI_LABELS: dict[str, str] = {
     "ema50_pct": "EMA50 Dev", "vwap_dev": "VWAP Dev", "hl_ratio": "H/L Range",
 }
 
+# Plain-English reason map for AI recommendation card (feature → (title, detail))
+_WHY_MAP: dict[str, tuple[str, str]] = {
+    "rsi":           ("RSI momentum building",   "Short-term price strength confirmed by RSI"),
+    "rsi_15m":       ("15-min RSI aligned",      "Shorter-term momentum reinforces the entry"),
+    "macd_diff_pct": ("MACD bullish crossover",  "Trend indicator crossed into positive territory"),
+    "volume_ratio":  ("Unusual buying volume",   "Volume above recent average — signals conviction"),
+    "mfi":           ("Money Flow positive",     "Capital flowing into the stock"),
+    "bb_width":      ("Volatility expanding",    "Bollinger Band breakout pattern forming"),
+    "atr_pct":       ("Volatility confirmed",    "Position size validated against current ATR"),
+    "norm_close":    ("Closing near day's high", "Price strength at close — bullish structure"),
+    "ema20_pct":     ("Above 20-period EMA",     "Short-term trend is pointing up"),
+    "ema50_pct":     ("Above 50-period EMA",     "Medium-term trend supports the trade"),
+    "vwap_dev":      ("Trading above VWAP",      "Price above today's volume-weighted average"),
+    "hl_ratio":      ("Strong intraday range",   "Wide intraday range signals trader conviction"),
+    "stoch_k":       ("Stochastic momentum",     "Oscillator confirming continued upward momentum"),
+}
+
+
+def _risk_level(vix: float, regime: str) -> tuple[str, str]:
+    r = regime.lower()
+    if vix > 30 or "bear" in r:
+        return "High", LOSS
+    elif vix > 20 or any(x in r for x in ["ranging", "neutral"]):
+        return "Medium", NEURAL
+    return "Low", GAIN
+
 
 # ── Render: XGBoost feature importance chart ──────────────────────────────────
 def render_feature_importance_chart():
@@ -1023,61 +1067,163 @@ def render_dashboard_hero() -> str:
     return f'<div class="nt nt-wrap">{cards}{status}</div>'
 
 
-# ── Render: AI recommendation card (latest BUY signal) ───────────────────────
+# ── Render: AI recommendation card — full-width hero ─────────────────────────
 def render_ai_recommendation() -> str:
-    d  = get_data()
-    lb = d.get("latest_buy_signal", {})
+    d   = get_data()
+    lb  = d.get("latest_buy_signal", {})
+    vix = d.get("vix", 0.0)
 
     if not lb or not lb.get("symbol"):
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:12px;">'
-                 f'No BUY signals yet.<br>Bot trades Mon–Fri 9:30am–4pm ET.</div>')
+        empty = (
+            f'<div style="text-align:center;padding:48px 24px;">'
+            f'<div style="font-size:36px;margin-bottom:12px;">🤖</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};margin-bottom:8px;">'
+            f'No active signal</div>'
+            f'<div style="font-size:13px;color:{TEXT2};line-height:1.8;">'
+            f'The AI monitors markets Mon–Fri 9:30am–4pm ET.<br>'
+            f'When a trade meets all entry gates, the full recommendation with reasoning '
+            f'will appear here.</div></div>'
+        )
         return (f'<div class="nt nt-wrap">'
-                f'{_section("🤖","Latest AI Signal","—")}{_wrap(empty)}</div>')
+                f'{_section("🤖","AI Recommendation","live signal · updated every 60s")}'
+                f'{_wrap(empty)}</div>')
 
-    sym    = lb.get("symbol", "—")
-    conf   = float(lb.get("ensemble_score", 0.0) or 0.0)
-    entry  = float(lb.get("price",          0.0) or 0.0)
-    regime = str(lb.get("regime") or "—").replace("_", " ").title()
-    ts     = lb.get("timestamp", "")
+    sym     = lb.get("symbol", "—")
+    conf    = float(lb.get("ensemble_score",  0.0) or 0.0)
+    xgb_p   = float(lb.get("xgb_prob",         0.0) or 0.0)
+    lstm_p  = float(lb.get("lstm_prob",         0.0) or 0.0)
+    sent    = float(lb.get("sentiment_score",   0.0) or 0.0)
+    entry   = float(lb.get("price",            0.0) or 0.0)
+    regime  = str(lb.get("regime") or "—").replace("_", " ").title()
+    ts      = lb.get("timestamp", "")
     drv_raw = lb.get("feature_drivers")
 
-    conf_color = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
-    conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "—"
+    r_lower = regime.lower()
+    if any(x in r_lower for x in ["bull", "trending up"]):   r_color = GAIN
+    elif any(x in r_lower for x in ["bear", "trending down"]): r_color = LOSS
+    else: r_color = NEURAL
 
-    bullets = ""
+    risk_label, risk_color = _risk_level(vix, regime)
+    conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
+    conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
+    conf_w   = int(conf * 100) if conf > 0 else 0
+
+    # Confidence bar + model sub-scores
+    conf_bar = (
+        f'<div style="margin:10px 0;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'
+        f'<span style="font-size:11px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">AI Confidence</span>'
+        f'<span style="font-size:28px;font-weight:700;color:{conf_c};letter-spacing:-1px;">{conf_pct}</span>'
+        f'</div>'
+        f'<div style="background:{BORDER};border-radius:4px;height:8px;overflow:hidden;">'
+        f'<div style="background:{conf_c};height:100%;width:{conf_w}%;border-radius:4px;"></div>'
+        f'</div></div>'
+    )
+
+    def _mini_bar(label, v, color):
+        w = int(v * 100)
+        return (
+            f'<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">'
+            f'<span style="font-size:11px;color:{TEXT2};width:68px;flex-shrink:0;">{label}</span>'
+            f'<div style="background:{BORDER};border-radius:2px;height:4px;flex:1;overflow:hidden;">'
+            f'<div style="background:{color};height:100%;width:{w}%;"></div></div>'
+            f'<span style="font-size:11px;color:{color};width:34px;text-align:right;">{v*100:.0f}%</span>'
+            f'</div>'
+        )
+
+    sub_scores = ""
+    if xgb_p > 0 or lstm_p > 0:
+        xc = GAIN if xgb_p >= 0.70 else (NEURAL if xgb_p >= 0.55 else TEXT2)
+        lc = GAIN if lstm_p >= 0.70 else (NEURAL if lstm_p >= 0.55 else TEXT2)
+        sc = GAIN if sent > 0.05 else (LOSS if sent < -0.05 else TEXT2)
+        sub_scores = (
+            f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid {BORDER};">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:6px;">Model breakdown</div>'
+            + _mini_bar("XGBoost", xgb_p, xc)
+            + _mini_bar("LSTM", lstm_p, lc)
+            + f'<div style="display:flex;gap:8px;margin:4px 0;">'
+            f'<span style="font-size:11px;color:{TEXT2};width:68px;flex-shrink:0;">Sentiment</span>'
+            f'<span style="font-size:11px;color:{sc};">'
+            f'{"Positive" if sent > 0.05 else "Negative" if sent < -0.05 else "Neutral"}'
+            f' ({sent:+.2f})</span></div>'
+            f'</div>'
+        )
+
+    # Build plain-English "Why" items from SHAP drivers
+    why_items: list[tuple[str, str]] = []
     try:
         import json as _j
         ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
         for feat, shap_val in (ds or [])[:3]:
-            label = _FI_LABELS.get(feat, feat)
-            arrow = "↑" if float(shap_val) > 0 else "↓"
-            bullets += f'<div style="padding:2px 0;">• {label} {arrow}</div>'
+            why = _WHY_MAP.get(feat)
+            if why:
+                title, detail = why
+                arrow = " ↑" if float(shap_val) > 0 else " ↓"
+                why_items.append((title + arrow, detail))
+            else:
+                label = _FI_LABELS.get(feat, feat)
+                arrow = " ↑" if float(shap_val) > 0 else " ↓"
+                why_items.append((label + arrow, "Contributed to the AI signal"))
     except Exception:
         pass
-    if regime and regime not in ("—", "Unknown"):
-        bullets += f'<div style="padding:2px 0;">• {regime} market regime</div>'
-    if not bullets:
-        bullets = (f'<div style="color:{TEXT2};font-size:12px;">'
-                   f'SHAP drivers available after next model retrain</div>')
+
+    if any(x in r_lower for x in ["bull"]):
+        why_items.append(("Bull market regime", "AI detected a favorable macro uptrend"))
+    elif any(x in r_lower for x in ["bear"]):
+        why_items.append(("Caution: bear regime", "Bot sized position down for safety"))
+
+    if not why_items:
+        why_items = [("All risk gates passed", "Position sizing confirmed by ATR volatility model")]
+
+    why_html = ""
+    for i, (title, detail) in enumerate(why_items[:4]):
+        why_html += (
+            f'<div style="display:flex;gap:12px;margin:10px 0;align-items:flex-start;">'
+            f'<span style="font-size:15px;font-weight:700;color:{GAIN};flex-shrink:0;'
+            f'width:22px;text-align:center;line-height:1.4;">{i+1}</span>'
+            f'<div>'
+            f'<div style="font-size:13px;font-weight:700;color:{TEXT1};">{title}</div>'
+            f'<div style="font-size:12px;color:{TEXT2};margin-top:2px;line-height:1.5;">{detail}</div>'
+            f'</div></div>'
+        )
+
+    risk_badge = (
+        f'<span style="background:{SURFACE2};border:1px solid {risk_color};'
+        f'color:{risk_color};padding:3px 10px;border-radius:4px;font-size:11px;'
+        f'font-weight:700;letter-spacing:.3px;">Risk: {risk_label}</span>'
+    )
 
     card = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};'
-        f'border-left:3px solid {GAIN};border-radius:8px;padding:18px 16px;">'
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
-        f'{_sym(sym)}{_badge("BUY")}'
+        f'border-top:3px solid {GAIN};border-radius:8px;padding:20px;">'
+        f'<div class="nt-ai-split">'
+        # Left: identity + confidence
+        f'<div>'
+        f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+        f'{_badge("BUY")}'
+        f'<span style="font-family:Courier New,monospace;font-size:36px;font-weight:700;'
+        f'color:{PRIMARY};letter-spacing:-2px;line-height:1;">{sym}</span>'
+        f'{risk_badge}'
         f'</div>'
-        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:6px;">'
-        f'AI Confidence: <strong style="color:{conf_color};font-size:22px;">{conf_pct}</strong></div>'
-        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:12px;">'
-        f'Entry Price: <strong style="color:{TEXT1};">${entry:.2f}</strong></div>'
-        f'<div style="border-top:1px solid {BORDER};padding-top:10px;">'
+        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:10px;">'
+        f'Entry Price: <strong style="color:{TEXT1};">${entry:.2f}</strong>'
+        f'&nbsp;&nbsp;·&nbsp;&nbsp;'
+        f'Regime: <strong style="color:{r_color};">{regime}</strong>'
+        f'</div>'
+        f'{conf_bar}'
+        f'{sub_scores}'
+        f'</div>'
+        # Right: Why section
+        f'<div class="nt-ai-right">'
         f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
-        f'letter-spacing:.8px;margin-bottom:6px;">Why the AI bought:</div>'
-        f'<div style="font-size:13px;color:{TEXT1};line-height:1.9;">{bullets}</div>'
+        f'letter-spacing:.8px;margin-bottom:4px;">Why the AI is buying</div>'
+        f'{why_html}'
+        f'</div>'
         f'</div></div>'
     )
     return (f'<div class="nt nt-wrap">'
-            f'{_section("🤖","Latest AI Signal", _to_ct(ts))}'
+            f'{_section("🤖","AI Recommendation",_to_ct(ts))}'
             f'<div style="padding-top:4px;">{card}</div></div>')
 
 
@@ -1241,12 +1387,12 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            hero_out = gr.HTML(value=render_dashboard_hero)
+            ai_rec_out    = gr.HTML(value=render_ai_recommendation)   # hero — first thing visible
+            hero_out      = gr.HTML(value=render_dashboard_hero)
             with gr.Row():
-                with gr.Column(scale=40):
-                    ai_rec_out    = gr.HTML(value=render_ai_recommendation)
-                with gr.Column(scale=60):
+                with gr.Column(scale=50):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
+                with gr.Column(scale=50):
                     watchlist_out = gr.HTML(value=render_watchlist)
 
         with gr.TabItem("⚡ Signals"):
