@@ -1,10 +1,10 @@
 {
   "version": [
     1,
-    0,
-    9
+    1,
+    0
   ],
-  "last_updated": "2026-06-13 19:50:00",
+  "last_updated": "2026-06-13 20:30:00",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -166,6 +166,20 @@
       "spec": "SPEC 37",
       "last_updated": "2026-06-13",
       "notes": "render_position_sizing_panel() \u2014 current\u2192target weight with dual-bar visualisation, delta $+shares. Portfolio tab. Replaces render_position_sizing()."
+    },
+    {
+      "name": "Design System v1.0",
+      "status": "complete",
+      "spec": "SPEC 40",
+      "last_updated": "2026-06-13",
+      "notes": "Permanent design system: 4 font sizes (36/20/15/11px), 3 text colors, 7 action colors with bg fills, 13 component helpers (_card/_label/_hero_value/_section_title/_action_badge/_symbol/_confidence_bar/_metric_row/_progress_bar/_divider/_empty_state/_action_row/_table), mobile CSS (390px), GROUP 7 compliance test (0 FAIL). docs/DESIGN_SYSTEM.md is single source of truth."
+    },
+    {
+      "name": "Positions Table Redesign",
+      "status": "complete",
+      "spec": "SPEC 41",
+      "last_updated": "2026-06-13",
+      "notes": "render_positions() columns changed to Symbol|Action|Weight|Target|Confidence|P&L. Removed: Shares, Invested, Current Value, Cost Basis. Action from recommendation engine. Visual hierarchy by urgency (EXIT/SELL red row, TRIM amber, BUY green, HOLD dimmed)."
     },
     {
       "name": "Rebalance Suggestions",

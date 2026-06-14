@@ -38,34 +38,93 @@ DB_PATH    = "trades.db"
 HF_TOKEN   = os.getenv("HF_TOKEN",   "")
 HF_REPO_ID = os.getenv("HF_DB_REPO_ID", os.getenv("HF_REPO_ID", "ksri77/ai-trading-bot-db"))
 
-# ── Design tokens — Robinhood-inspired palette ────────────────────────────────
-BG        = "#0e0e0e"   # true near-black (Robinhood app background)
-SURFACE   = "#1b1b1b"   # elevated surface
-SURFACE2  = "#252525"   # hover state
-BORDER    = "#2a2a2a"   # very subtle separator
-PRIMARY   = "#00c805"   # Robinhood signature green
-GAIN      = "#00c805"   # profit green
-LOSS      = "#ff5000"   # Robinhood loss red-orange
-NEURAL    = "#9d4edd"   # regime purple (kept)
-TEXT1     = "#ffffff"
-TEXT2     = "#a0a0a0"
-PRIMARY_BG = "#001602"
-GAIN_BG    = "#001602"
-LOSS_BG    = "#1e0800"
-NEURAL_BG  = "#14003a"
+# ══════════════════════════════════════════════════
+# TRADEGENIUS DESIGN SYSTEM v1.0
+# Bloomberg clarity + Robinhood simplicity + Apple spacing
+# DO NOT change these values without updating
+# docs/DESIGN_SYSTEM.md first.
+# ══════════════════════════════════════════════════
+
+# ── Backgrounds ───────────────────────────────────
+BG       = "#0f1115"   # page background — not pure black
+SURFACE  = "#171a21"   # card background
+SURFACE2 = "#222733"   # elevated surface / hover
+BORDER   = "#2d3445"   # card borders and dividers
+
+# ── Text — exactly 3 levels, no more ─────────────
+TEXT1 = "#ffffff"   # primary — all values, numbers, amounts
+TEXT2 = "#b0b7c3"   # secondary — labels, captions, timestamps
+TEXT3 = "#7f8896"   # tertiary — helper text, placeholders only
+
+# ── Action Colors — consistent everywhere ─────────
+ACTION_BUY   = "#00c853"   # green
+ACTION_SELL  = "#ff5252"   # red
+ACTION_TRIM  = "#ffb300"   # amber
+ACTION_HOLD  = "#64b5f6"   # blue
+ACTION_WATCH = "#ab47bc"   # purple
+ACTION_ADD   = "#00c853"   # same as BUY
+ACTION_EXIT  = "#ff5252"   # same as SELL
+
+# Action background fills (dark tinted versions)
+ACTION_BUY_BG   = "#00200d"
+ACTION_SELL_BG  = "#200808"
+ACTION_TRIM_BG  = "#1f1500"
+ACTION_HOLD_BG  = "#081428"
+ACTION_WATCH_BG = "#150820"
+ACTION_ADD_BG   = "#00200d"
+ACTION_EXIT_BG  = "#200808"
+
+# ── Aliases for backward compatibility ────────────
+PRIMARY    = ACTION_BUY
+GAIN       = ACTION_BUY
+LOSS       = ACTION_SELL
+NEURAL     = ACTION_WATCH
+PRIMARY_BG = ACTION_BUY_BG
+GAIN_BG    = ACTION_BUY_BG
+LOSS_BG    = ACTION_SELL_BG
+NEURAL_BG  = ACTION_WATCH_BG
 GAIN_BD    = "#00a005"
 LOSS_BD    = "#cc3d00"
-NEURAL_BD  = "#7b2fc9"
+NEURAL_BD  = "#8b3aaa"
+
+# ── Typography — exactly 4 sizes, no more ─────────
+FONT_HERO    = "36px"   # portfolio value, health score
+FONT_SECTION = "20px"   # card titles
+FONT_VALUE   = "15px"   # data values, prices, percentages
+FONT_LABEL   = "11px"   # labels, captions (uppercase only)
+
+# Font weights
+WEIGHT_BOLD   = "700"
+WEIGHT_MEDIUM = "500"
+WEIGHT_NORMAL = "400"
+
+# ── Spacing ───────────────────────────────────────
+CARD_PADDING = "20px"
+CARD_RADIUS  = "12px"
+ROW_PADDING  = "12px 0"
+SECTION_GAP  = "16px"
+INNER_GAP    = "8px"
+
+# ── Symbol styling ────────────────────────────────
+SYMBOL_STYLE = (
+    "font-family:Courier New,monospace;"
+    f"font-weight:{WEIGHT_BOLD};"
+    "letter-spacing:0.5px;"
+    f"color:{ACTION_BUY};"
+    f"font-size:{FONT_VALUE};"
+)
 
 # Plotly shared theme
 PLOTLY_LAYOUT = dict(
     paper_bgcolor=BG,
     plot_bgcolor=SURFACE,
-    font=dict(color=TEXT2, family="Inter, monospace", size=11),
+    font=dict(color=TEXT2, family="Inter,system-ui,sans-serif", size=11),
     margin=dict(l=50, r=20, t=40, b=50),
     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=BORDER, font=dict(color=TEXT2)),
-    xaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
-    yaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
+    xaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER,
+               tickfont=dict(size=11)),
+    yaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER,
+               tickfont=dict(size=11)),
 )
 
 # ── Gradio CSS: dark page + strip Gradio chrome ───────────────────────────────
@@ -119,6 +178,33 @@ footer {{ display: none !important; }}
 .perf-tabs label:has(input:checked) {{
   color:{PRIMARY} !important; border-color:{PRIMARY} !important;
   background:{BG} !important;
+}}
+
+/* ── Mobile: 390px support ───────────────────────────────────────────────── */
+@media (max-width: 480px) {{
+  .nt-wrap {{ padding: 8px !important; }}
+  .nt-cards {{ grid-template-columns: 1fr 1fr !important; }}
+  .nt-ai-split {{ flex-direction: column !important; gap: 16px !important; }}
+  table {{ font-size: 13px !important; }}
+  table td, table th {{ padding: 8px !important; }}
+}}
+
+/* ── All tables: prevent overflow ────────────────────────────────────────── */
+.nt-wrap table {{ width: 100%; table-layout: fixed; }}
+
+/* ── Long text: truncate not overflow ────────────────────────────────────── */
+.nt-wrap td {{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}}
+
+/* ── Cards: full width on small screens ──────────────────────────────────── */
+.nt-cards {{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
 }}
 """
 
@@ -513,69 +599,246 @@ def _market_status() -> tuple[str, str]:
 def _pnl_color(v: str) -> str:
     return GAIN if v.startswith("+") else (LOSS if v.startswith("-") else TEXT2)
 
+# ══════════════════════════════════════════════════
+# DESIGN SYSTEM COMPONENT HELPERS
+# Every render function uses ONLY these. No inline
+# styles for badges, symbols, cards, labels, bars.
+# ══════════════════════════════════════════════════
+
+def _card(content: str, accent_color: str = None,
+          padding: str = CARD_PADDING) -> str:
+    """Standard card container. accent_color adds 3px top border."""
+    accent = f"border-top:3px solid {accent_color};" if accent_color else ""
+    return (
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};{accent}'
+        f'border-radius:{CARD_RADIUS};padding:{padding};margin-bottom:{SECTION_GAP};">'
+        f'{content}</div>'
+    )
+
+def _label(text: str) -> str:
+    """Uppercase small label. Max 3 words. Always uppercase."""
+    return (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:1px;font-weight:{WEIGHT_MEDIUM};margin-bottom:4px;">{text}</div>'
+    )
+
+def _hero_value(value: str, color: str = TEXT1, subtext: str = "") -> str:
+    """Large hero number — portfolio value, health score."""
+    sub = (f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;">'
+           f'{subtext}</div>' if subtext else "")
+    return (
+        f'<div style="font-size:{FONT_HERO};font-weight:{WEIGHT_BOLD};color:{color};'
+        f'line-height:1;letter-spacing:-1px;">{value}</div>{sub}'
+    )
+
+def _section_title(title: str, note: str = "") -> str:
+    """Card section heading. Max 4 words."""
+    note_html = (
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT3};font-weight:{WEIGHT_NORMAL};'
+        f'margin-left:8px;">{note}</span>' if note else ""
+    )
+    return (
+        f'<div style="font-size:{FONT_SECTION};font-weight:{WEIGHT_BOLD};color:{TEXT1};'
+        f'margin-bottom:16px;">{title}{note_html}</div>'
+    )
+
+def _action_badge(action: str, size: str = "normal") -> str:
+    """Colored action badge. Single source of truth. Colors FIXED — never override."""
+    action = action.upper()
+    _colors = {
+        "BUY":   (ACTION_BUY,   ACTION_BUY_BG),
+        "ADD":   (ACTION_ADD,   ACTION_ADD_BG),
+        "HOLD":  (ACTION_HOLD,  ACTION_HOLD_BG),
+        "TRIM":  (ACTION_TRIM,  ACTION_TRIM_BG),
+        "SELL":  (ACTION_SELL,  ACTION_SELL_BG),
+        "EXIT":  (ACTION_EXIT,  ACTION_EXIT_BG),
+        "WATCH": (ACTION_WATCH, ACTION_WATCH_BG),
+    }
+    color, bg = _colors.get(action, (TEXT2, SURFACE2))
+    _sizes = {
+        "small":  ("9px",  "2px 7px",  "10px"),
+        "normal": ("11px", "4px 10px", "11px"),
+        "large":  ("15px", "8px 20px", "14px"),
+    }
+    ltr, pad, fsize = _sizes.get(size, _sizes["normal"])
+    return (
+        f'<span style="background:{bg};border:1px solid {color};color:{color};'
+        f'padding:{pad};border-radius:6px;font-size:{fsize};font-weight:{WEIGHT_BOLD};'
+        f'letter-spacing:{ltr};white-space:nowrap;display:inline-block;">{action}</span>'
+    )
+
+def _symbol(sym: str, size: str = FONT_VALUE) -> str:
+    """Stock symbol. Always monospace ACTION_BUY green bold."""
+    return f'<span style="{SYMBOL_STYLE}font-size:{size};">{sym}</span>'
+
+def _confidence_bar(pct: float, show_label: bool = True) -> str:
+    """Always show BOTH number and bar. pct: 0.0 to 1.0"""
+    pct_int = int(pct * 100)
+    color = (ACTION_BUY if pct >= 0.75 else
+             ACTION_TRIM if pct >= 0.60 else ACTION_SELL)
+    label = (
+        f'<div style="display:flex;justify-content:space-between;'
+        f'align-items:baseline;margin-bottom:6px;">'
+        f'{_label("Confidence")}'
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};'
+        f'color:{color};">{pct_int}%</span></div>'
+        if show_label else ""
+    )
+    bar = (
+        f'<div style="background:{BORDER};border-radius:4px;height:6px;overflow:hidden;">'
+        f'<div style="background:{color};height:100%;width:{pct_int}%;'
+        f'border-radius:4px;"></div></div>'
+    )
+    return label + bar
+
+def _metric_row(label: str, value: str, value_color: str = TEXT1, note: str = "") -> str:
+    """Single label-value row with optional note."""
+    note_html = (
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT3};margin-left:8px;">'
+        f'{note}</span>' if note else ""
+    )
+    return (
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'padding:{ROW_PADDING};border-bottom:1px solid {BORDER};">'
+        f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">{label}</span>'
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};'
+        f'color:{value_color};">{value}{note_html}</span></div>'
+    )
+
+def _progress_bar(label: str, score: int, max_score: int,
+                  color: str = ACTION_BUY) -> str:
+    """Labeled progress bar for health score breakdown."""
+    pct = int(score / max_score * 100) if max_score else 0
+    return (
+        f'<div style="margin:8px 0;">'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:1px;">{label}</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT1};font-weight:{WEIGHT_BOLD};">'
+        f'{score}/{max_score}</span></div>'
+        f'<div style="background:{BORDER};border-radius:4px;height:4px;overflow:hidden;">'
+        f'<div style="background:{color};height:100%;width:{pct}%;border-radius:4px;">'
+        f'</div></div></div>'
+    )
+
+def _divider() -> str:
+    return f'<div style="border-top:1px solid {BORDER};margin:{SECTION_GAP} 0;"></div>'
+
+def _empty_state(icon: str, title: str, subtitle: str) -> str:
+    return (
+        f'<div style="text-align:center;padding:48px 24px;">'
+        f'<div style="font-size:32px;margin-bottom:12px;">{icon}</div>'
+        f'<div style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};'
+        f'margin-bottom:8px;">{title}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};line-height:1.8;'
+        f'max-width:260px;margin:0 auto;">{subtitle}</div></div>'
+    )
+
+def _action_row(symbol: str, action: str, reason: str,
+                detail: str = "", number: int = None) -> str:
+    """Single action row with correct visual hierarchy."""
+    action = action.upper()
+    urgent = action in ("EXIT", "SELL")
+    medium = action in ("TRIM", "BUY", "ADD")
+
+    if urgent:
+        row_bg, row_border = ACTION_SELL_BG, f"border-left:3px solid {ACTION_SELL};"
+        row_pad, sym_color, rsn_color, badge_size = "14px 16px 14px 13px", TEXT1, TEXT1, "large"
+    elif medium:
+        c = ACTION_TRIM if action == "TRIM" else ACTION_BUY
+        bg = ACTION_TRIM_BG if action == "TRIM" else ACTION_BUY_BG
+        row_bg, row_border = bg, f"border-left:3px solid {c};"
+        row_pad, sym_color, rsn_color, badge_size = "12px 16px 12px 13px", TEXT1, TEXT2, "large"
+    else:
+        row_bg, row_border = "transparent", f"border-left:3px solid transparent;"
+        row_pad, sym_color, rsn_color, badge_size = "10px 16px", TEXT2, TEXT3, "small"
+
+    num_html = (
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};'
+        f'color:{ACTION_BUY};min-width:20px;margin-right:12px;">{number}</span>'
+        if number else ""
+    )
+    detail_html = (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT3};margin-top:3px;">{detail}</div>'
+        if detail else ""
+    )
+    return (
+        f'<div style="display:flex;align-items:center;gap:12px;padding:{row_pad};'
+        f'background:{row_bg};{row_border}border-bottom:1px solid {BORDER};flex-wrap:wrap;">'
+        f'{num_html}'
+        f'{_symbol(symbol, FONT_VALUE)}'
+        f'{_action_badge(action, badge_size)}'
+        f'<div style="flex:1;min-width:0;">'
+        f'<div style="font-size:{FONT_VALUE};color:{rsn_color};white-space:nowrap;'
+        f'overflow:hidden;text-overflow:ellipsis;">{reason}</div>'
+        f'{detail_html}</div></div>'
+    )
+
+def _table(headers: list, rows: list) -> str:
+    """Standard table. Pass header names and pre-built <tr> row strings."""
+    th_cells = "".join(f'<th {TH}>{h}</th>' for h in headers)
+    return (
+        f'<div style="overflow-x:auto;">'
+        f'<table style="width:100%;border-collapse:collapse;'
+        f'font-family:Inter,system-ui,sans-serif;">'
+        f'<thead><tr>{th_cells}</tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody>'
+        f'</table></div>'
+    )
+
+# ── Backward-compatible shims (existing code continues to work) ───────────────
 def _sym(s: str) -> str:
-    return (f'<span style="display:inline-block;background:{PRIMARY_BG} !important;'
-            f'border:1px solid {BORDER};border-left:3px solid {PRIMARY};border-radius:4px;'
-            f'padding:3px 9px;font-family:Courier New,monospace;font-weight:700;'
-            f'font-size:13px;color:{PRIMARY} !important;letter-spacing:.5px;">{s}</span>')
-
-def _num(v: str, bold=False) -> str:
-    w = "800" if bold else "600"
-    return (f'<span style="font-family:Courier New,monospace;font-weight:{w};'
-            f'font-size:14px;color:{TEXT1} !important;">{v}</span>')
-
-def _pnl(v: str, big=False) -> str:
-    c  = _pnl_color(v)
-    sz = "15px" if big else "13px"; fw = "700"
-    return (f'<span style="font-family:-apple-system,monospace;font-weight:{fw};'
-            f'font-size:{sz};color:{c} !important;">{v}</span>')
+    return _symbol(s)
 
 def _badge(action: str) -> str:
-    if action == "BUY":
-        bg, fg, bd = GAIN_BG, GAIN, GAIN_BD
-    elif action.startswith("SELL"):
-        bg, fg, bd = LOSS_BG, LOSS, LOSS_BD
-    else:
-        bg, fg, bd = NEURAL_BG, NEURAL, NEURAL_BD
-    return (f'<span style="display:inline-block;background:{bg};color:{fg};'
-            f'border:1px solid {bd};padding:2px 10px;border-radius:4px;font-size:11px;'
-            f'font-weight:700;letter-spacing:.3px;font-family:-apple-system,monospace;">{action}</span>')
+    return _action_badge(action)
+
+def _num(v: str, bold=False) -> str:
+    w = WEIGHT_BOLD if bold else "600"
+    return (f'<span style="font-family:Courier New,monospace;font-weight:{w};'
+            f'font-size:{FONT_VALUE};color:{TEXT1} !important;">{v}</span>')
+
+def _pnl(v: str, big=False) -> str:
+    c = _pnl_color(v)
+    sz = FONT_VALUE if big else "13px"
+    return (f'<span style="font-family:-apple-system,monospace;font-weight:{WEIGHT_BOLD};'
+            f'font-size:{sz};color:{c} !important;">{v}</span>')
 
 def _section(icon: str, title: str, note: str = "") -> str:
-    note_html = (f'<span style="font-size:10px;color:{TEXT2} !important;'
-                 f'font-weight:400;letter-spacing:0;margin-left:6px;">{note}</span>'
+    note_html = (f'<span style="font-size:{FONT_LABEL};color:{TEXT2} !important;'
+                 f'font-weight:{WEIGHT_NORMAL};letter-spacing:0;margin-left:6px;">{note}</span>'
                  if note else "")
     return (f'<div class="nt-sec" style="animation:fadeInUp .4s ease both;">'
             f'<span style="font-size:13px;">{icon}</span>'
-            f'<span style="color:{PRIMARY} !important;font-size:11px;font-weight:700;">'
-            f'{title}</span>{note_html}'
+            f'<span style="color:{ACTION_BUY} !important;font-size:{FONT_LABEL};'
+            f'font-weight:{WEIGHT_BOLD};">{title}</span>{note_html}'
             f'<span class="nt-sec-line"></span></div>')
 
 def _wrap(inner: str) -> str:
     return (f'<div style="background:{SURFACE};border:1px solid {BORDER};'
-            f'border-radius:8px;overflow:hidden;">'
-            f'{inner}</div>')
+            f'border-radius:8px;overflow:hidden;">{inner}</div>')
 
-def _card(label: str, value: str, accent: str = PRIMARY,
-          color: str = TEXT1, sub: str = "", delay: float = 0) -> str:
-    sub_html = (f'<div style="font-size:10px;color:{TEXT2};margin-top:2px;">{sub}</div>'
-                if sub else "")
+def _stat_card(label: str, value: str, accent: str = None,
+               color: str = TEXT1, sub: str = "", delay: float = 0) -> str:
+    sub_html = (f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:2px;">'
+                f'{sub}</div>' if sub else "")
     return (
         f'<div class="nt-card" style="animation-delay:{delay:.2f}s;">'
-        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
-        f'letter-spacing:.8px;font-weight:600;margin-bottom:8px;">{label}</div>'
-        f'<div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;font-weight:{WEIGHT_MEDIUM};margin-bottom:8px;">{label}</div>'
+        f'<div style="font-size:22px;font-weight:{WEIGHT_BOLD};letter-spacing:-0.3px;'
         f'color:{color};line-height:1;">{value}</div>'
         f'{sub_html}</div>'
     )
 
-TH  = (f'style="background:{BG};color:{TEXT2};font-size:10px;font-weight:600;'
-       f'text-transform:uppercase;letter-spacing:.8px;padding:10px 16px;'
-       f'border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;"')
-TD  = (f'style="padding:12px 16px;border-bottom:1px solid {BORDER};'
-       f'vertical-align:middle;background:{SURFACE};color:{TEXT1};"')
-TD0 = (f'style="padding:12px 16px;vertical-align:middle;'
-       f'background:{SURFACE};color:{TEXT1};"')
+# ── Table cell style strings ──────────────────────────────────────────────────
+TH  = (f'style="background:{BG};color:{TEXT2};font-size:{FONT_LABEL};'
+       f'font-weight:{WEIGHT_MEDIUM};text-transform:uppercase;letter-spacing:1px;'
+       f'padding:10px 14px;border-bottom:1px solid {BORDER};white-space:nowrap;"')
+TD  = (f'style="font-size:{FONT_VALUE};color:{TEXT1};padding:12px 14px;'
+       f'border-bottom:1px solid {BORDER};white-space:nowrap;"')
+TD0 = (f'style="font-size:{FONT_VALUE};color:{TEXT1};padding:12px 14px;'
+       f'white-space:nowrap;"')
 
 # ── Render: metrics ───────────────────────────────────────────────────────────
 def render_metrics() -> str:
@@ -655,28 +918,28 @@ def render_metrics() -> str:
 
     row1 = (
         f'<div class="nt-cards">'
-        + _card("Unrealized P&amp;L",  pnl_str,                pnl_color, pnl_color,
+        + _stat_card("Unrealized P&amp;L",  pnl_str,                pnl_color, pnl_color,
                 "Open trade gain/loss vs. cost basis",         0.00)
-        + _card("Total Invested",      invested_str,            TEXT2,     TEXT1,
+        + _stat_card("Total Invested",      invested_str,            TEXT2,     TEXT1,
                 "Capital currently deployed in open trades",   0.06)
-        + _card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,
+        + _stat_card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,
                 "AI-detected trend — drives position sizing",  0.12)
-        + _card("Market Session",      mkt_label,               TEXT2,     mkt_color,
+        + _stat_card("Market Session",      mkt_label,               TEXT2,     mkt_color,
                 "NYSE/NASDAQ open 9:30am–4pm ET, Mon–Fri",    0.18)
         + f'</div>'
     )
 
     row2 = (
         f'<div class="nt-cards">'
-        + _card("Open Positions", str(open_count),
+        + _stat_card("Open Positions", str(open_count),
                 TEXT2, TEXT1,
                 f"Unique stocks held now (max 8 allowed)", 0.24)
-        + _card("Win Rate",       wr_str,
+        + _stat_card("Win Rate",       wr_str,
                 TEXT2, wr_color,
                 f"% of closed trades that made money · {win_count}/{sell_count}", 0.30)
-        + _card("Total Trades",   str(d["total_trades"]),
+        + _stat_card("Total Trades",   str(d["total_trades"]),
                 TEXT2, TEXT1, "All BUY + SELL orders since launch", 0.36)
-        + _card("Buys / Sells",   f"{d['buy_count']} / {d['sell_count']}",
+        + _stat_card("Buys / Sells",   f"{d['buy_count']} / {d['sell_count']}",
                 TEXT2, TEXT1, "Entry orders vs. exit orders placed", 0.42)
         + f'</div>'
     )
@@ -932,179 +1195,104 @@ def _sparkline(symbol: str) -> str:
 
 # ── Render: positions table ───────────────────────────────────────────────────
 def render_positions() -> str:
+    """Columns: Symbol | Action | Weight | Target | Confidence | P&L"""
     d         = get_data()
-    open_syms = d["open_pos"]
-    prices    = d["prices"]
+    open_syms = d.get("open_pos", {})
+    prices    = d.get("prices", {})
 
     if not open_syms:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
-                 f'No open positions right now. The bot will enter trades during market hours '
-                 f'(9:30am–4pm ET, Mon–Fri) when its signals align.</div>')
-        return (f'<div class="nt nt-wrap">'
-                f'{_section("📊","Open Positions","mark-to-market · price updated every 60s")}'
-                f'{_wrap(empty)}</div>')
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("📊","Open Positions","no positions held")}'
+            + _card(_empty_state("📊", "No open positions",
+                                 "The bot enters trades during market hours "
+                                 "(9:30am–4pm ET, Mon–Fri) when signals align."))
+            + f'</div>'
+        )
 
-    _AMBER = "#f59e0b"
-
-    # Portfolio value as float (needed for position-size %)
     _pv = 0.0
     try:
-        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "—") != "—" else 0.0
     except Exception:
         pass
 
-    # Batch-fetch latest ensemble_score + earliest BUY date per open symbol
-    _ens: dict[str, float] = {}
-    _buy_dates: dict[str, str] = {}
-    if os.path.exists(DB_PATH):
-        try:
-            sym_list = list(open_syms.keys())
-            ph  = ",".join("?" * len(sym_list))
-            con = sqlite3.connect(DB_PATH)
-            for _r in con.execute(
-                f"SELECT t.symbol, COALESCE(t.ensemble_score, 0.0) "
-                f"FROM trades t "
-                f"INNER JOIN (SELECT symbol, MAX(id) AS mid FROM trades "
-                f"            WHERE symbol IN ({ph}) GROUP BY symbol) m "
-                f"ON t.id = m.mid",
-                sym_list,
-            ).fetchall():
-                _ens[_r[0]] = float(_r[1])
-            for _r in con.execute(
-                f"SELECT symbol, MIN(timestamp) FROM trades "
-                f"WHERE symbol IN ({ph}) AND action = 'BUY' GROUP BY symbol",
-                sym_list,
-            ).fetchall():
-                _buy_dates[_r[0]] = str(_r[1])
-            con.close()
-        except Exception as _exc:
-            logger.warning(f"render_positions ens/buy_date fetch: {_exc}")
-
-    # Pre-fetch yfinance history and compute perf dicts for all open symbols
-    _perfs: dict[str, dict] = {}
-    for _s in list(open_syms.keys()):
-        _perfs[_s] = _sym_perf(_get_sym_hist(_s), _buy_dates.get(_s))
-
-    def _ai_action(sym: str, pnl_pct: float, pos_pct: float):
-        ens = _ens.get(sym, 1.0)  # default confident if not yet in DB
-
-        # ── 4-component scoring ────────────────────────────────────────────────
-        size_pts   = 30 if pos_pct > 25 else (20 if pos_pct > 15 else (10 if pos_pct > 10 else 0))
-        profit_pts = (30 if pnl_pct > 50 else (20 if pnl_pct > 25 else (10 if pnl_pct > 10 else 0))
-                      ) if pnl_pct > 0 else 0
-        conf_pts   = 25 if ens < 0.55 else (15 if ens < 0.65 else 0)
-        dd_pts     = (15 if pnl_pct < -8 else (10 if pnl_pct < -5 else 0)) if pnl_pct < 0 else 0
-        total      = size_pts + profit_pts + conf_pts + dd_pts
-
-        # ── Top reasons ────────────────────────────────────────────────────────
-        scored: list[tuple[int, str]] = []
-        if size_pts:   scored.append((size_pts,   "Position oversized"))
-        if profit_pts:
-            lbl = ("Profit > 50%" if pnl_pct > 50 else
-                   "Profit > 25%" if pnl_pct > 25 else "Profit > 10%")
-            scored.append((profit_pts, lbl))
-        if conf_pts:   scored.append((conf_pts,   "AI confidence weakening"))
-        if dd_pts:     scored.append((dd_pts,     "Drawdown risk"))
-        scored.sort(key=lambda x: -x[0])
-        reason = " · ".join(r for _, r in scored[:2]) if scored else "All metrics healthy"
-
-        # ── Badge ──────────────────────────────────────────────────────────────
-        if total <= 30:   label, bc, bbg = "HOLD",  GAIN,   "#0a2010"
-        elif total <= 59: label, bc, bbg = "WATCH", NEURAL, "#1a1030"
-        elif total <= 79: label, bc, bbg = "TRIM",  _AMBER, "#2a1f08"
-        else:             label, bc, bbg = "EXIT",  LOSS,   "#2a0a0a"
-
-        return total, label, bc, bbg, reason
-
-    _td_perf = (f'style="padding:12px 10px 4px;vertical-align:middle;'
-                f'background:{SURFACE};text-align:right;"')
-
-    def _perf_cell(val) -> str:
-        if val is None:
-            return f'<td {_td_perf}><span style="color:{TEXT2} !important;">—</span></td>'
-        clr  = GAIN if val >= 0 else LOSS
-        sign = "+" if val >= 0 else ""
-        return (f'<td {_td_perf}>'
-                f'<span style="color:{clr} !important;font-weight:700;">'
-                f'{sign}{val:.1f}%</span></td>')
-
-    rows  = ""
+    row_htmls = []
     items = list(open_syms.items())
-    last  = len(items) - 1
-
+    n = len(items)
     for i, (sym, v) in enumerate(items):
         cur_price = prices.get(sym, 0.0)
-        cur_val   = v["shares"] * cur_price
+        cur_val   = v["shares"] * cur_price if cur_price > 0 else v["invested"]
         invested  = v["invested"]
-        pnl       = cur_val - invested
-        pnl_pct   = (pnl / invested * 100) if invested > 0 else 0.0
-        pos_pct   = (cur_val / _pv * 100)   if _pv > 0      else 0.0
-        cv_str    = f"${cur_val:.2f}"   if cur_price else "—"
-        p_str     = f"${pnl:+.2f}"     if cur_price else "—"
-        pct_str   = f"{pnl_pct:+.2f}%" if cur_price else "—"
+        pnl_pct   = ((cur_val - invested) / invested * 100) if invested > 0 else 0.0
+        pos_pct   = (cur_val / _pv * 100) if _pv > 0 else 0.0
 
-        score, label, bc, bbg, reason = _ai_action(sym, pnl_pct, pos_pct)
+        # Use recommendation engine (single source of truth)
+        pa  = get_portfolio_action(sym, d)
+        sz  = get_position_sizing(sym, d)
+        action  = pa.get("action", "HOLD")
+        conf    = pa.get("confidence", 0) / 100.0
+        tgt_w   = sz.get("target_weight", 0.0)
+        reason  = pa.get("reason", "—")
 
-        badge = (
-            f'<span style="display:inline-block;background:{bbg};border:1px solid {bc};'
-            f'color:{bc};font-size:10px;font-weight:700;letter-spacing:.5px;'
-            f'padding:2px 8px;border-radius:4px;white-space:nowrap;">'
-            f'{label} ({score})</span>'
+        # P&L color
+        pnl_c   = ACTION_BUY if pnl_pct >= 0 else ACTION_SELL
+        pnl_str = f"{pnl_pct:+.1f}%"
+
+        # Confidence bar (compact, no label)
+        conf_int = int(conf * 100)
+        conf_c   = (ACTION_BUY if conf >= 0.75 else
+                    ACTION_TRIM if conf >= 0.60 else ACTION_SELL)
+        conf_html = (
+            f'<div style="display:flex;align-items:center;gap:6px;">'
+            f'<div style="background:{BORDER};border-radius:3px;height:5px;width:50px;">'
+            f'<div style="background:{conf_c};height:100%;width:{conf_int}%;border-radius:3px;">'
+            f'</div></div>'
+            f'<span style="font-size:{FONT_LABEL};font-weight:{WEIGHT_BOLD};color:{conf_c};">'
+            f'{conf_int}%</span></div>'
         )
-        anim    = f'style="animation:slideInRow .35s ease both;animation-delay:{i*0.07:.2f}s;"'
-        td_main = (f'style="padding:12px 16px 4px;vertical-align:middle;'
-                   f'background:{SURFACE};color:{TEXT1};"')
-        sub_sep = f'border-bottom:1px solid {BORDER};' if i < last else ''
-        td_sub  = (f'style="padding:2px 16px 10px;background:{SURFACE};'
-                   f'{sub_sep}color:{TEXT2};font-size:11px;"')
 
-        pf         = _perfs.get(sym, {})
-        perf_cells = "".join([
-            _perf_cell(pf.get("1D")),
-            _perf_cell(pf.get("1W")),
-            _perf_cell(pf.get("1M")),
-            _perf_cell(pf.get("1Y")),
-            _perf_cell(pf.get("All")),
-        ])
+        # Row background from action hierarchy
+        _urgent = action in ("EXIT", "SELL")
+        _medium = action in ("TRIM", "BUY", "ADD")
+        if _urgent:
+            row_bg  = f'background:{ACTION_SELL_BG};border-left:3px solid {ACTION_SELL};'
+        elif _medium:
+            _c = ACTION_TRIM if action == "TRIM" else ACTION_BUY
+            _b = ACTION_TRIM_BG if action == "TRIM" else ACTION_BUY_BG
+            row_bg  = f'background:{_b};border-left:3px solid {_c};'
+        else:
+            row_bg  = ""
 
-        _td_spark = (f'style="padding:8px 12px 4px;vertical-align:middle;'
-                     f'background:{SURFACE};"')
-        rows += (
-            f'<tr {anim}>'
-            f'<td {td_main}>{_sym(sym)}</td>'
-            f'<td {_td_spark}>{_sparkline(sym)}</td>'
-            f'<td {td_main}>{_num(str(round(v["shares"], 4)))}</td>'
-            f'<td {td_main}>{_num(f"${invested:.2f}", bold=True)}</td>'
-            f'<td {td_main}>{_num(cv_str, bold=True)}</td>'
-            f'<td {td_main}>{_pnl(p_str)}</td>'
-            f'<td {td_main}>{_pnl(pct_str, big=True)}</td>'
-            f'{perf_cells}'
-            f'<td {td_main}>{badge}</td>'
+        badge_size = "large" if _urgent else ("large" if action in ("TRIM", "BUY") else
+                     "normal" if action in ("ADD", "WATCH") else "small")
+        td  = TD  if i < n - 1 else TD0
+        sym_c = TEXT1 if (_urgent or _medium) else TEXT2
+
+        row_htmls.append(
+            f'<tr style="{row_bg}">'
+            f'<td {td}>{_symbol(sym)}</td>'
+            f'<td {td}>{_action_badge(action, badge_size)}</td>'
+            f'<td {td}><span style="font-size:{FONT_VALUE};color:{TEXT1};">'
+            f'{pos_pct:.1f}%</span></td>'
+            f'<td {td}><span style="font-size:{FONT_VALUE};color:{TEXT2};">'
+            f'{tgt_w:.1f}%</span></td>'
+            f'<td {td}>{conf_html}</td>'
+            f'<td {td}><span style="font-weight:{WEIGHT_BOLD};color:{pnl_c};">'
+            f'{pnl_str}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT3};">'
+            f'{reason[:50]}{"…" if len(reason) > 50 else ""}</span></td>'
             f'</tr>'
-            f'<tr><td colspan="13" {td_sub}>{reason}</td></tr>'
         )
 
-    _th_perf = f'style="padding:10px 10px;text-align:right;font-size:10px;font-weight:700;letter-spacing:.5px;color:{TEXT2};text-transform:uppercase;white-space:nowrap;"'
-    table = _wrap(
-        f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th>'
-        f'<th style="padding:10px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;color:{TEXT2};text-transform:uppercase;">30D Trend</th>'
-        f'<th {TH}>Shares  <span style="font-weight:400;text-transform:none;letter-spacing:0;">held</span></th>'
-        f'<th {TH}>Invested  <span style="font-weight:400;text-transform:none;letter-spacing:0;">cost basis</span></th>'
-        f'<th {TH}>Current Value  <span style="font-weight:400;text-transform:none;letter-spacing:0;">live price</span></th>'
-        f'<th {TH}>P&amp;L $  <span style="font-weight:400;text-transform:none;letter-spacing:0;">unrealised</span></th>'
-        f'<th {TH}>P&amp;L %</th>'
-        f'<th {_th_perf}>1D</th>'
-        f'<th {_th_perf}>1W</th>'
-        f'<th {_th_perf}>1M</th>'
-        f'<th {_th_perf}>1Y</th>'
-        f'<th {_th_perf}>All Time</th>'
-        f'<th {TH}>AI Action</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table>'
+    note = f"{n} position{'s' if n != 1 else ''} · live price · 60s refresh"
+    table = _table(
+        ["Symbol", "Action", "Weight", "Target", "Confidence", "P&L", "Reason"],
+        row_htmls,
     )
     return (f'<div class="nt nt-wrap">'
-            f'{_section("📊","Open Positions","mark-to-market · price updated every 60s")}'
-            f'{table}</div>')
+            f'{_section("📊","Open Positions",note)}'
+            + _card(table, padding="0")
+            + f'</div>')
 
 
 # ── Render: trades table ──────────────────────────────────────────────────────
@@ -1842,13 +2030,13 @@ def render_market_intelligence() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _card("VIX", f"{vix:.1f}" if vix > 0 else "—",
+        + _stat_card("VIX", f"{vix:.1f}" if vix > 0 else "—",
                 TEXT2, vix_color, f"{vix_label} · <15=calm, >30=fear", 0.00)
-        + _card("Market Regime", regime.replace("_", " ").title(),
+        + _stat_card("Market Regime", regime.replace("_", " ").title(),
                 TEXT2, r_color, "AI-detected trend · drives position size", 0.06)
-        + _card("Signal Strength", f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—",
+        + _stat_card("Signal Strength", f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—",
                 TEXT2, conf_color, "Avg confidence · last 5 buy signals", 0.12)
-        + _card("News Sentiment", sent_label,
+        + _stat_card("News Sentiment", sent_label,
                 TEXT2, sent_color, "FinBERT score · recent headlines", 0.18)
         + f'</div>'
     )
@@ -2035,13 +2223,13 @@ def render_risk_panel() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _card("Portfolio Risk",  overall_risk,       TEXT2, risk_c,
+        + _stat_card("Portfolio Risk",  overall_risk,       TEXT2, risk_c,
                 "VIX + drawdown + concentration", 0.00)
-        + _card("Max Drawdown",    f"{max_dd:.1f}%",   TEXT2, dd_c,
+        + _stat_card("Max Drawdown",    f"{max_dd:.1f}%",   TEXT2, dd_c,
                 "Peak-to-trough all-time",        0.06)
-        + _card("Today's P&L",     f"{daily_pnl:+.2f}%", TEXT2, dl_c,
+        + _stat_card("Today's P&L",     f"{daily_pnl:+.2f}%", TEXT2, dl_c,
                 "Realised from closed trades",    0.12)
-        + _card("Cash Reserve",    f"{cash_pct:.1f}%", TEXT2, ca_c,
+        + _stat_card("Cash Reserve",    f"{cash_pct:.1f}%", TEXT2, ca_c,
                 "Uninvested capital buffer",      0.18)
         + f'</div>'
     )
@@ -2272,14 +2460,14 @@ def render_investor_view() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _card("Win Rate",          f"{wr:.0%}" if n_s > 0 else "—",
+        + _stat_card("Win Rate",          f"{wr:.0%}" if n_s > 0 else "—",
                 TEXT2, GAIN if wr >= 0.55 else (NEURAL if wr >= 0.45 else LOSS),
                 f"AI correct {len(wins)} of {n_s} closed trades", 0.0)
-        + _card("Avg Winning Trade", f"+{avg_w:.1f}%" if avg_w > 0 else "—",
+        + _stat_card("Avg Winning Trade", f"+{avg_w:.1f}%" if avg_w > 0 else "—",
                 TEXT2, GAIN, "Average gain per winning trade", 0.06)
-        + _card("Avg Losing Trade",  f"{avg_l:.1f}%"  if avg_l < 0 else "—",
+        + _stat_card("Avg Losing Trade",  f"{avg_l:.1f}%"  if avg_l < 0 else "—",
                 TEXT2, LOSS, "Average loss per losing trade",  0.12)
-        + _card("Risk / Reward",     f"{rr:.1f}×"     if rr > 0   else "—",
+        + _stat_card("Risk / Reward",     f"{rr:.1f}×"     if rr > 0   else "—",
                 TEXT2, GAIN if rr >= 1.5 else (NEURAL if rr >= 1.0 else LOSS),
                 "Avg win ÷ avg loss — >1.5× is good", 0.18)
         + f'</div>'
