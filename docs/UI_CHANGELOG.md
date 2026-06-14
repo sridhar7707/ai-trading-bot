@@ -1,12 +1,76 @@
 # TradeGenius UI/UX Changelog
 
 Auto-generated. Do not edit manually.
-Last updated: 2026-06-13 20:12:07
-Total changes recorded: 3
-Most changed component: render_symbol_detail
+Last updated: 2026-06-14 12:06:41
+Total changes recorded: 4
+Most changed component: render_todays_actions
 First snapshot: 2026-06-13 19:24:59
-Latest snapshot: 2026-06-13 20:12:07
-Components tracked: 27
+Latest snapshot: 2026-06-14 12:06:41
+Components tracked: 29
+
+---
+
+## [2026-06-14 12:06:41] — 10 components changed
+
+### render_trades — MODIFIED
+- Size: -54 chars (shrank slightly)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_watchlist — MODIFIED
+- Size: -67 chars (shrank slightly)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_todays_actions — MODIFIED
+- Size: -88 chars (shrank slightly)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_portfolio_actions — MODIFIED
+- Size: -276 chars (shrank)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_position_sizing — MODIFIED
+- Size: -36 chars (shrank slightly)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_ai_committee — MODIFIED
+- Size: -101 chars (shrank)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_sell_analysis — MODIFIED
+- Size: -582 chars (shrank)
+- No section changes
+- No colors added
+- Colors removed: #0a2010, #1a1030, #2a0a0a, #2a1f08, #f59e0b
+
+### render_position_sizing_panel — MODIFIED
+- Size: -93 chars (shrank slightly)
+- No section changes
+- No colors added
+- No colors removed
+
+### render_decision_center — ADDED
+- New component (did not exist before)
+- Size: 4,553 chars
+- Sections found: 'Decision Center'
+- Badges: BUY, EXIT, HOLD, SELL, TRIM, WATCH
+
+### render_rebalance — ADDED
+- New component (did not exist before)
+- Size: 4,531 chars
+- Sections found: 'Rebalance'
+- Badges: HOLD, TRIM
 
 ---
 

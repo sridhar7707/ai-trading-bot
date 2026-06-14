@@ -775,7 +775,7 @@ def _action_row(symbol: str, action: str, reason: str,
         row_pad, sym_color, rsn_color, badge_size = "12px 16px 12px 13px", TEXT1, TEXT2, "large"
     else:
         row_bg, row_border = "transparent", f"border-left:3px solid transparent;"
-        row_pad, sym_color, rsn_color, badge_size = "10px 16px", TEXT2, TEXT3, "small"
+        row_pad, sym_color, rsn_color, badge_size = "10px 16px", TEXT1, TEXT2, "small"
 
     num_html = (
         f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};'
@@ -1326,9 +1326,7 @@ def render_trades() -> str:
     total_trades  = d["total_trades"]
 
     if not raw:
-        empty = (f'<div style="color:{TEXT2} !important;text-align:center;'
-                 f'padding:40px;font-size:14px;">No trades yet.</div>')
-        return f'<div class="nt nt-wrap">{_section("⚡","Recent Trades")}{_wrap(empty)}</div>'
+        return f'<div class="nt nt-wrap">{_section("⚡","Recent Trades")}{_card(_empty_state("⚡", "No trades yet", "The bot logs trades here as they execute during market hours."))}</div>'
 
     shown = len(raw)
     note  = f"last {shown} of {total_trades}" if total_trades > shown else f"{shown} total"
@@ -2074,11 +2072,9 @@ def render_watchlist() -> str:
     prices   = d["prices"]
 
     if not open_pos:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
-                 f'No open positions — bot is in cash</div>')
         return (f'<div class="nt nt-wrap">'
                 f'{_section("👁","Watchlist","open positions · vs avg cost")}'
-                f'{_wrap(empty)}</div>')
+                f'{_card(_empty_state("💰", "Fully in cash", "Bot enters trades during market hours when signals align."))}</div>')
 
     rows  = ""
     items = list(open_pos.items())[:8]
@@ -3125,11 +3121,7 @@ def render_todays_actions() -> str:
     open_pos = d.get("open_pos", {})
 
     if not open_pos:
-        empty = (
-            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
-            f'No open positions — nothing to act on.</div>'
-        )
-        return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions","What to do right now")}{_wrap(empty)}</div>'
+        return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions","What to do right now")}{_card(_empty_state("💰", "Fully in cash", "Bot enters trades during market hours when signals align."))}</div>'
 
     _ACTION_ORDER = {"EXIT": 0, "SELL": 1, "TRIM": 2, "WATCH": 3, "ADD": 4, "BUY": 5, "HOLD": 6}
     recommendations: list[dict] = []
@@ -3201,7 +3193,7 @@ def render_todays_actions() -> str:
     return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions",note)}{table}</div>'
 
 
-# ── Render: portfolio actions panel ─────────────────────────────────────────────
+# ── Render: portfolio actions — called internally by render_decision_center ───
 def render_portfolio_actions() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -3209,10 +3201,9 @@ def render_portfolio_actions() -> str:
     df       = d["trades_df"]
 
     if not open_pos:
-        empty = f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">No open positions.</div>'
         return (f'<div class="nt nt-wrap">'
                 f'{_section("🎯","Portfolio Actions","AI recommendation per position")}'
-                f'{_wrap(empty)}</div>')
+                f'{_card(_empty_state("💰", "Fully in cash", "Bot enters trades during market hours when signals align."))}</div>')
 
     _pv = 0.0
     try:
@@ -3263,15 +3254,10 @@ def render_portfolio_actions() -> str:
         pnl_c   = GAIN if pnl_pct >= 0 else LOSS
         ens_c   = GAIN if ens >= 0.75 else (NEURAL if ens >= 0.60 else TEXT2)
         ens_str = f"{ens*100:.0f}%" if ens > 0 else "—"
-        badge   = (
-            f'<span style="display:inline-block;background:{bbg};border:1px solid {bc};'
-            f'color:{bc};font-size:10px;font-weight:700;letter-spacing:.5px;'
-            f'padding:2px 8px;border-radius:4px;">{label}</span>'
-        )
         td = TD if i < len(items) - 1 else TD0
         rows += (
             f'<tr><td {td}>{_sym(sym)}</td>'
-            f'<td {td}>{badge}</td>'
+            f'<td {td}>{_action_badge(label)}</td>'
             f'<td {td}><span style="font-weight:700;color:{ens_c};">{ens_str}</span></td>'
             f'<td {td}><span style="font-weight:700;color:{pnl_c};">{pnl_pct:+.1f}%</span></td>'
             f'<td {td}><span style="font-size:11px;color:{TEXT2};">{reason}</span></td>'
@@ -3297,10 +3283,9 @@ def render_position_sizing() -> str:
     df       = d["trades_df"]
 
     if not open_pos:
-        empty = f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">No open positions to size.</div>'
         return (f'<div class="nt nt-wrap">'
                 f'{_section("📐","Position Sizing","conviction-based target allocation")}'
-                f'{_wrap(empty)}</div>')
+                f'{_card(_empty_state("💰", "Fully in cash", "Bot enters trades during market hours when signals align."))}</div>')
 
     _pv = 0.0
     try:
@@ -3371,11 +3356,9 @@ def render_ai_committee() -> str:
     df       = d["trades_df"]
 
     if not open_pos:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
-                 f'No open positions — committee convenes when positions exist.</div>')
         return (f'<div class="nt nt-wrap">'
                 f'{_section("🏛","AI Committee","XGBoost · LSTM · Sentiment votes")}'
-                f'{_wrap(empty)}</div>')
+                f'{_card(_empty_state("🏛", "Fully in cash", "Committee convenes once the bot enters positions."))}</div>')
 
     # Extract latest BUY scores per symbol from trades_df
     _votes: dict[str, dict] = {}
@@ -3436,32 +3419,21 @@ def render_ai_committee() -> str:
         )
 
     if not rows_html:
-        rows_html = f'<div style="color:{TEXT2};font-size:12px;padding:14px;">No positions to show.</div>'
+        rows_html = _empty_state("🏛", "No positions", "Committee convenes once the bot enters positions.")
 
     return (f'<div class="nt nt-wrap">'
             f'{_section("🏛","AI Committee","3-model vote per open position")}'
             f'{_wrap(rows_html)}</div>')
 
 
-# ── PANEL 3: Sell Analysis — when should I sell? ─────────────────────────────
+# ── PANEL 3: Sell Analysis — called internally by render_decision_center ──────
 def render_sell_analysis() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
 
     if not open_pos:
-        empty = (
-            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
-            f'No open positions to analyse.</div>'
-        )
-        return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis","When should I sell?")}{_wrap(empty)}</div>'
+        return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis","When should I sell?")}{_card(_empty_state("💰", "Fully in cash", "Sell analysis runs once the bot holds positions."))}</div>'
 
-    _REC_COLOR = {
-        "HOLD":  (GAIN,      "#0a2010"),
-        "WATCH": (NEURAL,    "#1a1030"),
-        "TRIM":  ("#f59e0b", "#2a1f08"),
-        "SELL":  (LOSS,      "#2a0a0a"),
-        "EXIT":  (LOSS,      "#2a0a0a"),
-    }
     _REC_ORDER = {"EXIT": 0, "SELL": 1, "TRIM": 2, "WATCH": 3, "HOLD": 4}
 
     analyses = []
@@ -3484,13 +3456,7 @@ def render_sell_analysis() -> str:
         reasons_hold = sa.get("reasons_to_hold", [])
         trim_pct = sa.get("trim_amount_pct", 0)
 
-        txt_c, bg_c = _REC_COLOR.get(rec, (TEXT2, SURFACE2))
         td = TD if i < n - 1 else TD0
-
-        badge_html = (
-            f'<span style="display:inline-block;padding:2px 8px;border-radius:3px;'
-            f'background:{bg_c};color:{txt_c};font-size:10px;font-weight:700;">{rec}</span>'
-        )
         bar_c = LOSS if score > 65 else (NEURAL if score > 35 else GAIN)
         bar_html = (
             f'<div style="display:inline-flex;align-items:center;gap:6px;">'
@@ -3510,7 +3476,7 @@ def render_sell_analysis() -> str:
         rows += (
             f'<tr>'
             f'<td {td}>{_sym(sym)}</td>'
-            f'<td {td}>{badge_html}</td>'
+            f'<td {td}>{_action_badge(rec)}</td>'
             f'<td {td}>{bar_html}</td>'
             f'<td {td}><span style="color:{unreal_c};font-weight:700;">{unreal_str}</span></td>'
             f'<td {td}><span style="font-size:10px;color:{TEXT2};">{pw:.0f}%</span></td>'
@@ -3530,17 +3496,13 @@ def render_sell_analysis() -> str:
     return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis",note)}{table}</div>'
 
 
-# ── PANEL 5: Position Sizing Panel — replaces render_position_sizing ──────────
+# ── PANEL 5: Position Sizing — called internally by render_decision_center ────
 def render_position_sizing_panel() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
 
     if not open_pos:
-        empty = (
-            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
-            f'No open positions — nothing to size.</div>'
-        )
-        return f'<div class="nt nt-wrap">{_section("📐","Position Sizing","Conviction-based target allocations")}{_wrap(empty)}</div>'
+        return f'<div class="nt nt-wrap">{_section("📐","Position Sizing","Conviction-based target allocations")}{_card(_empty_state("💰", "Fully in cash", "Sizing guidance runs once the bot holds positions."))}</div>'
 
     sizings = []
     for sym in open_pos:
@@ -3600,6 +3562,217 @@ def render_position_sizing_panel() -> str:
     return f'<div class="nt nt-wrap">{_section("📐","Position Sizing",note)}{table}</div>'
 
 
+# ── PANEL: Decision Center — what to do with each position ────────────────────
+# NOTE: render_portfolio_actions, render_sell_analysis, render_position_sizing_panel
+#       are consolidated here. They remain functional but are not wired to layout.
+def render_decision_center() -> str:
+    d        = get_data()
+    open_pos = d.get("open_pos", {})
+
+    if not open_pos:
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("🎯","Decision Center","What to do with each position")}'
+                f'{_card(_empty_state("💰", "Fully in cash", "Bot enters trades during market hours when signals align."))}</div>')
+
+    _ORDER = {"EXIT": 0, "SELL": 1, "TRIM": 2, "BUY": 3, "ADD": 4, "WATCH": 5, "HOLD": 6}
+    rows_data: list[dict] = []
+    for sym in open_pos:
+        pa = get_portfolio_action(sym, d)
+        sa = get_sell_analysis(sym, d)
+        sz = get_position_sizing(sym, d)
+        rows_data.append({
+            "symbol":       sym,
+            "action":       pa.get("action", "HOLD"),
+            "sell_score":   sa.get("sell_score", 0),
+            "cur_w":        sz.get("current_weight", 0.0),
+            "tgt_w":        sz.get("target_weight", 0.0),
+            "delta_w":      sz.get("delta_weight", 0.0),
+            "dol_disp":     sz.get("dollar_display", "—"),
+            "reasons_sell": sa.get("reasons_to_sell", []),
+            "reasons_hold": sa.get("reasons_to_hold", []),
+            "pa_reason":    pa.get("reason", ""),
+        })
+    rows_data.sort(key=lambda r: (_ORDER.get(r["action"], 9), -r["sell_score"]))
+
+    n    = len(rows_data)
+    rows = ""
+    for i, r in enumerate(rows_data):
+        sym        = r["symbol"]
+        action     = r["action"]
+        score      = r["sell_score"]
+        cur_w      = r["cur_w"]
+        tgt_w      = r["tgt_w"]
+        delta_w    = r["delta_w"]
+        dol_disp   = r["dol_disp"]
+        reasons_s  = r["reasons_sell"]
+        reasons_h  = r["reasons_hold"]
+        pa_reason  = r["pa_reason"]
+        td = TD if i < n - 1 else TD0
+
+        bar_c = ACTION_SELL if score > 65 else (ACTION_TRIM if score > 35 else ACTION_BUY)
+        score_html = (
+            f'<div style="display:inline-flex;align-items:center;gap:5px;">'
+            f'<div style="background:{BORDER};border-radius:2px;height:4px;width:40px;overflow:hidden;">'
+            f'<div style="background:{bar_c};height:100%;width:{score}%;border-radius:2px;"></div></div>'
+            f'<span style="font-size:{FONT_LABEL};color:{bar_c};font-weight:{WEIGHT_BOLD};">{score}</span>'
+            f'</div>'
+        )
+
+        delta_c = ACTION_BUY if delta_w > 1 else (ACTION_SELL if delta_w < -1 else TEXT2)
+        weight_html = (
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{cur_w:.1f}%</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT3};margin:0 3px;">→</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{delta_c};font-weight:{WEIGHT_BOLD};">{tgt_w:.1f}%</span>'
+        )
+
+        reason_parts = []
+        if reasons_s:
+            reason_parts.append(
+                f'<span style="color:{ACTION_SELL};">✗</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {reasons_s[0]}</span>'
+            )
+        if reasons_h:
+            reason_parts.append(
+                f'<span style="color:{ACTION_BUY};">✓</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {reasons_h[0]}</span>'
+            )
+        if not reason_parts and pa_reason:
+            reason_parts.append(f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{pa_reason}</span>')
+        reasons_html = '<br>'.join(reason_parts) if reason_parts else (
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT3};">No signal</span>'
+        )
+
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_symbol(sym)}</td>'
+            f'<td {td}>{_action_badge(action)}</td>'
+            f'<td {td}>{score_html}</td>'
+            f'<td {td}>{weight_html}</td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+            f'font-family:Courier New,monospace;">{dol_disp}</span></td>'
+            f'<td {td}><div style="line-height:1.7;">{reasons_html}</div></td>'
+            f'</tr>'
+        )
+
+    act_count = sum(1 for r in rows_data if r["action"] not in ("HOLD", "WATCH"))
+    note = f"{act_count} need action · {n} positions" if act_count else f"{n} positions · holding"
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Score</th>'
+        f'<th {TH}>Weight</th><th {TH}>Amount</th><th {TH}>Reasons</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return f'<div class="nt nt-wrap">{_section("🎯","Decision Center",note)}{table}</div>'
+
+
+# ── PANEL: Rebalance — current vs target allocation ───────────────────────────
+def render_rebalance() -> str:
+    d        = get_data()
+    open_pos = d.get("open_pos", {})
+
+    if not open_pos:
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("⚖","Rebalance","Current vs target allocation")}'
+                f'{_card(_empty_state("💰", "Fully in cash", "Rebalance panel activates once the bot holds positions."))}</div>')
+
+    _pv = 0.0
+    try:
+        _pv = float(d["portfolio"].replace("$","").replace(",","")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    prices = d.get("prices", {})
+    invested_total = sum(
+        pos["shares"] * prices.get(sym, pos["invested"] / max(pos["shares"], 1))
+        for sym, pos in open_pos.items()
+    )
+    cash_pct = max(0.0, (_pv - invested_total) / _pv * 100) if _pv > 0 else 0.0
+
+    sizings = []
+    for sym in open_pos:
+        sz = get_position_sizing(sym, d)
+        sz["symbol"] = sym
+        sizings.append(sz)
+    sizings.sort(key=lambda s: -s.get("current_weight", 0.0))
+
+    health = get_portfolio_health(d)
+
+    n    = len(sizings)
+    rows = ""
+    for i, sz in enumerate(sizings):
+        sym     = sz["symbol"]
+        cur_w   = sz.get("current_weight", 0.0)
+        tgt_w   = sz.get("target_weight", 0.0)
+        delta_w = sz.get("delta_weight", 0.0)
+        dol     = sz.get("dollar_display", "—")
+        sz_act  = sz.get("action", "hold").lower()
+        badge_a = "ADD" if sz_act == "add" else ("TRIM" if sz_act == "reduce" else "HOLD")
+        td = TD if i < n - 1 else TD0
+
+        delta_c   = ACTION_BUY if delta_w > 1 else (ACTION_SELL if delta_w < -1 else TEXT2)
+        delta_str = f"{delta_w:+.1f}%"
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_symbol(sym)}</td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+            f'font-family:Courier New,monospace;">{cur_w:.1f}%</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{delta_c};'
+            f'font-weight:{WEIGHT_BOLD};">{tgt_w:.1f}%</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{delta_c};'
+            f'font-weight:{WEIGHT_BOLD};">{delta_str}</span></td>'
+            f'<td {td}>{_action_badge(badge_a, "small")}</td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+            f'font-family:Courier New,monospace;">{dol}</span></td>'
+            f'</tr>'
+        )
+
+    tgt_sum     = sum(sz.get("target_weight", 0.0) for sz in sizings)
+    target_cash = max(0.0, 100.0 - tgt_sum)
+    cash_delta  = target_cash - cash_pct
+    cash_c      = ACTION_BUY if cash_delta > 1 else (ACTION_SELL if cash_delta < -1 else TEXT2)
+    cash_badge  = "ADD" if cash_delta > 1 else ("TRIM" if cash_delta < -1 else "HOLD")
+    rows += (
+        f'<tr>'
+        f'<td {TD0}><span style="font-family:Courier New,monospace;font-weight:{WEIGHT_BOLD};'
+        f'color:{TEXT3};font-size:{FONT_VALUE};">CASH</span></td>'
+        f'<td {TD0}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+        f'font-family:Courier New,monospace;">{cash_pct:.1f}%</span></td>'
+        f'<td {TD0}><span style="font-size:{FONT_LABEL};color:{cash_c};'
+        f'font-weight:{WEIGHT_BOLD};">{target_cash:.1f}%</span></td>'
+        f'<td {TD0}><span style="font-size:{FONT_LABEL};color:{cash_c};'
+        f'font-weight:{WEIGHT_BOLD};">{cash_delta:+.1f}%</span></td>'
+        f'<td {TD0}>{_action_badge(cash_badge, "small")}</td>'
+        f'<td {TD0}>—</td>'
+        f'</tr>'
+    )
+
+    net_rebalance = sum(abs(sz.get("delta_dollars", 0.0)) for sz in sizings) / 2
+    net_str = f"${net_rebalance:,.0f}" if net_rebalance > 0 else "—"
+    health_score = health.get("total", 0)
+    grade        = health.get("grade", "—")
+
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Current</th><th {TH}>Target</th>'
+        f'<th {TH}>Delta</th><th {TH}>Action</th><th {TH}>Amount</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    summary = (
+        f'<div style="display:flex;gap:0;flex-direction:column;">'
+        + _metric_row("Net to rebalance", net_str, TEXT1)
+        + _metric_row("Health score", f"{health_score}/100", ACTION_BUY if health_score >= 75 else (ACTION_TRIM if health_score >= 50 else ACTION_SELL), grade)
+        + f'</div>'
+    )
+    note = f"{n} positions · ~{net_str} to rebalance"
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("⚖","Rebalance",note)}'
+        f'{table}'
+        f'{_card(summary)}'
+        f'</div>'
+    )
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 _theme = gr.themes.Base(
@@ -3655,18 +3828,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
+            # Exactly 5 panels — open dashboard and within 3s: health, actions, risk
             hero_out           = gr.HTML(value=render_portfolio_health_hero)
-            ai_rec_out         = gr.HTML(value=render_ai_recommendation)
             todays_actions_out = gr.HTML(value=render_todays_actions)
-            whats_changed_out  = gr.HTML(value=render_whats_changed)
+            ai_rec_out         = gr.HTML(value=render_ai_recommendation)
             risk_panel_out     = gr.HTML(value=render_risk_panel)
-            actions_out        = gr.HTML(value=render_portfolio_actions)
-            with gr.Row():
-                with gr.Column(scale=50):
-                    mkt_intel_out = gr.HTML(value=render_market_intelligence)
-                with gr.Column(scale=50):
-                    committee_out = gr.HTML(value=render_ai_committee)
-                    watchlist_out = gr.HTML(value=render_watchlist)
+            whats_changed_out  = gr.HTML(value=render_whats_changed)
             # ── Symbol drilldown ──────────────────────────────────────────────
             symbol_selector = gr.Dropdown(
                 choices=_get_symbol_choices(),
@@ -3676,8 +3843,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             symbol_detail_out = gr.HTML(value="")
 
         with gr.TabItem("⚡ Signals"):
-            timeline_out = gr.HTML(value=render_timeline)
-            signals_out  = gr.HTML(value=render_signals_tab)
+            timeline_out  = gr.HTML(value=render_timeline)
+            signals_out   = gr.HTML(value=render_signals_tab)
+            with gr.Row():
+                with gr.Column(scale=55):
+                    mkt_intel_out = gr.HTML(value=render_market_intelligence)
+                with gr.Column(scale=45):
+                    watchlist_out = gr.HTML(value=render_watchlist)
 
         with gr.TabItem("💼 Portfolio"):
             perf_tabs   = gr.Radio(
@@ -3692,11 +3864,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                     eq_plot    = gr.Plot(value=render_equity_chart, label="")
                 with gr.Column(scale=35):
                     alloc_plot = gr.Plot(value=render_allocation_chart, label="")
-            pnl_plot   = gr.Plot(value=render_pnl_chart, label="")
-            sell_analysis_out = gr.HTML(value=render_sell_analysis)
-            sizing_panel_out  = gr.HTML(value=render_position_sizing_panel)
-            pos_out    = gr.HTML(value=render_positions)
-            trades_out = gr.HTML(value=render_trades)
+            pnl_plot          = gr.Plot(value=render_pnl_chart, label="")
+            committee_out     = gr.HTML(value=render_ai_committee)
+            decision_center_out = gr.HTML(value=render_decision_center)
+            rebalance_out     = gr.HTML(value=render_rebalance)
+            pos_out           = gr.HTML(value=render_positions)
+            trades_out        = gr.HTML(value=render_trades)
 
         with gr.TabItem("🔬 Models"):
             model_view = gr.Radio(
@@ -3739,31 +3912,34 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    timer.tick(fn=render_portfolio_health_hero,    outputs=hero_out)
-    timer.tick(fn=render_whats_changed,            outputs=whats_changed_out)
-    timer.tick(fn=render_ai_recommendation,        outputs=ai_rec_out)
-    timer.tick(fn=render_risk_panel,               outputs=risk_panel_out)
-    timer.tick(fn=render_market_intelligence,      outputs=mkt_intel_out)
-    timer.tick(fn=render_watchlist,                outputs=watchlist_out)
-    timer.tick(fn=render_timeline,                 outputs=timeline_out)
-    timer.tick(fn=render_signals_tab,              outputs=signals_out)
+    # Dashboard (5 panels)
+    timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
+    timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
+    timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
+    timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
+    timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
+    timer.tick(fn=lambda: gr.update(choices=_get_symbol_choices()), outputs=symbol_selector)
+    # Signals tab
+    timer.tick(fn=render_timeline,              outputs=timeline_out)
+    timer.tick(fn=render_signals_tab,           outputs=signals_out)
+    timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
+    timer.tick(fn=render_watchlist,             outputs=watchlist_out)
+    # Portfolio tab
     timer.tick(fn=lambda: gr.update(choices=_perf_choices()), outputs=perf_tabs)
-    timer.tick(fn=render_portfolio_performance,        outputs=perf_out)
-    timer.tick(fn=render_equity_chart,             outputs=eq_plot)
-    timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
-    timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
-    timer.tick(fn=render_todays_actions,       outputs=todays_actions_out)
-    timer.tick(fn=render_portfolio_actions,   outputs=actions_out)
-    timer.tick(fn=render_ai_committee,        outputs=committee_out)
-    timer.tick(fn=render_sell_analysis,       outputs=sell_analysis_out)
-    timer.tick(fn=render_position_sizing_panel, outputs=sizing_panel_out)
-    timer.tick(fn=render_positions,                outputs=pos_out)
-    timer.tick(fn=render_trades,                   outputs=trades_out)
+    timer.tick(fn=render_portfolio_performance, outputs=perf_out)
+    timer.tick(fn=render_equity_chart,          outputs=eq_plot)
+    timer.tick(fn=render_allocation_chart,      outputs=alloc_plot)
+    timer.tick(fn=render_pnl_chart,             outputs=pnl_plot)
+    timer.tick(fn=render_ai_committee,          outputs=committee_out)
+    timer.tick(fn=render_decision_center,       outputs=decision_center_out)
+    timer.tick(fn=render_rebalance,             outputs=rebalance_out)
+    timer.tick(fn=render_positions,             outputs=pos_out)
+    timer.tick(fn=render_trades,                outputs=trades_out)
+    # Models tab
     timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
     timer.tick(fn=render_validation_report,        outputs=val_out)
-    timer.tick(fn=lambda: gr.update(choices=_get_symbol_choices()), outputs=symbol_selector)
 
 if __name__ == "__main__":
     demo.launch()

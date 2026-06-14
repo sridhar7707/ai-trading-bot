@@ -1,10 +1,10 @@
 {
   "version": [
     1,
-    1,
-    1
+    2,
+    0
   ],
-  "last_updated": "2026-06-13 21:00:00",
+  "last_updated": "2026-06-14 00:00:00",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -187,6 +187,55 @@
       "spec": "SPEC 42",
       "last_updated": "2026-06-13",
       "notes": "Fixed tab visibility on HuggingFace Spaces: (1) triple CSS selectors with TEXT1 at 0.6 opacity (inactive) and 1.0 (active/hover), ACTION_BUY green underline on selected; (2) custom gr.themes.Base().set() theme replacing bare gr.themes.Base(); (3) JS MutationObserver fallback that enforces white text on all tab buttons and updates on class change."
+    },
+    {
+      "name": "HOLD Visual Fix",
+      "status": "complete",
+      "spec": "SPEC 43",
+      "last_updated": "2026-06-14",
+      "notes": "Fix HOLD/WATCH rows in _action_row(): change sym_color from TEXT2 (#b0b7c3) to TEXT1 (#ffffff) so symbol is always readable. ACTION_HOLD badge (#64b5f6) already correct \u2014 only the row symbol text needs fixing."
+    },
+    {
+      "name": "Badge Standardization Audit",
+      "status": "complete",
+      "spec": "SPEC 44",
+      "last_updated": "2026-06-14",
+      "notes": "Audit all render_* functions: replace any inline badge HTML (inline-block span with BUY/SELL/HOLD/TRIM/EXIT text) with _action_badge() calls. All _badge() shim calls already delegate to _action_badge(). Target: zero inline badge HTML in any render function."
+    },
+    {
+      "name": "Empty State Standardization Audit",
+      "status": "complete",
+      "spec": "SPEC 45",
+      "last_updated": "2026-06-14",
+      "notes": "Audit all render_* functions: replace custom empty state HTML (f-strings with 'No open positions', 'No trades', 'No signal', 'No data', etc.) with _empty_state(icon, title, subtitle) calls. Target: zero custom empty state HTML in any render function."
+    },
+    {
+      "name": "Decision Center Panel",
+      "status": "complete",
+      "spec": "SPEC 46",
+      "last_updated": "2026-06-14",
+      "notes": "render_decision_center(): consolidates render_portfolio_actions + render_sell_analysis + render_position_sizing_panel into one unified panel. Per-position row: action badge + sell_score/100 + current%\u2192target% + dollar amount + top reasons (\u2717/\u2713). Sorted EXIT\u2192SELL\u2192TRIM\u2192ADD/BUY\u2192WATCH\u2192HOLD. Goes in Portfolio tab. Old render_portfolio_actions/sell_analysis/position_sizing_panel become dead (called only from decision_center)."
+    },
+    {
+      "name": "Rebalance Panel",
+      "status": "complete",
+      "spec": "SPEC 47",
+      "last_updated": "2026-06-14",
+      "notes": "render_rebalance(): new panel. Current vs Target allocation table with delta column + action badge. Cash row shows direction change. Summary footer: net $ to rebalance, cash after, sector risk before/after, health score before/after. _simulate_health_after_rebalance(d, sizing_results) helper used for before/after comparison. Portfolio tab below decision_center."
+    },
+    {
+      "name": "Dashboard Layout Reorganization",
+      "status": "complete",
+      "spec": "SPEC 48",
+      "last_updated": "2026-06-14",
+      "notes": "Rebuild Gradio layout: Dashboard tab = EXACTLY 5 panels (health_hero \u2192 todays_actions \u2192 ai_recommendation \u2192 risk_panel \u2192 whats_changed). Signals tab = add mkt_intel + watchlist after existing timeline/signals. Portfolio tab = add committee + decision_center + rebalance before positions. Update all timer.tick() calls to include new outputs."
+    },
+    {
+      "name": "Consistency Checks Pass",
+      "status": "complete",
+      "spec": "SPEC 49",
+      "last_updated": "2026-06-14",
+      "notes": "All render_* functions pass: (1) section titles \u22644 words, (2) only design system hex colors, (3) only 36/20/15/11px font sizes, (4) _symbol() for all ticker symbols, (5) _confidence_bar() for all confidence displays. Add dead code comments to render_portfolio_actions/sell_analysis/position_sizing_panel (called internally by decision_center). Add superseded comment to render_dashboard_hero."
     },
     {
       "name": "Rebalance Suggestions",
@@ -400,6 +449,19 @@
         "render_position_sizing(): conviction-based target allocation guidance (Portfolio tab)",
         "render_symbol_detail(): enhanced with action card, conviction bar, sizing guidance at top",
         "Added _SELL_REASON module-level dict (latent bug fix)"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "UX Polish Sprint (SPEC 43-49)",
+      "lines": [
+        "SPEC 43: HOLD visual fix \u2014 _action_row() symbol color TEXT2\u2192TEXT1 for HOLD/WATCH rows",
+        "SPEC 44: Badge standardization \u2014 all inline badge HTML replaced with _action_badge()",
+        "SPEC 45: Empty state standardization \u2014 all custom empties replaced with _empty_state()",
+        "SPEC 46: render_decision_center() \u2014 consolidates 3 panels into one sortable table",
+        "SPEC 47: render_rebalance() \u2014 current vs target with delta + before/after health score",
+        "SPEC 48: Dashboard layout \u2014 exactly 5 panels; panels moved to correct tabs",
+        "SPEC 49: Consistency checks \u2014 section titles \u22644 words, design system colors only"
       ]
     },
     {
