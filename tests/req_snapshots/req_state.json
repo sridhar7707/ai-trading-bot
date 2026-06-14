@@ -386,6 +386,14 @@
       "last_updated": "2026-06-13",
       "notes": "Startup sync: removes stale DB entries, logs SELL_RECONCILE; seeds externally-opened positions",
       "category": "backend"
+    },
+    {
+      "name": "DuckDB Analytics Foundation Layer",
+      "status": "complete",
+      "spec": "SPEC 50",
+      "last_updated": "2026-06-14",
+      "notes": "Columnar analytics DB alongside SQLite; price_history, portfolio_snapshots, recommendation_history tables; AnalyticsRepository + AnalyticsService; BUY signal and daily snapshot wired into bot/main.py; 6 integration tests pass",
+      "category": "backend"
     }
   ],
   "bugs": [],
@@ -462,6 +470,19 @@
         "SPEC 47: render_rebalance() \u2014 current vs target with delta + before/after health score",
         "SPEC 48: Dashboard layout \u2014 exactly 5 panels; panels moved to correct tabs",
         "SPEC 49: Consistency checks \u2014 section titles \u22644 words, design system colors only"
+      ]
+    },
+    {
+      "date": "2026-06-14",
+      "title": "DuckDB Analytics Foundation Layer (SPEC 50)",
+      "lines": [
+        "database/duckdb/schema.sql: price_history, portfolio_snapshots, recommendation_history tables + 2 indexes",
+        "database/repositories/analytics_repository.py: AnalyticsRepository \u2014 save/load price history, snapshots, recommendations",
+        "database/services/analytics_service.py: AnalyticsService \u2014 get_sharpe_ratio, get_max_drawdown, save_daily_snapshot, save_recommendation",
+        "bot/main.py: BUY ensemble score saved before client.buy(); daily snapshot saved after end_of_day_summary() alert",
+        "bot/core/error_logger.py: setup_logger(name) added",
+        "requirements.txt + requirements_space.txt: duckdb>=1.0.0 added",
+        "tests/test_duckdb_integration.py: 6 integration tests \u2014 all pass"
       ]
     },
     {

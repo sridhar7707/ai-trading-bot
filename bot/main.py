@@ -928,6 +928,12 @@ def end_of_day_summary():
     )
     logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}, health={health_score}")
 
+    try:
+        from database.services.analytics_service import analytics_service as _as
+        _as.save_daily_snapshot({"portfolio_value": portfolio_value, "cash": available_cash})
+    except Exception as _ae:
+        logger.debug(f"analytics snapshot skipped: {_ae}")
+
     # Friday weekly report — Portfolio Manager visibility into week performance
     et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
     if et.weekday() == 4:  # Friday
@@ -1526,6 +1532,18 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             if not risk.approve_buy(symbol, notional, portfolio_value,
                                     portfolio_value, positions):
                 continue
+
+            try:
+                from database.services.analytics_service import analytics_service as _as
+                _buy_conf = (
+                    WEIGHTS["xgb"]       * xgb_prob +
+                    WEIGHTS["lstm"]      * lstm_prob +
+                    WEIGHTS["sentiment"] * ((sentiment + 1.0) / 2.0) +
+                    WEIGHTS["macro"]     * macro_score
+                )
+                _as.save_recommendation(symbol, "BUY", float(_buy_conf))
+            except Exception as _ae:
+                logger.debug(f"analytics save_recommendation skipped: {_ae}")
 
             result = client.buy(symbol, notional, limit_price=current_price)
             if result:
