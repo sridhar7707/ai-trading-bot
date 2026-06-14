@@ -121,10 +121,8 @@ PLOTLY_LAYOUT = dict(
     font=dict(color=TEXT2, family="Inter,system-ui,sans-serif", size=11),
     margin=dict(l=50, r=20, t=40, b=50),
     legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor=BORDER, font=dict(color=TEXT2)),
-    xaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER,
-               tickfont=dict(size=11)),
-    yaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER,
-               tickfont=dict(size=11)),
+    xaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
+    yaxis=dict(gridcolor=BORDER, zerolinecolor=BORDER, linecolor=BORDER, tickcolor=BORDER),
 )
 
 # ── Gradio CSS: dark page + strip Gradio chrome ───────────────────────────────
