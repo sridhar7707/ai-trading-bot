@@ -751,7 +751,7 @@ def _divider() -> str:
 def _empty_state(icon: str, title: str, subtitle: str) -> str:
     return (
         f'<div style="text-align:center;padding:48px 24px;">'
-        f'<div style="font-size:32px;margin-bottom:12px;">{icon}</div>'
+        f'<div style="font-size:{FONT_HERO};margin-bottom:12px;">{icon}</div>'
         f'<div style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};'
         f'margin-bottom:8px;">{title}</div>'
         f'<div style="font-size:{FONT_LABEL};color:{TEXT2};line-height:1.8;'
@@ -833,7 +833,7 @@ def _section(icon: str, title: str, note: str = "") -> str:
                  f'font-weight:{WEIGHT_NORMAL};letter-spacing:0;margin-left:6px;">{note}</span>'
                  if note else "")
     return (f'<div class="nt-sec" style="animation:fadeInUp .4s ease both;">'
-            f'<span style="font-size:13px;">{icon}</span>'
+            f'<span style="font-size:{FONT_VALUE};">{icon}</span>'
             f'<span style="color:{ACTION_BUY} !important;font-size:{FONT_LABEL};'
             f'font-weight:{WEIGHT_BOLD};">{title}</span>{note_html}'
             f'<span class="nt-sec-line"></span></div>')
@@ -850,7 +850,7 @@ def _stat_card(label: str, value: str, accent: str = None,
         f'<div class="nt-card" style="animation-delay:{delay:.2f}s;">'
         f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;font-weight:{WEIGHT_MEDIUM};margin-bottom:8px;">{label}</div>'
-        f'<div style="font-size:22px;font-weight:{WEIGHT_BOLD};letter-spacing:-0.3px;'
+        f'<div style="font-size:{FONT_SECTION};font-weight:{WEIGHT_BOLD};letter-spacing:-0.3px;'
         f'color:{color};line-height:1;">{value}</div>'
         f'{sub_html}</div>'
     )
@@ -906,33 +906,33 @@ def render_metrics() -> str:
                      if total_invested > 0 else "No open positions")
     hero = (
         f'<div class="nt-hero">'
-        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:6px;">Alpaca Paper Account Balance</div>'
         f'<div class="nt-hero-val">{portfolio_val}</div>'
         f'<div class="nt-hero-chg" style="color:{pnl_color};">{hero_chg}</div>'
-        f'<div style="font-size:10px;color:{TEXT2};margin-top:4px;">'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;">'
         f'Unrealized gain / loss on open positions vs. what the bot paid</div>'
         f'</div>'
     )
 
     status = (
         f'<div class="nt-status">'
-        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">'
         f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
         f'<span style="display:inline-flex;align-items:center;gap:5px;">'
         f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
         f'display:inline-block;"></span>'
-        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:{FONT_LABEL};">'
         f'{mkt_label}</span></span>'
         f'<div style="height:2px;width:100px;background:{BORDER};border-radius:1px;">'
         f'<div style="height:100%;width:100%;background:{PRIMARY};border-radius:1px;'
         f'animation:countdown 60s linear forwards;"></div></div>'
-        f'<span style="color:{TEXT2};font-size:11px;">60s refresh</span>'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
         f'</div>'
     )
 
     legend = (
-        f'<div style="display:flex;gap:18px;padding:4px 2px 8px;font-size:10px;color:{TEXT2};">'
+        f'<div style="display:flex;gap:18px;padding:4px 2px 8px;font-size:{FONT_LABEL};color:{TEXT2};">'
         f'<span><span style="color:{GAIN};">●</span> Gain / Bull regime</span>'
         f'<span><span style="color:{LOSS};">●</span> Loss / Bear regime</span>'
         f'<span><span style="color:{NEURAL};">●</span> Neutral / Ranging</span>'
@@ -1343,7 +1343,7 @@ def render_trades() -> str:
         anim = f'style="animation:slideInRow .35s ease both;animation-delay:{i*0.05:.2f}s;"'
         rows += (
             f'<tr {anim}>'
-            f'<td {td}><span style="font-family:Courier New,monospace;font-size:12px;'
+            f'<td {td}><span style="font-family:Courier New,monospace;font-size:{FONT_LABEL};'
             f'color:{TEXT2} !important;">{_to_ct(ts)}</span></td>'
             f'<td {td}>{_sym(sym)}</td>'
             f'<td {td}>{_badge(action)}</td>'
@@ -1357,7 +1357,7 @@ def render_trades() -> str:
         )
     legend_row = (
         f'<tr><td colspan="8" style="padding:6px 16px 4px;background:{BG};'
-        f'font-size:10px;color:{TEXT2};border-bottom:1px solid {BORDER};">'
+        f'font-size:{FONT_LABEL};color:{TEXT2};border-bottom:1px solid {BORDER};">'
         f'BUY = bot entered a position &nbsp;·&nbsp; '
         f'SELL = normal exit (target hit or stop) &nbsp;·&nbsp; '
         f'SELL_STOP = stop-loss triggered &nbsp;·&nbsp; '
@@ -1464,7 +1464,7 @@ def render_feature_importance_chart():
             ))
         fig.update_layout(
             title=dict(
-                text="Which signals drive the AI's BUY decisions  <span style='font-size:11px;'>— longer bar = more influence on each trade</span>",
+                text="Which signals drive the AI's BUY decisions  <span style='font-size:{FONT_LABEL};'>— longer bar = more influence on each trade</span>",
                 font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="Importance (normalised gain)", **PLOTLY_LAYOUT["xaxis"],
                        tickfont=dict(color=TEXT2)),
@@ -1488,7 +1488,7 @@ def render_validation_report() -> str:
     import json as _json
     vr_path = "models/validation_report.json"
     if not os.path.exists(vr_path):
-        msg = (f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">'
+        msg = (f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_LABEL};">'
                f'No validation report yet.<br>Run: python scripts/train_model.py</div>')
         return f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}{_wrap(msg)}</div>'
     try:
@@ -1508,7 +1508,7 @@ def render_validation_report() -> str:
         return (
             f'<tr>'
             f'<td style="padding:9px 14px;border-bottom:1px solid {BORDER};background:{SURFACE};'
-            f'color:{TEXT2};font-size:11px;font-weight:600;">{label}</td>'
+            f'color:{TEXT2};font-size:{FONT_LABEL};font-weight:600;">{label}</td>'
             f'<td style="padding:9px 14px;border-bottom:1px solid {BORDER};background:{SURFACE};'
             f'font-family:-apple-system,monospace;color:{color};font-weight:700;">{val}</td>'
             f'</tr>'
@@ -1526,7 +1526,7 @@ def render_validation_report() -> str:
     )
     help_html = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
-        f'padding:10px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'padding:10px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'<strong style="color:{TEXT1};">How to read this:</strong><br>'
         f'<b>XGB Val AUC</b> — How well XGBoost predicts the right direction on data it '
         f'<em>never trained on</em>. 0.50 = random guessing. 0.60+ = meaningfully predictive. '
@@ -1538,7 +1538,7 @@ def render_validation_report() -> str:
         f'</div>'
     )
     table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_html)
-    note = (f'<div style="font-size:10px;color:{TEXT2};padding:2px 0 6px;">'
+    note = (f'<div style="font-size:{FONT_LABEL};color:{TEXT2};padding:2px 0 6px;">'
             f'AUC ≥ 0.60 = good · ≥ 0.55 = acceptable · &lt; 0.52 = near-random</div>')
     return f'<div class="nt nt-wrap">{_section("🔬", "Model Validation")}{note}{table}</div>'
 
@@ -1574,11 +1574,11 @@ def render_dashboard_hero() -> str:
     def _big(label, value, sub, color):
         return (
             f'<div class="nt-card" style="padding:20px 18px;">'
-            f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.8px;margin-bottom:10px;">{label}</div>'
-            f'<div style="font-size:34px;font-weight:700;letter-spacing:-1.5px;'
+            f'<div style="font-size:{FONT_HERO};font-weight:700;letter-spacing:-1.5px;'
             f'color:{color};line-height:1;">{value}</div>'
-            f'<div style="font-size:11px;color:{TEXT2};margin-top:6px;">{sub}</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:6px;">{sub}</div>'
             f'</div>'
         )
 
@@ -1628,15 +1628,15 @@ def render_dashboard_hero() -> str:
 
     health_card = (
         f'<div class="nt-card" style="padding:20px 18px;">'
-        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:10px;">Portfolio Health</div>'
-        f'<div style="font-size:34px;font-weight:700;letter-spacing:-1.5px;'
-        f'color:{health_c};line-height:1;">{health}<span style="font-size:16px;'
+        f'<div style="font-size:{FONT_HERO};font-weight:700;letter-spacing:-1.5px;'
+        f'color:{health_c};line-height:1;">{health}<span style="font-size:{FONT_VALUE};'
         f'color:{TEXT2};font-weight:400;">/100</span></div>'
         f'<div style="margin:8px 0 6px;background:{BORDER};border-radius:3px;height:4px;">'
         f'<div style="background:{health_c};height:100%;width:{health}%;'
         f'border-radius:3px;transition:width .4s;"></div></div>'
-        f'<div style="font-size:11px;color:{TEXT2};">{weak_sub}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{weak_sub}</div>'
         f'</div>'
     )
 
@@ -1653,14 +1653,14 @@ def render_dashboard_hero() -> str:
 
     status = (
         f'<div class="nt-status">'
-        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">'
         f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
         f'<span style="display:inline-flex;align-items:center;gap:5px;">'
         f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
         f'display:inline-block;"></span>'
-        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:{FONT_LABEL};">'
         f'{mkt_label}</span></span>'
-        f'<span style="color:{TEXT2};font-size:11px;">60s refresh &nbsp;·&nbsp; Paper money only</span>'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh &nbsp;·&nbsp; Paper money only</span>'
         f'</div>'
     )
     return f'<div class="nt nt-wrap">{cards}{status}</div>'
@@ -1683,13 +1683,13 @@ def render_portfolio_health_hero() -> str:
     # Grade pill
     grade_pill = (
         f'<div style="display:inline-flex;align-items:center;gap:8px;">'
-        f'<span style="font-size:42px;font-weight:800;color:{grade_c};'
+        f'<span style="font-size:{FONT_HERO};font-weight:800;color:{grade_c};'
         f'letter-spacing:-2px;line-height:1;">{grade}</span>'
         f'<div>'
-        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;">{gl}</div>'
-        f'<div style="font-size:22px;font-weight:700;color:{TEXT1};line-height:1.1;">'
-        f'{score}<span style="font-size:12px;color:{TEXT2};font-weight:400;">/100</span></div>'
+        f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{TEXT1};line-height:1.1;">'
+        f'{score}<span style="font-size:{FONT_LABEL};color:{TEXT2};font-weight:400;">/100</span></div>'
         f'</div>'
         f'</div>'
     )
@@ -1716,8 +1716,8 @@ def render_portfolio_health_hero() -> str:
             f'<div style="margin-bottom:7px;">'
             f'<div style="display:flex;justify-content:space-between;'
             f'align-items:baseline;margin-bottom:2px;">'
-            f'<span style="font-size:11px;color:{TEXT2};">{lbl}</span>'
-            f'<span style="font-size:11px;color:{bar_c};font-weight:600;">'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{lbl}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{bar_c};font-weight:600;">'
             f'{pts}/{maxpts}&nbsp;<span style="color:{TEXT2};font-weight:400;">{detail}</span></span>'
             f'</div>'
             f'<div style="background:{BORDER};border-radius:2px;height:3px;">'
@@ -1733,7 +1733,7 @@ def render_portfolio_health_hero() -> str:
     risk_callout = (
         f'<div style="margin-top:8px;padding:7px 10px;background:{SURFACE2};'
         f'border-left:3px solid {risk_color};border-radius:0 4px 4px 0;">'
-        f'<span style="font-size:11px;color:{risk_color};font-weight:600;">'
+        f'<span style="font-size:{FONT_LABEL};color:{risk_color};font-weight:600;">'
         f'{risk_icon} {risk_txt}</span>'
         f'</div>'
     )
@@ -1743,7 +1743,7 @@ def render_portfolio_health_hero() -> str:
     str_html = ""
     if strengths:
         items = "".join(
-            f'<span style="font-size:10px;color:{GAIN};background:#0a2010;'
+            f'<span style="font-size:{FONT_LABEL};color:{GAIN};background:#0a2010;'
             f'border-radius:3px;padding:2px 6px;">{s}</span> '
             for s in strengths
         )
@@ -1765,9 +1765,9 @@ def render_portfolio_health_hero() -> str:
         c = color or TEXT1
         return (
             f'<div style="text-align:center;padding:10px 14px;">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.7px;margin-bottom:4px;">{label}</div>'
-            f'<div style="font-size:18px;font-weight:700;color:{c};">{val}</div>'
+            f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{c};">{val}</div>'
             f'</div>'
         )
 
@@ -1799,19 +1799,19 @@ def render_portfolio_health_hero() -> str:
 
     timestamp = (
         f'<div class="nt-status">'
-        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">'
         f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
         f'<span style="display:inline-flex;align-items:center;gap:5px;">'
         f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
         f'display:inline-block;"></span>'
-        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:{FONT_LABEL};">'
         f'{mkt_label}</span></span>'
-        f'<span style="color:{TEXT2};font-size:11px;">60s refresh</span>'
+        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
         f'</div>'
     )
     inner = (
         f'<div class="nt-card" style="padding:20px 18px;">'
-        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:12px;">Portfolio Health</div>'
         f'{body}'
         f'</div>'
@@ -1827,19 +1827,13 @@ def render_ai_recommendation() -> str:
     vix = d.get("vix", 0.0)
 
     if not lb or not lb.get("symbol"):
-        empty = (
-            f'<div style="text-align:center;padding:48px 24px;">'
-            f'<div style="font-size:36px;margin-bottom:12px;">🤖</div>'
-            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};margin-bottom:8px;">'
-            f'No active signal</div>'
-            f'<div style="font-size:13px;color:{TEXT2};line-height:1.8;">'
-            f'The AI monitors markets Mon–Fri 9:30am–4pm ET.<br>'
-            f'When a trade meets all entry gates, the full recommendation with reasoning '
-            f'will appear here.</div></div>'
-        )
+        _es = _empty_state("🤖", "No active signal",
+                           "The AI monitors markets Mon–Fri 9:30am–4pm ET. "
+                           "When all entry gates pass, the recommendation appears here.")
         return (f'<div class="nt nt-wrap">'
                 f'{_section("🤖","AI Recommendation","live signal · updated every 60s")}'
-                f'{_wrap(empty)}</div>')
+                f'{_card(_es)}'
+                f'</div>')
 
     sym     = lb.get("symbol", "—")
     conf    = float(lb.get("ensemble_score",  0.0) or 0.0)
@@ -1875,16 +1869,16 @@ def render_ai_recommendation() -> str:
     conf_bar = (
         f'<div style="margin:10px 0 8px;">'
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">'
-        f'<span style="font-size:11px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">AI Confidence</span>'
-        f'<span style="font-size:28px;font-weight:700;color:{conf_c};letter-spacing:-1px;">{conf_pct}</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">AI Confidence</span>'
+        f'<span style="font-size:{FONT_SECTION};font-weight:700;color:{conf_c};letter-spacing:-1px;">{conf_pct}</span>'
         f'</div>'
         f'<div style="background:{BORDER};border-radius:4px;height:8px;overflow:hidden;">'
         f'<div style="background:{conf_c};height:100%;width:{conf_w}%;border-radius:4px;"></div>'
         f'</div>'
         f'<div style="display:flex;justify-content:space-between;margin-top:8px;">'
-        f'<span style="font-size:11px;color:{TEXT2};">Ensemble: '
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Ensemble: '
         f'<span style="color:{agree_c};font-weight:700;">{agree_count}/5 models agree</span></span>'
-        f'<span style="font-size:11px;color:{TEXT2};">Entry: '
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Entry: '
         f'<span style="color:{TEXT1};font-weight:700;">${entry:.2f}</span></span>'
         f'</div></div>'
     )
@@ -1893,10 +1887,10 @@ def render_ai_recommendation() -> str:
         w = int(v * 100)
         return (
             f'<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">'
-            f'<span style="font-size:11px;color:{TEXT2};width:68px;flex-shrink:0;">{label}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:68px;flex-shrink:0;">{label}</span>'
             f'<div style="background:{BORDER};border-radius:2px;height:4px;flex:1;overflow:hidden;">'
             f'<div style="background:{color};height:100%;width:{w}%;"></div></div>'
-            f'<span style="font-size:11px;color:{color};width:34px;text-align:right;">{v*100:.0f}%</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{color};width:34px;text-align:right;">{v*100:.0f}%</span>'
             f'</div>'
         )
 
@@ -1907,13 +1901,13 @@ def render_ai_recommendation() -> str:
         sc = GAIN if sent > 0.05 else (LOSS if sent < -0.05 else TEXT2)
         sub_scores = (
             f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid {BORDER};">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.8px;margin-bottom:6px;">Model breakdown</div>'
             + _mini_bar("XGBoost", xgb_p, xc)
             + _mini_bar("LSTM", lstm_p, lc)
             + f'<div style="display:flex;gap:8px;margin:4px 0;">'
-            f'<span style="font-size:11px;color:{TEXT2};width:68px;flex-shrink:0;">Sentiment</span>'
-            f'<span style="font-size:11px;color:{sc};">'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:68px;flex-shrink:0;">Sentiment</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{sc};">'
             f'{"Positive" if sent > 0.05 else "Negative" if sent < -0.05 else "Neutral"}'
             f' ({sent:+.2f})</span></div>'
             f'</div>'
@@ -1945,49 +1939,49 @@ def render_ai_recommendation() -> str:
     why_html = ""
     if pos_items:
         why_html += (
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.8px;margin-bottom:8px;">Contributors</div>'
         )
         for name, pct in pos_items:
             bar_w = min(int(pct), 100)
             why_html += (
                 f'<div style="display:flex;align-items:center;gap:6px;margin:5px 0;">'
-                f'<span style="font-size:14px;color:{GAIN};width:14px;flex-shrink:0;'
+                f'<span style="font-size:{FONT_VALUE};color:{GAIN};width:14px;flex-shrink:0;'
                 f'font-weight:700;line-height:1;">+</span>'
-                f'<span style="font-size:12px;color:{TEXT1};flex:1;overflow:hidden;'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT1};flex:1;overflow:hidden;'
                 f'text-overflow:ellipsis;white-space:nowrap;">{name}</span>'
                 f'<div style="background:{BORDER};border-radius:2px;height:4px;'
                 f'width:56px;overflow:hidden;flex-shrink:0;">'
                 f'<div style="background:{GAIN};height:100%;width:{bar_w}%;"></div></div>'
-                f'<span style="font-size:11px;color:{GAIN};width:36px;text-align:right;'
+                f'<span style="font-size:{FONT_LABEL};color:{GAIN};width:36px;text-align:right;'
                 f'flex-shrink:0;">+{pct:.0f}%</span>'
                 f'</div>'
             )
     else:
         why_html += (
-            f'<div style="color:{TEXT2};font-size:12px;line-height:1.6;">'
+            f'<div style="color:{TEXT2};font-size:{FONT_LABEL};line-height:1.6;">'
             f'Signal fired after all risk gates passed.<br>'
-            f'<span style="font-size:11px;">SHAP % breakdown available after next model retrain.</span>'
+            f'<span style="font-size:{FONT_LABEL};">SHAP % breakdown available after next model retrain.</span>'
             f'</div>'
         )
 
     if neg_items:
         why_html += (
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.8px;margin-top:12px;margin-bottom:8px;">Risk Factors</div>'
         )
         for name in neg_items:
             why_html += (
                 f'<div style="display:flex;align-items:center;gap:6px;margin:4px 0;">'
-                f'<span style="font-size:14px;color:{LOSS};width:14px;flex-shrink:0;'
+                f'<span style="font-size:{FONT_VALUE};color:{LOSS};width:14px;flex-shrink:0;'
                 f'font-weight:700;line-height:1;">−</span>'
-                f'<span style="font-size:12px;color:{TEXT2};">{name}</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{name}</span>'
                 f'</div>'
             )
 
     risk_badge = (
         f'<span style="background:{SURFACE2};border:1px solid {risk_color};'
-        f'color:{risk_color};padding:3px 10px;border-radius:4px;font-size:11px;'
+        f'color:{risk_color};padding:3px 10px;border-radius:4px;font-size:{FONT_LABEL};'
         f'font-weight:700;letter-spacing:.3px;">Risk: {risk_label}</span>'
     )
 
@@ -1999,11 +1993,11 @@ def render_ai_recommendation() -> str:
         f'<div>'
         f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
         f'{_badge("BUY")}'
-        f'<span style="font-family:Courier New,monospace;font-size:36px;font-weight:700;'
+        f'<span style="font-family:Courier New,monospace;font-size:{FONT_HERO};font-weight:700;'
         f'color:{PRIMARY};letter-spacing:-2px;line-height:1;">{sym}</span>'
         f'{risk_badge}'
         f'</div>'
-        f'<div style="font-size:13px;color:{TEXT2};margin-bottom:10px;">'
+        f'<div style="font-size:{FONT_VALUE};color:{TEXT2};margin-bottom:10px;">'
         f'Entry Price: <strong style="color:{TEXT1};">${entry:.2f}</strong>'
         f'&nbsp;&nbsp;·&nbsp;&nbsp;'
         f'Regime: <strong style="color:{r_color};">{regime}</strong>'
@@ -2013,7 +2007,7 @@ def render_ai_recommendation() -> str:
         f'</div>'
         # Right: Why section
         f'<div class="nt-ai-right">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:4px;">Why the AI is buying</div>'
         f'{why_html}'
         f'</div>'
@@ -2092,7 +2086,7 @@ def render_watchlist() -> str:
             f'<td {td}>{_sym(sym)}</td>'
             f'<td {td}><span style="font-family:Courier New,monospace;font-weight:600;'
             f'color:{TEXT1};">${cur:.2f}</span></td>'
-            f'<td {td}><span style="font-weight:700;font-size:14px;color:{chg_c};">'
+            f'<td {td}><span style="font-weight:700;font-size:{FONT_VALUE};color:{chg_c};">'
             f'{arrow} {chg_pct:+.1f}%</span></td>'
             f'</tr>'
         )
@@ -2111,11 +2105,13 @@ def render_signals_tab() -> str:
     buys = d.get("today_buy_signals", [])
 
     if not buys:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
-                 f'No buy signals yet.<br>The AI generates signals during market hours '
-                 f'(9:30am–4pm ET, Mon–Fri) when all entry gates pass.</div>')
+        _es = _empty_state("⚡", "No signals yet",
+                           "The AI generates signals Mon–Fri 9:30am–4pm ET "
+                           "when all entry gates pass.")
         return (f'<div class="nt nt-wrap">'
-                f'{_section("⚡","AI Buy Signals","recent")}{_wrap(empty)}</div>')
+                f'{_section("⚡","AI Buy Signals","recent")}'
+                f'{_card(_es)}'
+                f'</div>')
 
     rows  = ""
     shown = buys[:20]
@@ -2143,20 +2139,20 @@ def render_signals_tab() -> str:
         anim = f'style="animation:slideInRow .3s ease both;animation-delay:{i*0.04:.2f}s;"'
         rows += (
             f'<tr {anim}>'
-            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{_to_ct(ts)}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{_to_ct(ts)}</span></td>'
             f'<td {td}>{_sym(sym)}</td>'
             f'<td {td}>{_badge("BUY")}</td>'
             f'<td {td}><span style="font-family:Courier New,monospace;color:{TEXT1};">'
             f'${price:.2f}</span></td>'
             f'<td {td}><span style="font-weight:700;color:{conf_c};">{conf_pct}</span></td>'
-            f'<td {td}><span style="font-size:12px;color:{TEXT2};">{regime}</span></td>'
-            f'<td {td}><span style="font-size:12px;color:{TEXT2};">{driver_text}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{regime}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{driver_text}</span></td>'
             f'</tr>'
         )
     note = f"last {len(shown)} signals · confidence = XGBoost + LSTM + sentiment ensemble"
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
-        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.7;">'
+        f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
         f'<b>Confidence</b> ≥75% strong · 60–75% moderate · &lt;60% weak &nbsp;·&nbsp;'
         f'<b>Top Drivers</b> show which indicators pushed the AI to BUY &nbsp;·&nbsp;'
         f'<b>Regime</b> = macro trend when signal fired'
@@ -2259,14 +2255,14 @@ def render_risk_panel() -> str:
         bar_c = LOSS if pct > 50 else (NEURAL if pct > 30 else GAIN)
         sector_rows += (
             f'<div style="display:flex;align-items:center;gap:8px;margin:5px 0;">'
-            f'<span style="font-size:11px;color:{TEXT2};width:70px;flex-shrink:0;">{sector}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:70px;flex-shrink:0;">{sector}</span>'
             f'<div style="background:{BORDER};border-radius:2px;height:5px;flex:1;overflow:hidden;">'
             f'<div style="background:{bar_c};height:100%;width:{min(pct,100):.0f}%;"></div></div>'
-            f'<span style="font-size:11px;color:{TEXT1};width:36px;text-align:right;">{pct:.0f}%</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT1};width:36px;text-align:right;">{pct:.0f}%</span>'
             f'</div>'
         )
     if not sector_rows:
-        sector_rows = f'<div style="color:{TEXT2};font-size:12px;">No open positions — fully in cash</div>'
+        sector_rows = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};">No open positions — fully in cash</div>'
 
     note = (f'Concentration: <span style="color:{cc_c};font-weight:700;">{max_conc:.1f}%</span>'
             f' largest position')
@@ -2276,8 +2272,8 @@ def render_risk_panel() -> str:
             f'<div style="background:{SURFACE};border:1px solid {BORDER};'
             f'border-radius:8px;padding:14px 16px;margin-top:8px;">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
-            f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">Sector Exposure</div>'
-            f'<div style="font-size:11px;color:{TEXT2};">{note}</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;">Sector Exposure</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{note}</div>'
             f'</div>'
             f'{sector_rows}</div></div>')
 
@@ -2288,7 +2284,7 @@ def render_institutional_metrics() -> str:
     df = d["trades_df"]
 
     if df.empty or "portfolio_value" not in df.columns:
-        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">No trade history yet.</div>'
+        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_LABEL};">No trade history yet.</div>'
         return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
 
     daily = (df.dropna(subset=["portfolio_value"])
@@ -2298,7 +2294,7 @@ def render_institutional_metrics() -> str:
     daily.columns = ["date", "value"]
 
     if len(daily) < 3:
-        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:12px;">Need ≥ 3 days of history.</div>'
+        msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_LABEL};">Need ≥ 3 days of history.</div>'
         return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
 
     rets   = daily["value"].pct_change().dropna()
@@ -2337,12 +2333,12 @@ def render_institutional_metrics() -> str:
     def _row(label, val_str, color, desc):
         return (
             f'<tr><td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
-            f'background:{SURFACE};color:{TEXT2};font-size:11px;font-weight:600;">{label}</td>'
+            f'background:{SURFACE};color:{TEXT2};font-size:{FONT_LABEL};font-weight:600;">{label}</td>'
             f'<td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
             f'background:{SURFACE};font-family:-apple-system,monospace;'
             f'color:{color};font-weight:700;">{val_str}</td>'
             f'<td style="padding:10px 14px;border-bottom:1px solid {BORDER};'
-            f'background:{SURFACE};color:{TEXT2};font-size:11px;">{desc}</td></tr>'
+            f'background:{SURFACE};color:{TEXT2};font-size:{FONT_LABEL};">{desc}</td></tr>'
         )
 
     sh_c = GAIN if sharpe > 1 else (NEURAL if sharpe > 0.5 else LOSS)
@@ -2364,7 +2360,7 @@ def render_institutional_metrics() -> str:
     )
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
-        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'Metrics computed from all trade history since launch. '
         f'Short history (&lt;30 days) may produce unreliable Sharpe / Sortino estimates.'
         f'</div>'
@@ -2380,7 +2376,7 @@ def render_timeline() -> str:
     d  = get_data()
     df = d["trades_df"]
     if df.empty:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:13px;">'
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:{FONT_VALUE};">'
                  f'No decisions yet. The AI trades Mon–Fri 9:30am–4pm ET.</div>')
         return f'<div class="nt nt-wrap">{_section("🕐","AI Decision Feed","live")}{_wrap(empty)}</div>'
 
@@ -2428,7 +2424,7 @@ def render_timeline() -> str:
         conf_badge = ""
         if action == "BUY" and conf > 0:
             c_c = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
-            conf_badge = (f'<span style="font-size:11px;color:{c_c};font-weight:700;">'
+            conf_badge = (f'<span style="font-size:{FONT_LABEL};color:{c_c};font-weight:700;">'
                           f'{conf*100:.0f}%</span>')
 
         line = f'border-bottom:1px solid {BORDER};' if not is_last else ''
@@ -2437,9 +2433,9 @@ def render_timeline() -> str:
         items += (
             f'<div style="display:flex;gap:14px;padding:10px 0;{line}">'
             f'<div style="flex-shrink:0;width:58px;text-align:right;">'
-            f'<div style="font-size:12px;color:{TEXT1};font-family:monospace;font-weight:600;">{time_lbl}</div>'
-            f'<div style="font-size:10px;color:{TEXT2};">{tz_lbl}</div>'
-            f'<div style="font-size:10px;color:{TEXT2};">{date_lbl}</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT1};font-family:monospace;font-weight:600;">{time_lbl}</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{tz_lbl}</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{date_lbl}</div>'
             f'</div>'
             f'<div style="display:flex;flex-direction:column;align-items:center;padding-top:4px;">'
             f'<div style="width:10px;height:10px;border-radius:50%;background:{dot_c};flex-shrink:0;'
@@ -2450,7 +2446,7 @@ def render_timeline() -> str:
             f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">'
             f'{_badge(action)}{_sym(sym)}{conf_badge}'
             f'</div>'
-            f'<div style="font-size:11px;color:{TEXT2};white-space:nowrap;overflow:hidden;'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};white-space:nowrap;overflow:hidden;'
             f'text-overflow:ellipsis;">{detail}</div>'
             f'</div></div>'
         )
@@ -2465,7 +2461,7 @@ def render_investor_view() -> str:
     d  = get_data()
     df = d["trades_df"]
     if df.empty:
-        msg = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:13px;">'
+        msg = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:{FONT_VALUE};">'
                f'No trade history yet.</div>')
         return f'<div class="nt nt-wrap">{_section("🤖","AI Performance","investor summary")}{_wrap(msg)}</div>'
 
@@ -2511,39 +2507,39 @@ def render_investor_view() -> str:
     top3 = sorted(signal_counts.items(), key=lambda x: -x[1])[:3]
     sig_rows = "".join(
         f'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid {BORDER};">'
-        f'<span style="font-size:15px;">📡</span>'
-        f'<span style="font-size:13px;color:{TEXT1};">{name}</span>'
-        f'<span style="margin-left:auto;font-size:11px;color:{TEXT2};">fired {cnt}× recently</span>'
+        f'<span style="font-size:{FONT_VALUE};">📡</span>'
+        f'<span style="font-size:{FONT_VALUE};color:{TEXT1};">{name}</span>'
+        f'<span style="margin-left:auto;font-size:{FONT_LABEL};color:{TEXT2};">fired {cnt}× recently</span>'
         f'</div>'
         for name, cnt in top3
-    ) or f'<div style="color:{TEXT2};font-size:12px;padding:10px 0;">Building signal history.</div>'
+    ) or f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:10px 0;">Building signal history.</div>'
 
     signals_box = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Most Common Buy Signals</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Most Common Buy Signals</div>'
         f'{sig_rows}</div>'
     )
 
     last6 = sells.tail(6).iloc[::-1]
     result_rows = "".join(
         f'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid {BORDER};">'
-        f'<span style="font-size:15px;">{"✅" if float(row.get("pnl_pct",0) or 0) > 0 else "❌"}</span>'
-        f'<span style="font-family:Courier New,monospace;font-weight:700;color:{PRIMARY};font-size:13px;">{row.get("symbol","")}</span>'
-        f'<span style="font-size:11px;color:{TEXT2};">{_SELL_REASON.get(str(row.get("action","")),"Exit")}</span>'
+        f'<span style="font-size:{FONT_VALUE};">{"✅" if float(row.get("pnl_pct",0) or 0) > 0 else "❌"}</span>'
+        f'<span style="font-family:Courier New,monospace;font-weight:700;color:{PRIMARY};font-size:{FONT_VALUE};">{row.get("symbol","")}</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{_SELL_REASON.get(str(row.get("action","")),"Exit")}</span>'
         f'<span style="margin-left:auto;font-weight:700;color:{"" + GAIN if float(row.get("pnl_pct",0) or 0) > 0 else LOSS};">'
         f'{float(row.get("pnl_pct",0) or 0):+.1%}</span>'
         f'</div>'
         for _, row in last6.iterrows()
-    ) or f'<div style="color:{TEXT2};font-size:12px;padding:10px 0;">No closed trades yet.</div>'
+    ) or f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:10px 0;">No closed trades yet.</div>'
 
     results_box = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Recent Trade Results</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px;">Recent Trade Results</div>'
         f'{result_rows}</div>'
     )
     explain = (
         f'<div style="background:{BG};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
-        f'<div style="font-size:12px;color:{TEXT2};line-height:1.7;">'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
         f'<strong style="color:{TEXT1};">How TradeGenius AI works:</strong><br>'
         f'Three AI models vote on every trade: an <b>XGBoost</b> pattern engine trained on price history, '
         f'an <b>LSTM</b> that reads momentum, and a <b>FinBERT</b> model that reads financial news. '
@@ -2570,7 +2566,7 @@ def _get_symbol_choices() -> list[str]:
 def render_symbol_detail(symbol: str) -> str:
     if not symbol:
         return (f'<div class="nt nt-wrap"><div style="color:{TEXT2};text-align:center;'
-                f'padding:20px;font-size:12px;">Select a symbol above to see its AI analysis.</div></div>')
+                f'padding:20px;font-size:{FONT_LABEL};">Select a symbol above to see its AI analysis.</div></div>')
     d       = get_data()
     df      = d["trades_df"]
     prices  = d["prices"]
@@ -2623,21 +2619,21 @@ def render_symbol_detail(symbol: str) -> str:
             why_html += (
                 f'<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid {BORDER};">'
                 f'<span style="color:{GAIN};font-weight:700;width:14px;flex-shrink:0;">+</span>'
-                f'<div><div style="font-size:12px;color:{TEXT1};">{name}</div>'
-                f'<div style="font-size:11px;color:{TEXT2};">{desc}</div></div></div>'
+                f'<div><div style="font-size:{FONT_LABEL};color:{TEXT1};">{name}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{desc}</div></div></div>'
             )
     except Exception:
         pass
     if not why_html:
-        why_html = f'<div style="color:{TEXT2};font-size:12px;padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
+        why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
 
     # Mini model bars
     def _mbar(label, v, c):
         return (f'<div style="display:flex;align-items:center;gap:8px;margin:3px 0;">'
-                f'<span style="font-size:11px;color:{TEXT2};width:60px;">{label}</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:60px;">{label}</span>'
                 f'<div style="background:{BORDER};border-radius:2px;height:4px;flex:1;">'
                 f'<div style="background:{c};height:100%;width:{int(v*100)}%;"></div></div>'
-                f'<span style="font-size:11px;color:{c};width:32px;text-align:right;">{v*100:.0f}%</span></div>')
+                f'<span style="font-size:{FONT_LABEL};color:{c};width:32px;text-align:right;">{v*100:.0f}%</span></div>')
 
     model_html = ""
     if xgb_p > 0 or lstm_p > 0:
@@ -2645,7 +2641,7 @@ def render_symbol_detail(symbol: str) -> str:
         lc = GAIN if lstm_p >= 0.70 else (NEURAL if lstm_p >= 0.55 else TEXT2)
         model_html = (
             f'<div style="margin-top:10px;">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Model Scores</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">Model Scores</div>'
             + _mbar("XGBoost", xgb_p, xc) + _mbar("LSTM", lstm_p, lc)
             + f'</div>'
         )
@@ -2660,8 +2656,8 @@ def render_symbol_detail(symbol: str) -> str:
         hist_rows += (
             f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid {BORDER};">'
             f'{_badge(act)}'
-            f'<span style="font-family:monospace;font-size:12px;color:{TEXT1};">${px:.2f}</span>'
-            f'<span style="font-size:11px;color:{p_c};margin-left:auto;">'
+            f'<span style="font-family:monospace;font-size:{FONT_LABEL};color:{TEXT1};">${px:.2f}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{p_c};margin-left:auto;">'
             f'{f"{p:+.1%}" if p != 0 else ""}</span></div>'
         )
 
@@ -2669,14 +2665,14 @@ def render_symbol_detail(symbol: str) -> str:
     stat_g = (
         f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">'
         f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">AI Score</div>'
-        f'<div style="font-size:20px;font-weight:700;color:{conf_c};">{conf_pct}</div></div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">AI Score</div>'
+        f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{conf_c};">{conf_pct}</div></div>'
         f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Sentiment</div>'
-        f'<div style="font-size:18px;font-weight:700;color:{sent_c};">{sent_l}</div></div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Sentiment</div>'
+        f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{sent_c};">{sent_l}</div></div>'
         f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Regime</div>'
-        f'<div style="font-size:14px;font-weight:700;color:{r_color};">{regime}</div></div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Regime</div>'
+        f'<div style="font-size:{FONT_VALUE};font-weight:700;color:{r_color};">{regime}</div></div>'
         f'</div>'
     )
     pos_g = ""
@@ -2685,18 +2681,18 @@ def render_symbol_detail(symbol: str) -> str:
         pos_g = (
             f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">'
             f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Entry</div>'
-            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};">${entry:.2f}</div></div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Entry</div>'
+            f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{TEXT1};">${entry:.2f}</div></div>'
             f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current</div>'
-            f'<div style="font-size:18px;font-weight:700;color:{TEXT1};">{cur_str}</div></div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Current</div>'
+            f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{TEXT1};">{cur_str}</div></div>'
             f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
-            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Unrealized P&amp;L</div>'
-            f'<div style="font-size:18px;font-weight:700;color:{pnl_c};">{pnl_str}</div></div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Unrealized P&amp;L</div>'
+            f'<div style="font-size:{FONT_SECTION};font-weight:700;color:{pnl_c};">{pnl_str}</div></div>'
             f'</div>'
         )
 
-    ts_note = f'<div style="font-size:10px;color:{TEXT2};margin-top:8px;">Signal: {_to_ct(ts)[:16]}</div>' if ts else ""
+    ts_note = f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:8px;">Signal: {_to_ct(ts)[:16]}</div>' if ts else ""
 
     # ── SPEC 31: action card ──────────────────────────────────────────────────────
     # ── Why Panel — recommendation engine signals ──────────────────────────────
@@ -2721,11 +2717,11 @@ def render_symbol_detail(symbol: str) -> str:
     _bull_items = _exp.get("bullish", [])[:3]
     _bear_items = _exp.get("bearish", [])[:3]
     _bull_html  = "".join(
-        f'<div style="font-size:10px;color:{GAIN};margin-bottom:2px;">+ {b}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{GAIN};margin-bottom:2px;">+ {b}</div>'
         for b in _bull_items
-    ) or f'<div style="font-size:10px;color:{TEXT2};">No bullish signals</div>'
+    ) or f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">No bullish signals</div>'
     _bear_html  = "".join(
-        f'<div style="font-size:10px;color:{LOSS};margin-bottom:2px;">- {b}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{LOSS};margin-bottom:2px;">- {b}</div>'
         for b in _bear_items
     ) or ""
 
@@ -2740,45 +2736,45 @@ def render_symbol_detail(symbol: str) -> str:
         f'<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
         # Action badge
         f'<div style="flex:0 0 auto;">'
-        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:4px;">AI Action</div>'
         f'<span style="display:inline-block;background:{_ac_bg};border:1px solid {_ac_c};'
-        f'color:{_ac_c};font-size:13px;font-weight:700;letter-spacing:.5px;'
+        f'color:{_ac_c};font-size:{FONT_VALUE};font-weight:700;letter-spacing:.5px;'
         f'padding:4px 14px;border-radius:4px;">{_ac}</span>'
-        f'<div style="font-size:10px;color:{TEXT2};margin-top:4px;max-width:140px;">{_pa_reason}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;max-width:140px;">{_pa_reason}</div>'
         f'</div>'
         # Conviction bar + signals
         f'<div style="flex:1;min-width:160px;">'
-        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:4px;">AI Conviction</div>'
         f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
         f'<div style="background:{BORDER};border-radius:2px;height:6px;flex:1;">'
         f'<div style="background:{_bc};height:100%;width:{_pa_conf}%;border-radius:2px;"></div>'
-        f'</div><span style="font-size:11px;font-weight:700;color:{_bc};">{_pa_conf}%</span>'
+        f'</div><span style="font-size:{FONT_LABEL};font-weight:700;color:{_bc};">{_pa_conf}%</span>'
         f'</div>'
         f'{_bull_html}{_bear_html}'
         f'</div>'
         # Sizing
         f'<div style="text-align:right;flex:0 0 auto;">'
-        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
         f'letter-spacing:.8px;margin-bottom:4px;">Sizing Guidance</div>'
-        f'<div style="font-size:11px;color:{TEXT2};">{_sh}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{_sh}</div>'
         f'</div></div></div>'
     )
 
     card = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-top:3px solid {PRIMARY};border-radius:8px;padding:20px;">'
         f'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;">'
-        f'<span style="font-family:Courier New,monospace;font-size:30px;font-weight:700;color:{PRIMARY};letter-spacing:-1px;">{symbol}</span>'
+        f'<span style="font-family:Courier New,monospace;font-size:{FONT_HERO};font-weight:700;color:{PRIMARY};letter-spacing:-1px;">{symbol}</span>'
         f'<span style="background:{SURFACE2};border:1px solid {status_c};color:{status_c};'
-        f'padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;">{status_lbl}</span>'
+        f'padding:2px 10px;border-radius:4px;font-size:{FONT_LABEL};font-weight:700;letter-spacing:.5px;">{status_lbl}</span>'
         f'</div>'
         f'{action_card_html}{stat_g}{pos_g}'
         f'<div class="nt-ai-split">'
-        f'<div><div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Why the AI entered</div>'
+        f'<div><div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Why the AI entered</div>'
         f'{why_html}{model_html}</div>'
         f'<div class="nt-ai-right">'
-        f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Trade History</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Trade History</div>'
         f'{hist_rows}{ts_note}'
         f'</div></div></div>'
     )
@@ -2793,7 +2789,7 @@ def render_whats_changed() -> str:
     date_label = f"{d.strftime('%B')} {d.day}"
 
     def _empty(msg: str) -> str:
-        inner = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">{msg}</div>')
+        inner = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:{FONT_LABEL};">{msg}</div>')
         return (f'<div class="nt nt-wrap">'
                 f'{_section("📅", "Since Yesterday", date_label)}'
                 f'{_wrap(inner)}</div>')
@@ -2853,8 +2849,8 @@ def render_whats_changed() -> str:
             pv_html = (
                 f'<div style="background:{BG};border:1px solid {d_c}33;border-radius:6px;'
                 f'padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">'
-                f'<span style="font-size:16px;">{icon}</span>'
-                f'<span style="font-size:13px;color:{TEXT1};">Portfolio '
+                f'<span style="font-size:{FONT_VALUE};">{icon}</span>'
+                f'<span style="font-size:{FONT_VALUE};color:{TEXT1};">Portfolio '
                 f'<strong style="color:{d_c};">{word} ${abs(delta):,.2f} ({pct:+.2f}%)</strong>'
                 f' since yesterday</span></div>'
             )
@@ -2904,20 +2900,20 @@ def render_whats_changed() -> str:
         changes_seen = True
         for i, (metric, arrow_html, mag) in enumerate(changes):
             sym_cell = (f'<span style="font-family:Courier New,monospace;font-weight:700;'
-                        f'color:{PRIMARY};font-size:13px;">{sym}</span>') if i == 0 else ""
+                        f'color:{PRIMARY};font-size:{FONT_VALUE};">{sym}</span>') if i == 0 else ""
             rows_html += (
                 f'<div style="display:grid;grid-template-columns:80px 100px 32px 1fr;'
                 f'align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid {BORDER};">'
                 f'<div>{sym_cell}</div>'
-                f'<div style="font-size:12px;color:{TEXT2};">{metric}</div>'
-                f'<div style="text-align:center;font-size:15px;">{arrow_html}</div>'
-                f'<div style="font-size:12px;color:{TEXT1};">{mag}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{metric}</div>'
+                f'<div style="text-align:center;font-size:{FONT_VALUE};">{arrow_html}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT1};">{mag}</div>'
                 f'</div>'
             )
 
     if not changes_seen:
         rows_html = (
-            f'<div style="color:{TEXT2};font-size:12px;padding:12px 0;text-align:center;">'
+            f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:12px 0;text-align:center;">'
             f'No significant changes since yesterday — AI signals are stable.</div>'
         )
 
@@ -3037,7 +3033,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
     first_any   = any(v is not None for v in stats.values())
 
     if not first_any:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">'
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:{FONT_LABEL};">'
                  f'No portfolio history yet — data appears after the first trade.</div>')
         return f'<div class="nt nt-wrap">{empty}</div>'
 
@@ -3054,17 +3050,17 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
                 f'<div style="text-align:center;padding:8px 12px;background:{SURFACE};'
                 f'border:1px solid {"" + PRIMARY if pk == key else BORDER};'
                 f'border-radius:6px;min-width:60px;">'
-                f'<div style="font-size:10px;color:{"" + PRIMARY if pk == key else TEXT2};'
+                f'<div style="font-size:{FONT_LABEL};color:{"" + PRIMARY if pk == key else TEXT2};'
                 f'font-weight:700;margin-bottom:4px;">{pk}</div>'
-                f'<div style="font-size:12px;color:{c};font-weight:700;">{pct:+.1f}%</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{c};font-weight:700;">{pct:+.1f}%</div>'
                 f'</div>'
             )
         else:
             strip_items += (
                 f'<div style="text-align:center;padding:8px 12px;background:{BG};'
                 f'border:1px solid {BORDER};border-radius:6px;min-width:60px;opacity:0.4;">'
-                f'<div style="font-size:10px;color:{TEXT2};font-weight:700;margin-bottom:4px;">{pk}</div>'
-                f'<div style="font-size:11px;color:{TEXT2};">—</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};font-weight:700;margin-bottom:4px;">{pk}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">—</div>'
                 f'</div>'
             )
 
@@ -3077,7 +3073,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
     if not s:
         detail = (
             f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;'
-            f'padding:20px;text-align:center;color:{TEXT2};font-size:13px;">'
+            f'padding:20px;text-align:center;color:{TEXT2};font-size:{FONT_VALUE};">'
             f'Not enough data yet for <strong>{key}</strong> — the bot needs more trading history.</div>'
         )
     else:
@@ -3092,21 +3088,21 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
             f'<div style="background:{SURFACE};border:1px solid {BORDER};'
             f'border-top:3px solid {c};border-radius:8px;padding:20px 24px;">'
             # Big headline
-            f'<div style="font-size:32px;font-weight:700;color:{c};letter-spacing:-1px;'
+            f'<div style="font-size:{FONT_HERO};font-weight:700;color:{c};letter-spacing:-1px;'
             f'line-height:1;margin-bottom:8px;">'
             f'{sign}${abs(delta):,.2f}</div>'
             # Subline
-            f'<div style="font-size:14px;color:{TEXT2};margin-bottom:14px;">'
+            f'<div style="font-size:{FONT_VALUE};color:{TEXT2};margin-bottom:14px;">'
             f'{sign}{pct:.2f}% {label_str}</div>'
             # From → To
             f'<div style="display:flex;align-items:center;gap:12px;">'
-            f'<span style="font-size:13px;color:{TEXT2};">From</span>'
-            f'<span style="font-size:15px;font-weight:700;color:{TEXT1};">${start_val:,.2f}</span>'
-            f'<span style="font-size:13px;color:{TEXT2};">→</span>'
-            f'<span style="font-size:15px;font-weight:700;color:{TEXT1};">${end_val:,.2f}</span>'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">From</span>'
+            f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${start_val:,.2f}</span>'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">→</span>'
+            f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${end_val:,.2f}</span>'
             f'</div>'
             # Start date
-            f'<div style="font-size:11px;color:{TEXT2};margin-top:10px;">'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:10px;">'
             f'Period start: {start_date}</div>'
             f'</div>'
         )
@@ -3161,7 +3157,7 @@ def render_todays_actions() -> str:
 
         badge_html = (
             f'<span style="display:inline-block;padding:2px 8px;border-radius:3px;'
-            f'background:{bg_c};color:{txt_c};font-size:10px;font-weight:700;'
+            f'background:{bg_c};color:{txt_c};font-size:{FONT_LABEL};font-weight:700;'
             f'letter-spacing:.5px;">{action}</span>'
         )
         conf_c = GAIN if conf >= 75 else (NEURAL if conf >= 60 else TEXT2)
@@ -3175,8 +3171,8 @@ def render_todays_actions() -> str:
             f'<td {td}>{_sym(sym)}</td>'
             f'<td {td}>{badge_html}{urg_dot}</td>'
             f'<td {td}><span style="font-weight:700;color:{conf_c};">{conf}%</span></td>'
-            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{reason}</span></td>'
-            f'<td {td}><span style="font-size:11px;color:{TEXT1};font-family:Courier New,monospace;">'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{reason}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};font-family:Courier New,monospace;">'
             f'{sizing}</span></td>'
             f'</tr>'
         )
@@ -3260,7 +3256,7 @@ def render_portfolio_actions() -> str:
             f'<td {td}>{_action_badge(label)}</td>'
             f'<td {td}><span style="font-weight:700;color:{ens_c};">{ens_str}</span></td>'
             f'<td {td}><span style="font-weight:700;color:{pnl_c};">{pnl_pct:+.1f}%</span></td>'
-            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{reason}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{reason}</span></td>'
             f'</tr>'
         )
 
@@ -3327,14 +3323,14 @@ def render_position_sizing() -> str:
             f'<td {td}><span style="font-weight:700;color:{TEXT1};">{cur_pct:.1f}%</span></td>'
             f'<td {td}><span style="font-weight:700;color:{NEURAL};">{target_pct:.0f}%</span></td>'
             f'<td {td}><span style="font-weight:700;color:{adj_c};">{adj_lbl}</span></td>'
-            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{rationale}</span>'
-            f'<span style="font-size:10px;color:{TEXT2};margin-left:6px;">{val_hint}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{rationale}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};margin-left:6px;">{val_hint}</span></td>'
             f'</tr>'
         )
 
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
-        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'Target derived from AI ensemble score &nbsp;·&nbsp; '
         f'75%+ = 12% &nbsp;·&nbsp; 65%+ = 8% &nbsp;·&nbsp; 55%+ = 5% &nbsp;·&nbsp; &lt;55% = 3%'
         f'</div>'
@@ -3381,9 +3377,9 @@ def render_ai_committee() -> str:
         return (
             f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;'
             f'background:{BG};border-radius:6px;padding:8px 10px;min-width:64px;">'
-            f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;letter-spacing:.6px;">{label}</div>'
-            f'<div style="font-size:14px;font-weight:700;color:{c};">{v_str}</div>'
-            f'<div style="font-size:9px;font-weight:700;color:{c};">{vote}</div></div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.6px;">{label}</div>'
+            f'<div style="font-size:{FONT_VALUE};font-weight:700;color:{c};">{v_str}</div>'
+            f'<div style="font-size:{FONT_LABEL};font-weight:700;color:{c};">{vote}</div></div>'
         )
 
     rows_html = ""
@@ -3401,7 +3397,7 @@ def render_ai_committee() -> str:
 
         border_b = f'border-bottom:1px solid {BORDER};' if i < min(len(open_pos), 8) - 1 else ''
         if no_data:
-            chip_html = (f'<span style="font-size:11px;color:{TEXT2};">'
+            chip_html = (f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
                          f'No BUY trade on record yet</span>')
         else:
             chip_html = (
@@ -3414,7 +3410,7 @@ def render_ai_committee() -> str:
             f'{_sym(sym)}'
             f'<div style="display:flex;gap:6px;flex:1;">{chip_html}</div>'
             f'<div style="text-align:right;min-width:80px;">'
-            f'<div style="font-size:12px;font-weight:700;color:{verdict_c};">'
+            f'<div style="font-size:{FONT_LABEL};font-weight:700;color:{verdict_c};">'
             f'{"—" if no_data else verdict}</div></div></div>'
         )
 
@@ -3463,7 +3459,7 @@ def render_sell_analysis() -> str:
             f'<div style="background:{BORDER};border-radius:2px;height:4px;width:60px;">'
             f'<div style="background:{bar_c};height:100%;width:{score}%;border-radius:2px;"></div>'
             f'</div>'
-            f'<span style="font-size:10px;color:{bar_c};font-weight:600;">{score}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{bar_c};font-weight:600;">{score}</span>'
             f'</div>'
         )
         unreal_c  = GAIN if unreal >= 0 else LOSS
@@ -3479,9 +3475,9 @@ def render_sell_analysis() -> str:
             f'<td {td}>{_action_badge(rec)}</td>'
             f'<td {td}>{bar_html}</td>'
             f'<td {td}><span style="color:{unreal_c};font-weight:700;">{unreal_str}</span></td>'
-            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{pw:.0f}%</span></td>'
-            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{primary_reason}</span></td>'
-            f'<td {td}><span style="font-size:10px;color:{NEURAL};">{trim_note}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{pw:.0f}%</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{primary_reason}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{NEURAL};">{trim_note}</span></td>'
             f'</tr>'
         )
 
@@ -3548,7 +3544,7 @@ def render_position_sizing_panel() -> str:
             f'<td {td}>{bar_html}</td>'
             f'<td {td}><span style="font-weight:700;color:{delta_c};">{delta_str}</span></td>'
             f'<td {td}><span style="font-family:Courier New,monospace;color:{act_c};">{dol_disp}</span></td>'
-            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{reason}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{reason}</span></td>'
             f'</tr>'
         )
 
