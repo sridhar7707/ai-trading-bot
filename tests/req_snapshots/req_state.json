@@ -2,9 +2,9 @@
   "version": [
     1,
     1,
-    0
+    1
   ],
-  "last_updated": "2026-06-13 20:30:00",
+  "last_updated": "2026-06-13 21:00:00",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -180,6 +180,13 @@
       "spec": "SPEC 41",
       "last_updated": "2026-06-13",
       "notes": "render_positions() columns changed to Symbol|Action|Weight|Target|Confidence|P&L. Removed: Shares, Invested, Current Value, Cost Basis. Action from recommendation engine. Visual hierarchy by urgency (EXIT/SELL red row, TRIM amber, BUY green, HOLD dimmed)."
+    },
+    {
+      "name": "Tab Navigation Visibility Fix",
+      "status": "complete",
+      "spec": "SPEC 42",
+      "last_updated": "2026-06-13",
+      "notes": "Fixed tab visibility on HuggingFace Spaces: (1) triple CSS selectors with TEXT1 at 0.6 opacity (inactive) and 1.0 (active/hover), ACTION_BUY green underline on selected; (2) custom gr.themes.Base().set() theme replacing bare gr.themes.Base(); (3) JS MutationObserver fallback that enforces white text on all tab buttons and updates on class change."
     },
     {
       "name": "Rebalance Suggestions",

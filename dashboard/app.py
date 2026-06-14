@@ -137,32 +137,58 @@ GRADIO_CSS = f"""
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
 
-/* ── Tab navigation ───────────────────────────────────────────────────────── */
-.tabs > .tab-nav {{
-  background: {SURFACE} !important;
-  border-bottom: 1px solid {BORDER} !important;
-  padding: 0 12px !important;
+/* ── Tab navigation — high contrast fix ─────── */
+.tabs > .tab-nav,
+div.tabs > div.tab-nav,
+.gradio-container .tabs > .tab-nav {{
+  background: {SURFACE2} !important;
+  border-bottom: 2px solid {BORDER} !important;
+  padding: 0 8px !important;
+  display: flex !important;
+  gap: 4px !important;
 }}
-.tabs > .tab-nav > button {{
-  color: {TEXT2} !important;
+
+.tabs > .tab-nav > button,
+div.tabs > div.tab-nav > button,
+.gradio-container .tabs > .tab-nav > button {{
+  color: {TEXT1} !important;
   background: transparent !important;
   border: none !important;
-  border-bottom: 2px solid transparent !important;
-  padding: 10px 18px !important;
+  border-bottom: 3px solid transparent !important;
+  border-radius: 0 !important;
+  padding: 12px 20px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  transition: color .15s, border-color .15s !important;
+  letter-spacing: 0.3px !important;
+  opacity: 0.6 !important;
+  transition: opacity 0.15s, border-color 0.15s !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  margin-bottom: -2px !important;
 }}
-.tabs > .tab-nav > button:hover {{
+
+.tabs > .tab-nav > button:hover,
+div.tabs > div.tab-nav > button:hover {{
+  opacity: 1 !important;
+  background: rgba(255,255,255,0.05) !important;
+  border-bottom-color: {TEXT2} !important;
+}}
+
+.tabs > .tab-nav > button.selected,
+div.tabs > div.tab-nav > button.selected,
+.gradio-container .tabs > .tab-nav > button.selected {{
   color: {TEXT1} !important;
-  border-bottom-color: {BORDER} !important;
-}}
-.tabs > .tab-nav > button.selected {{
-  color: {PRIMARY} !important;
-  border-bottom-color: {PRIMARY} !important;
+  opacity: 1 !important;
+  border-bottom: 3px solid {ACTION_BUY} !important;
   background: transparent !important;
+  font-weight: 700 !important;
 }}
-.tabitem {{ background: transparent !important; border: none !important; }}
+
+.tabitem, div.tabitem {{
+  background: transparent !important;
+  border: none !important;
+  padding: 16px 0 0 0 !important;
+}}
 
 /* ── Portfolio performance period tabs ────────────────────────────────────── */
 .perf-tabs > .wrap {{ flex-wrap:wrap !important; gap:6px !important; }}
@@ -3576,8 +3602,56 @@ def render_position_sizing_panel() -> str:
 
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
-with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
+_theme = gr.themes.Base(
+    primary_hue=gr.themes.colors.green,
+    neutral_hue=gr.themes.colors.slate,
+).set(
+    body_background_fill="#0f1115",
+    body_text_color="#ffffff",
+    block_background_fill="#171a21",
+    block_border_color="#2d3445",
+    block_radius="12px",
+    button_primary_background_fill="#00c853",
+    button_primary_text_color="#000000",
+    button_secondary_background_fill="#222733",
+    button_secondary_text_color="#ffffff",
+    border_color_primary="#2d3445",
+)
+
+with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     gr.HTML(HEADER_HTML)
+    gr.HTML("""
+    <script>
+    function enforceTabStyles() {
+      const buttons = document.querySelectorAll(
+        '.tab-nav button, .tabs button[role="tab"], button[id*="tab"]'
+      );
+      buttons.forEach(btn => {
+        btn.style.setProperty('color', '#ffffff', 'important');
+        const isSelected = btn.classList.contains('selected');
+        btn.style.setProperty('opacity', isSelected ? '1' : '0.6', 'important');
+        if (!btn._tgListeners) {
+          btn._tgListeners = true;
+          btn.addEventListener('mouseenter', () => {
+            btn.style.setProperty('opacity', '1', 'important');
+          });
+          btn.addEventListener('mouseleave', () => {
+            if (!btn.classList.contains('selected')) {
+              btn.style.setProperty('opacity', '0.6', 'important');
+            }
+          });
+        }
+      });
+    }
+    const observer = new MutationObserver(enforceTabStyles);
+    observer.observe(document.body, {
+      subtree: true, attributes: true, attributeFilter: ['class']
+    });
+    setTimeout(enforceTabStyles, 300);
+    setTimeout(enforceTabStyles, 800);
+    setTimeout(enforceTabStyles, 2000);
+    </script>
+    """)
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
