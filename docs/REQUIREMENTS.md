@@ -1,8 +1,8 @@
 # TradeGenius — Living Requirements Document
 
 Auto-generated and auto-updated.
-Last updated: 2026-06-13 15:33:45
-Version: 1.0.2
+Last updated: 2026-06-13 18:55:41
+Version: 1.0.5
 
 ---
 
@@ -32,6 +32,27 @@ Purpose: Long-term and swing investment guidance with AI recommendations,
 | UI/UX Test Suite | ✅ Complete | SPEC 7 | 2026-06-13 | 14 test files in tests/ including test_dashboard_render.py |
 | UI Change Log | ✅ Complete | SPEC 8 | 2026-06-13 | tests/ui_changelog.py; 20 render_* components tracked |
 | Living Requirements Tracker | 🔄 In Progress | SPEC 9 | 2026-06-13 | tests/requirements_tracker.py — this file |
+
+### BACKEND FEATURES
+| Feature | Status | Spec | Last Updated | Notes |
+|---------|--------|------|--------------|-------|
+| 5-min Trading Loop | ✅ Complete | SPEC 10 | 2026-06-13 | GitHub Actions cron; market-hours + holiday detection; HALT_TRADING emergency override |
+| Pre-market Screener | ✅ Complete | SPEC 11 | 2026-06-13 | universe_today.json → screener_log; RL agent ranks candidates; separate premarket job |
+| Technical Feature Engineering | ✅ Complete | SPEC 12 | 2026-06-13 | compute_features(): ATR, RSI, EMA, volume ratio, 15-min RSI via 5-min bars |
+| Market Regime Classifier | ✅ Complete | SPEC 13 | 2026-06-13 | TRENDING / RANGING / BEARISH / VOLATILE labels; entry gated to TRENDING + RANGING only |
+| XGBoost Signal Model | ✅ Complete | SPEC 14 | 2026-06-13 | Probability-calibrated; SHAP feature_drivers stored per trade; pre-market retrain |
+| LSTM Signal Model | ✅ Complete | SPEC 15 | 2026-06-13 | 30-bar rolling window; loaded once in run_loop to avoid per-cycle startup cost |
+| Sentiment Pipeline | ✅ Complete | SPEC 16 | 2026-06-13 | FinBERT premarket batch (NewsAPI) + Reddit/WSB dynamic weighting (log1p mentions, 5-min cache) |
+| FRED Macro Signals | ✅ Complete | SPEC 17 | 2026-06-13 | VIX >= 40 halts all buys; macro score + size cap; 4-hour DB-backed cache |
+| Ensemble Signal | ✅ Complete | SPEC 18 | 2026-06-13 | Weighted: XGB + LSTM + sentiment + macro → STRONG_BUY / BUY / HOLD / SELL |
+| Entry Gate Suite | ✅ Complete | SPEC 19 | 2026-06-13 | 10 gates: VIX halt / regime / volume / 15-min RSI / RS / open-order / earnings / correlation / wash-sale / stop re-entry + Kelly sizing |
+| Exit Logic Suite | ✅ Complete | SPEC 20 | 2026-06-13 | Gap-down floor → take-profit (3xATR, 6-8%) → ATR stop → trailing stop → drift trim → time-exit → ensemble sell |
+| Risk Manager | ✅ Complete | SPEC 21 | 2026-06-13 | Daily 2% / weekly 5% loss limits; PDT 3-trade gate; drawdown circuit-breaker; portfolio-high tracking |
+| Alpaca Execution Engine | ✅ Complete | SPEC 22 | 2026-06-13 | Limit buy + fill confirmation; limit/market sell with stop-timeout escalation; slippage logging |
+| SQLite Data Layer | ✅ Complete | SPEC 23 | 2026-06-13 | 8 tables: trades, position_state, risk_state, earnings_cache, macro_cache, portfolio_snapshots, signal_log, screener_log |
+| HuggingFace DB Bridge | ✅ Complete | SPEC 24 | 2026-06-13 | sync_db.py pushes trades.db at most every 15 min; dashboard reads from HF dataset repo |
+| Telegram Alert System | ✅ Complete | SPEC 25 | 2026-06-13 | BUY / SELL / stop-loss / risk-warning / VIX-halt / daily-summary / weekly-report alerts |
+| Position Reconciliation | ✅ Complete | SPEC 26 | 2026-06-13 | Startup sync: removes stale DB entries, logs SELL_RECONCILE; seeds externally-opened positions |
 
 Status legend:
 ✅ Complete — built and tested  🔄 In Progress — currently being worked on

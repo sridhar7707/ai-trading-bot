@@ -53,6 +53,24 @@ _FEATURES = [
     {"name": "UI/UX Test Suite",                   "status": "complete",    "spec": "SPEC 7",  "last_updated": "2026-06-13", "notes": "14 test files in tests/ including test_dashboard_render.py"},
     {"name": "UI Change Log",                      "status": "complete",    "spec": "SPEC 8",  "last_updated": "2026-06-13", "notes": "tests/ui_changelog.py; 20 render_* components tracked"},
     {"name": "Living Requirements Tracker",        "status": "in_progress", "spec": "SPEC 9",  "last_updated": "2026-06-13", "notes": "tests/requirements_tracker.py — this file"},
+    # Backend features
+    {"name": "5-min Trading Loop",                 "status": "complete",    "spec": "SPEC 10", "last_updated": "2026-06-13", "notes": "GitHub Actions cron; market-hours + holiday detection; HALT_TRADING emergency override", "category": "backend"},
+    {"name": "Pre-market Screener",                "status": "complete",    "spec": "SPEC 11", "last_updated": "2026-06-13", "notes": "universe_today.json → screener_log; RL agent ranks candidates; separate premarket job", "category": "backend"},
+    {"name": "Technical Feature Engineering",      "status": "complete",    "spec": "SPEC 12", "last_updated": "2026-06-13", "notes": "compute_features(): ATR, RSI, EMA, volume ratio, 15-min RSI via 5-min bars", "category": "backend"},
+    {"name": "Market Regime Classifier",           "status": "complete",    "spec": "SPEC 13", "last_updated": "2026-06-13", "notes": "TRENDING / RANGING / BEARISH / VOLATILE labels; entry gated to TRENDING + RANGING only", "category": "backend"},
+    {"name": "XGBoost Signal Model",               "status": "complete",    "spec": "SPEC 14", "last_updated": "2026-06-13", "notes": "Probability-calibrated; SHAP feature_drivers stored per trade; pre-market retrain", "category": "backend"},
+    {"name": "LSTM Signal Model",                  "status": "complete",    "spec": "SPEC 15", "last_updated": "2026-06-13", "notes": "30-bar rolling window; loaded once in run_loop to avoid per-cycle startup cost", "category": "backend"},
+    {"name": "Sentiment Pipeline",                 "status": "complete",    "spec": "SPEC 16", "last_updated": "2026-06-13", "notes": "FinBERT premarket batch (NewsAPI) + Reddit/WSB dynamic weighting (log1p mentions, 5-min cache)", "category": "backend"},
+    {"name": "FRED Macro Signals",                 "status": "complete",    "spec": "SPEC 17", "last_updated": "2026-06-13", "notes": "VIX >= 40 halts all buys; macro score + size cap; 4-hour DB-backed cache", "category": "backend"},
+    {"name": "Ensemble Signal",                    "status": "complete",    "spec": "SPEC 18", "last_updated": "2026-06-13", "notes": "Weighted: XGB + LSTM + sentiment + macro → STRONG_BUY / BUY / HOLD / SELL", "category": "backend"},
+    {"name": "Entry Gate Suite",                   "status": "complete",    "spec": "SPEC 19", "last_updated": "2026-06-13", "notes": "10 gates: VIX halt / regime / volume / 15-min RSI / RS / open-order / earnings / correlation / wash-sale / stop re-entry + Kelly sizing", "category": "backend"},
+    {"name": "Exit Logic Suite",                   "status": "complete",    "spec": "SPEC 20", "last_updated": "2026-06-13", "notes": "Gap-down floor → take-profit (3xATR, 6-8%) → ATR stop → trailing stop → drift trim → time-exit → ensemble sell", "category": "backend"},
+    {"name": "Risk Manager",                       "status": "complete",    "spec": "SPEC 21", "last_updated": "2026-06-13", "notes": "Daily 2% / weekly 5% loss limits; PDT 3-trade gate; drawdown circuit-breaker; portfolio-high tracking", "category": "backend"},
+    {"name": "Alpaca Execution Engine",            "status": "complete",    "spec": "SPEC 22", "last_updated": "2026-06-13", "notes": "Limit buy + fill confirmation; limit/market sell with stop-timeout escalation; slippage logging", "category": "backend"},
+    {"name": "SQLite Data Layer",                  "status": "complete",    "spec": "SPEC 23", "last_updated": "2026-06-13", "notes": "8 tables: trades, position_state, risk_state, earnings_cache, macro_cache, portfolio_snapshots, signal_log, screener_log", "category": "backend"},
+    {"name": "HuggingFace DB Bridge",              "status": "complete",    "spec": "SPEC 24", "last_updated": "2026-06-13", "notes": "sync_db.py pushes trades.db at most every 15 min; dashboard reads from HF dataset repo", "category": "backend"},
+    {"name": "Telegram Alert System",              "status": "complete",    "spec": "SPEC 25", "last_updated": "2026-06-13", "notes": "BUY / SELL / stop-loss / risk-warning / VIX-halt / daily-summary / weekly-report alerts", "category": "backend"},
+    {"name": "Position Reconciliation",            "status": "complete",    "spec": "SPEC 26", "last_updated": "2026-06-13", "notes": "Startup sync: removes stale DB entries, logs SELL_RECONCILE; seeds externally-opened positions", "category": "backend"},
 ]
 
 _DECISIONS = [
@@ -195,15 +213,21 @@ def _generate_markdown(state: dict) -> str:
         HR,
         "## FEATURE STATUS",
         "",
-        "### CORE FEATURES",
-        "| Feature | Status | Spec | Last Updated | Notes |",
-        "|---------|--------|------|--------------|-------|",
     ]
+    _CAT_LABELS = {"core": "### CORE FEATURES", "backend": "### BACKEND FEATURES"}
+    _cats: dict[str, list] = {}
     for f in state.get("features", []):
-        icon = _STATUS.get(f.get("status", "planned"), "⏳ Planned")
-        out.append(f'| {f["name"]} | {icon} | {f["spec"]} | {f.get("last_updated","—")} | {f.get("notes","—")} |')
+        _cats.setdefault(f.get("category", "core"), []).append(f)
+    for cat, label in _CAT_LABELS.items():
+        feats = _cats.get(cat, [])
+        if not feats:
+            continue
+        out += [label, "| Feature | Status | Spec | Last Updated | Notes |", "|---------|--------|------|--------------|-------|"]
+        for f in feats:
+            icon = _STATUS.get(f.get("status", "planned"), "⏳ Planned")
+            out.append(f'| {f["name"]} | {icon} | {f["spec"]} | {f.get("last_updated","—")} | {f.get("notes","—")} |')
+        out.append("")
     out += [
-        "",
         "Status legend:",
         "✅ Complete — built and tested  🔄 In Progress — currently being worked on",
         "⏳ Planned — specified but not started  ❌ Blocked — cannot proceed",
