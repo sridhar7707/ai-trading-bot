@@ -23,6 +23,16 @@ import datetime
 import pandas as pd
 import gradio as gr
 from loguru import logger
+import sys as _sys
+import os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from bot.core.recommendation_engine import (
+    get_portfolio_action,
+    get_position_sizing,
+    get_sell_analysis,
+    get_recommendation_explanation,
+    get_portfolio_health,
+)
 
 DB_PATH    = "trades.db"
 HF_TOKEN   = os.getenv("HF_TOKEN",   "")
@@ -1193,6 +1203,17 @@ _SECTOR_MAP: dict[str, str] = {
     "XOM":  "Energy",  "CVX":  "Energy",  "SPY":  "Index", "QQQ":   "Index",
 }
 
+_SELL_REASON: dict[str, str] = {
+    "SELL":           "Target exit",
+    "SELL_STOP":      "Stop-loss triggered",
+    "SELL_TP":        "Take-profit hit",
+    "SELL_TRAIL":     "Trailing stop hit",
+    "SELL_TRIM":      "Oversize trim",
+    "SELL_TIME":      "Time-based exit",
+    "SELL_ENSEMBLE":  "Signal deteriorated",
+    "SELL_RECONCILE": "Reconciled on startup",
+}
+
 
 def _risk_level(vix: float, regime: str) -> tuple[str, str]:
     r = regime.lower()
@@ -1433,6 +1454,160 @@ def render_dashboard_hero() -> str:
         f'</div>'
     )
     return f'<div class="nt nt-wrap">{cards}{status}</div>'
+
+
+# ── PANEL 1: Portfolio Health Hero ────────────────────────────────────────────
+def render_portfolio_health_hero() -> str:
+    d    = get_data()
+    h    = get_portfolio_health(d)
+    mkt_label, mkt_color = _market_status()
+
+    score    = h["total"]
+    grade    = h["grade"]
+    gl       = h["grade_label"]
+    risk_txt = h["biggest_risk"]
+    comps    = h.get("components", {})
+
+    grade_c = (GAIN if score >= 80 else (NEURAL if score >= 60 else LOSS))
+
+    # Grade pill
+    grade_pill = (
+        f'<div style="display:inline-flex;align-items:center;gap:8px;">'
+        f'<span style="font-size:42px;font-weight:800;color:{grade_c};'
+        f'letter-spacing:-2px;line-height:1;">{grade}</span>'
+        f'<div>'
+        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;">{gl}</div>'
+        f'<div style="font-size:22px;font-weight:700;color:{TEXT1};line-height:1.1;">'
+        f'{score}<span style="font-size:12px;color:{TEXT2};font-weight:400;">/100</span></div>'
+        f'</div>'
+        f'</div>'
+    )
+
+    # Score bar
+    bar = (
+        f'<div style="margin:10px 0 6px;background:{BORDER};border-radius:3px;height:5px;">'
+        f'<div style="background:{grade_c};height:100%;width:{score}%;border-radius:3px;'
+        f'transition:width .4s;"></div></div>'
+    )
+
+    # Component bars
+    comp_rows = []
+    comp_order = ["risk", "diversification", "cash", "momentum", "quality"]
+    for k in comp_order:
+        c = comps.get(k, {})
+        lbl    = c.get("label", k.title())
+        pts    = c.get("score", 0)
+        maxpts = c.get("max", 25)
+        detail = c.get("detail", "")
+        pct    = int(pts / maxpts * 100) if maxpts > 0 else 0
+        bar_c  = GAIN if pct >= 70 else (NEURAL if pct >= 40 else LOSS)
+        comp_rows.append(
+            f'<div style="margin-bottom:7px;">'
+            f'<div style="display:flex;justify-content:space-between;'
+            f'align-items:baseline;margin-bottom:2px;">'
+            f'<span style="font-size:11px;color:{TEXT2};">{lbl}</span>'
+            f'<span style="font-size:11px;color:{bar_c};font-weight:600;">'
+            f'{pts}/{maxpts}&nbsp;<span style="color:{TEXT2};font-weight:400;">{detail}</span></span>'
+            f'</div>'
+            f'<div style="background:{BORDER};border-radius:2px;height:3px;">'
+            f'<div style="background:{bar_c};height:100%;width:{pct}%;border-radius:2px;"></div>'
+            f'</div>'
+            f'</div>'
+        )
+    comp_html = "".join(comp_rows)
+
+    # Biggest risk callout
+    risk_icon = "⚠" if score < 80 else "✓"
+    risk_color = LOSS if score < 60 else (NEURAL if score < 80 else GAIN)
+    risk_callout = (
+        f'<div style="margin-top:8px;padding:7px 10px;background:{SURFACE2};'
+        f'border-left:3px solid {risk_color};border-radius:0 4px 4px 0;">'
+        f'<span style="font-size:11px;color:{risk_color};font-weight:600;">'
+        f'{risk_icon} {risk_txt}</span>'
+        f'</div>'
+    )
+
+    # Strengths (max 2)
+    strengths = h.get("strengths", [])[:2]
+    str_html = ""
+    if strengths:
+        items = "".join(
+            f'<span style="font-size:10px;color:{GAIN};background:#0a2010;'
+            f'border-radius:3px;padding:2px 6px;">{s}</span> '
+            for s in strengths
+        )
+        str_html = f'<div style="margin-top:6px;">{items}</div>'
+
+    # Portfolio value from existing data
+    open_pos = d.get("open_pos", {})
+    prices   = d.get("prices", {})
+    total_inv = sum(v["invested"] for v in open_pos.values())
+    total_cur = sum(v["shares"] * prices.get(s, 0.0) for s, v in open_pos.items())
+    total_pnl = total_cur - total_inv
+    pnl_pct   = (total_pnl / total_inv * 100) if total_inv > 0 else 0.0
+    pnl_c     = GAIN if total_pnl >= 0 else LOSS
+    pnl_sign  = "+" if total_pnl >= 0 else ""
+    hero_chg  = (f'{pnl_sign}${total_pnl:,.2f} ({pnl_pct:+.2f}%)'
+                 if total_inv > 0 else "No open positions")
+
+    def _stat(label, val, color=None):
+        c = color or TEXT1
+        return (
+            f'<div style="text-align:center;padding:10px 14px;">'
+            f'<div style="font-size:10px;color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.7px;margin-bottom:4px;">{label}</div>'
+            f'<div style="font-size:18px;font-weight:700;color:{c};">{val}</div>'
+            f'</div>'
+        )
+
+    avg_conf   = d.get("avg_confidence", 0.0)
+    conf_str   = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—"
+    conf_c     = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
+    vix        = d.get("vix", 0.0)
+    vix_str    = f"{vix:.1f}" if vix > 0 else "—"
+    vix_c      = GAIN if vix < 15 else (NEURAL if vix < 25 else LOSS)
+
+    stats_row = (
+        f'<div style="display:flex;flex-wrap:wrap;border-top:1px solid {BORDER};margin-top:10px;">'
+        + _stat("Portfolio", d.get("portfolio", "—"), TEXT1)
+        + _stat("P&L", hero_chg, pnl_c)
+        + _stat("Positions", str(len(open_pos)), TEXT1)
+        + _stat("AI Conf.", conf_str, conf_c)
+        + _stat("VIX", vix_str, vix_c)
+        + f'</div>'
+    )
+
+    body = (
+        f'<div style="display:flex;gap:20px;flex-wrap:wrap;">'
+        f'<div style="flex:0 0 auto;min-width:160px;">{grade_pill}{bar}'
+        f'{risk_callout}{str_html}</div>'
+        f'<div style="flex:1;min-width:200px;">{comp_html}</div>'
+        f'</div>'
+        f'{stats_row}'
+    )
+
+    timestamp = (
+        f'<div class="nt-status">'
+        f'<span style="color:{TEXT2};font-size:11px;">'
+        f'Updated &nbsp;<strong style="color:{TEXT1};">{_now_ct()}</strong></span>'
+        f'<span style="display:inline-flex;align-items:center;gap:5px;">'
+        f'<span style="width:6px;height:6px;background:{mkt_color};border-radius:50%;'
+        f'display:inline-block;"></span>'
+        f'<span style="color:{mkt_color};font-weight:600;font-size:11px;">'
+        f'{mkt_label}</span></span>'
+        f'<span style="color:{TEXT2};font-size:11px;">60s refresh</span>'
+        f'</div>'
+    )
+    inner = (
+        f'<div class="nt-card" style="padding:20px 18px;">'
+        f'<div style="font-size:11px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:12px;">Portfolio Health</div>'
+        f'{body}'
+        f'</div>'
+        f'{timestamp}'
+    )
+    return f'<div class="nt nt-wrap">{inner}</div>'
 
 
 # ── Render: AI recommendation card — full-width hero ─────────────────────────
@@ -2314,6 +2489,75 @@ def render_symbol_detail(symbol: str) -> str:
         )
 
     ts_note = f'<div style="font-size:10px;color:{TEXT2};margin-top:8px;">Signal: {_to_ct(ts)[:16]}</div>' if ts else ""
+
+    # ── SPEC 31: action card ──────────────────────────────────────────────────────
+    # ── Why Panel — recommendation engine signals ──────────────────────────────
+    _pa  = get_portfolio_action(symbol, d)
+    _exp = get_recommendation_explanation(symbol, d)
+    _sz2 = get_position_sizing(symbol, d)
+    _ac  = _pa.get("action", "HOLD")
+    _pa_conf = _pa.get("confidence", 0)
+    _pa_reason = _pa.get("reason", "—")
+    _ac_colors = {
+        "EXIT":  (LOSS,      "#2a0a0a"),
+        "SELL":  (LOSS,      "#2a0a0a"),
+        "TRIM":  ("#f59e0b", "#2a1f08"),
+        "WATCH": (NEURAL,    "#1a1030"),
+        "ADD":   (GAIN,      "#0a2010"),
+        "BUY":   (GAIN,      "#0a2010"),
+        "HOLD":  (TEXT2,     SURFACE2),
+    }
+    _ac_c, _ac_bg = _ac_colors.get(_ac, (TEXT2, SURFACE2))
+    _bc = GAIN if _pa_conf >= 75 else (NEURAL if _pa_conf >= 60 else TEXT2)
+
+    _bull_items = _exp.get("bullish", [])[:3]
+    _bear_items = _exp.get("bearish", [])[:3]
+    _bull_html  = "".join(
+        f'<div style="font-size:10px;color:{GAIN};margin-bottom:2px;">+ {b}</div>'
+        for b in _bull_items
+    ) or f'<div style="font-size:10px;color:{TEXT2};">No bullish signals</div>'
+    _bear_html  = "".join(
+        f'<div style="font-size:10px;color:{LOSS};margin-bottom:2px;">- {b}</div>'
+        for b in _bear_items
+    ) or ""
+
+    _dol_disp = _sz2.get("dollar_display", "—")
+    _tgt_w    = _sz2.get("target_weight", 0.0)
+    _sh = (f"Target {_tgt_w:.0f}% · {_dol_disp}" if _tgt_w > 0 else
+           "Max 12% allocation" if _pa_conf >= 75 else
+           "Max 8% allocation"  if _pa_conf >= 60 else "Max 5% allocation")
+
+    action_card_html = (
+        f'<div style="background:{BG};border-radius:6px;padding:12px 14px;margin-bottom:14px;">'
+        f'<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
+        # Action badge
+        f'<div style="flex:0 0 auto;">'
+        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:4px;">AI Action</div>'
+        f'<span style="display:inline-block;background:{_ac_bg};border:1px solid {_ac_c};'
+        f'color:{_ac_c};font-size:13px;font-weight:700;letter-spacing:.5px;'
+        f'padding:4px 14px;border-radius:4px;">{_ac}</span>'
+        f'<div style="font-size:10px;color:{TEXT2};margin-top:4px;max-width:140px;">{_pa_reason}</div>'
+        f'</div>'
+        # Conviction bar + signals
+        f'<div style="flex:1;min-width:160px;">'
+        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:4px;">AI Conviction</div>'
+        f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
+        f'<div style="background:{BORDER};border-radius:2px;height:6px;flex:1;">'
+        f'<div style="background:{_bc};height:100%;width:{_pa_conf}%;border-radius:2px;"></div>'
+        f'</div><span style="font-size:11px;font-weight:700;color:{_bc};">{_pa_conf}%</span>'
+        f'</div>'
+        f'{_bull_html}{_bear_html}'
+        f'</div>'
+        # Sizing
+        f'<div style="text-align:right;flex:0 0 auto;">'
+        f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;'
+        f'letter-spacing:.8px;margin-bottom:4px;">Sizing Guidance</div>'
+        f'<div style="font-size:11px;color:{TEXT2};">{_sh}</div>'
+        f'</div></div></div>'
+    )
+
     card = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-top:3px solid {PRIMARY};border-radius:8px;padding:20px;">'
         f'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;">'
@@ -2321,7 +2565,7 @@ def render_symbol_detail(symbol: str) -> str:
         f'<span style="background:{SURFACE2};border:1px solid {status_c};color:{status_c};'
         f'padding:2px 10px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;">{status_lbl}</span>'
         f'</div>'
-        f'{stat_g}{pos_g}'
+        f'{action_card_html}{stat_g}{pos_g}'
         f'<div class="nt-ai-split">'
         f'<div><div style="font-size:10px;color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Why the AI entered</div>'
         f'{why_html}{model_html}</div>'
@@ -2662,6 +2906,488 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
     return f'<div class="nt nt-wrap">{strip}{detail}</div>'
 
 
+# ── Render: today's trades timeline ─────────────────────────────────────────────
+# ── PANEL 2: Today's Priority Actions — recommendation-based ─────────────────
+def render_todays_actions() -> str:
+    d        = get_data()
+    open_pos = d.get("open_pos", {})
+
+    if not open_pos:
+        empty = (
+            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
+            f'No open positions — nothing to act on.</div>'
+        )
+        return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions","What to do right now")}{_wrap(empty)}</div>'
+
+    _ACTION_ORDER = {"EXIT": 0, "SELL": 1, "TRIM": 2, "WATCH": 3, "ADD": 4, "BUY": 5, "HOLD": 6}
+    recommendations: list[dict] = []
+    for sym in open_pos:
+        rec    = get_portfolio_action(sym, d)
+        sz     = get_position_sizing(sym, d)
+        rec["symbol"]      = sym
+        rec["sizing_hint"] = sz.get("dollar_display", "—")
+        rec["shares_hint"] = sz.get("shares_display", "—")
+        recommendations.append(rec)
+
+    # Sort: urgent actions first
+    recommendations.sort(key=lambda r: (_ACTION_ORDER.get(r.get("action", "HOLD"), 9),
+                                         -r.get("confidence", 0)))
+
+    _badge_color = {
+        "EXIT":  (LOSS,      "#2a0a0a"),
+        "SELL":  (LOSS,      "#2a0a0a"),
+        "TRIM":  ("#f59e0b", "#2a1f08"),
+        "WATCH": (NEURAL,    "#1a1030"),
+        "ADD":   (GAIN,      "#0a2010"),
+        "BUY":   (GAIN,      "#0a2010"),
+        "HOLD":  (TEXT2,     SURFACE2),
+    }
+
+    n    = len(recommendations)
+    rows = ""
+    for i, rec in enumerate(recommendations):
+        sym      = rec["symbol"]
+        action   = rec.get("action", "HOLD")
+        conf     = rec.get("confidence", 0)
+        reason   = rec.get("reason", "—")
+        sizing   = rec.get("sizing_hint", "—")
+        urgency  = rec.get("urgency", "low")
+        txt_c, bg_c = _badge_color.get(action, (TEXT2, SURFACE2))
+        td = TD if i < n - 1 else TD0
+
+        badge_html = (
+            f'<span style="display:inline-block;padding:2px 8px;border-radius:3px;'
+            f'background:{bg_c};color:{txt_c};font-size:10px;font-weight:700;'
+            f'letter-spacing:.5px;">{action}</span>'
+        )
+        conf_c = GAIN if conf >= 75 else (NEURAL if conf >= 60 else TEXT2)
+        urg_c  = LOSS if urgency == "high" else (NEURAL if urgency == "medium" else TEXT2)
+        urg_dot = (
+            f'<span style="width:6px;height:6px;border-radius:50%;'
+            f'background:{urg_c};display:inline-block;margin-left:4px;"></span>'
+        )
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_sym(sym)}</td>'
+            f'<td {td}>{badge_html}{urg_dot}</td>'
+            f'<td {td}><span style="font-weight:700;color:{conf_c};">{conf}%</span></td>'
+            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{reason}</span></td>'
+            f'<td {td}><span style="font-size:11px;color:{TEXT1};font-family:Courier New,monospace;">'
+            f'{sizing}</span></td>'
+            f'</tr>'
+        )
+
+    urgent_count = sum(1 for r in recommendations if r.get("urgency") == "high")
+    note = (f"{urgent_count} urgent · {n} positions" if urgent_count else
+            f"{n} position{'s' if n != 1 else ''} · sorted by priority")
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th>'
+        f'<th {TH}>Conf.</th><th {TH}>Reason</th><th {TH}>Sizing</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions",note)}{table}</div>'
+
+
+# ── Render: portfolio actions panel ─────────────────────────────────────────────
+def render_portfolio_actions() -> str:
+    d        = get_data()
+    open_pos = d["open_pos"]
+    prices   = d["prices"]
+    df       = d["trades_df"]
+
+    if not open_pos:
+        empty = f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">No open positions.</div>'
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("🎯","Portfolio Actions","AI recommendation per position")}'
+                f'{_wrap(empty)}</div>')
+
+    _pv = 0.0
+    try:
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    # Latest ensemble score per open symbol from trades_df (no extra DB call)
+    _ens: dict[str, float] = {}
+    if not df.empty:
+        buys = df[df["action"] == "BUY"]
+        for sym in open_pos:
+            sym_buys = buys[buys["symbol"] == sym]
+            if not sym_buys.empty:
+                _ens[sym] = float(sym_buys.iloc[-1].get("ensemble_score", 0.0) or 0.0)
+
+    _AMBER = "#f59e0b"
+    rows  = ""
+    items = list(open_pos.items())
+    for i, (sym, pos) in enumerate(items):
+        cur      = prices.get(sym, 0.0)
+        invested = pos["invested"]
+        cur_val  = pos["shares"] * cur
+        pnl_pct  = ((cur_val - invested) / invested * 100) if invested > 0 else 0.0
+        pos_pct  = (cur_val / _pv * 100) if _pv > 0 else 0.0
+        ens      = _ens.get(sym, 1.0)
+
+        sz_pts   = 30 if pos_pct > 25 else (20 if pos_pct > 15 else (10 if pos_pct > 10 else 0))
+        pr_pts   = (30 if pnl_pct > 50 else (20 if pnl_pct > 25 else (10 if pnl_pct > 10 else 0))) if pnl_pct > 0 else 0
+        cf_pts   = 25 if ens < 0.55 else (15 if ens < 0.65 else 0)
+        dd_pts   = (15 if pnl_pct < -8 else (10 if pnl_pct < -5 else 0)) if pnl_pct < 0 else 0
+        total    = sz_pts + pr_pts + cf_pts + dd_pts
+
+        scored: list[tuple[int, str]] = []
+        if sz_pts: scored.append((sz_pts, "Position oversized"))
+        if pr_pts:
+            scored.append((pr_pts, "Profit > 50%" if pnl_pct > 50 else ("Profit > 25%" if pnl_pct > 25 else "Profit > 10%")))
+        if cf_pts: scored.append((cf_pts, "AI confidence weakening"))
+        if dd_pts: scored.append((dd_pts, "Drawdown risk"))
+        scored.sort(key=lambda x: -x[0])
+        reason = scored[0][1] if scored else "All metrics healthy"
+
+        if total <= 30:   label, bc, bbg = "HOLD",  GAIN,   "#0a2010"
+        elif total <= 59: label, bc, bbg = "WATCH", NEURAL, "#1a1030"
+        elif total <= 79: label, bc, bbg = "TRIM",  _AMBER, "#2a1f08"
+        else:             label, bc, bbg = "EXIT",  LOSS,   "#2a0a0a"
+
+        pnl_c   = GAIN if pnl_pct >= 0 else LOSS
+        ens_c   = GAIN if ens >= 0.75 else (NEURAL if ens >= 0.60 else TEXT2)
+        ens_str = f"{ens*100:.0f}%" if ens > 0 else "—"
+        badge   = (
+            f'<span style="display:inline-block;background:{bbg};border:1px solid {bc};'
+            f'color:{bc};font-size:10px;font-weight:700;letter-spacing:.5px;'
+            f'padding:2px 8px;border-radius:4px;">{label}</span>'
+        )
+        td = TD if i < len(items) - 1 else TD0
+        rows += (
+            f'<tr><td {td}>{_sym(sym)}</td>'
+            f'<td {td}>{badge}</td>'
+            f'<td {td}><span style="font-weight:700;color:{ens_c};">{ens_str}</span></td>'
+            f'<td {td}><span style="font-weight:700;color:{pnl_c};">{pnl_pct:+.1f}%</span></td>'
+            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{reason}</span></td>'
+            f'</tr>'
+        )
+
+    note  = f"{len(items)} position{'s' if len(items) != 1 else ''}"
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>AI Score</th>'
+        f'<th {TH}>P&amp;L</th><th {TH}>Top Reason</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🎯","Portfolio Actions","AI recommendation per position")}{table}</div>')
+
+
+# ── Render: position sizing recommendations ────────────────────────────────────
+def render_position_sizing() -> str:
+    d        = get_data()
+    open_pos = d["open_pos"]
+    prices   = d["prices"]
+    df       = d["trades_df"]
+
+    if not open_pos:
+        empty = f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:12px;">No open positions to size.</div>'
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("📐","Position Sizing","conviction-based target allocation")}'
+                f'{_wrap(empty)}</div>')
+
+    _pv = 0.0
+    try:
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+    except Exception:
+        pass
+
+    _ens: dict[str, float] = {}
+    if not df.empty:
+        buys = df[df["action"] == "BUY"]
+        for sym in open_pos:
+            sym_buys = buys[buys["symbol"] == sym]
+            if not sym_buys.empty:
+                _ens[sym] = float(sym_buys.iloc[-1].get("ensemble_score", 0.65) or 0.65)
+
+    rows  = ""
+    items = list(open_pos.items())
+    for i, (sym, pos) in enumerate(items):
+        cur      = prices.get(sym, 0.0)
+        cur_val  = pos["shares"] * cur if cur > 0 else pos["invested"]
+        cur_pct  = (cur_val / _pv * 100) if _pv > 0 else 0.0
+        ens      = _ens.get(sym, 0.65)
+
+        if ens >= 0.75:   target_pct, rationale = 12.0, "High conviction"
+        elif ens >= 0.65: target_pct, rationale = 8.0,  "Moderate conviction"
+        elif ens >= 0.55: target_pct, rationale = 5.0,  "Low conviction"
+        else:             target_pct, rationale = 3.0,  "Very low — consider exit"
+
+        delta = target_pct - cur_pct
+        if abs(delta) < 0.5:   adj_lbl, adj_c = "On target",           TEXT2
+        elif delta > 0:        adj_lbl, adj_c = f"Add +{delta:.1f}%",  GAIN
+        else:                  adj_lbl, adj_c = f"Reduce {delta:.1f}%", "#f59e0b"
+
+        target_val = (_pv * target_pct / 100) if _pv > 0 else 0.0
+        val_hint   = f"(~${target_val:,.0f})" if target_val > 0 else ""
+        td = TD if i < len(items) - 1 else TD0
+        rows += (
+            f'<tr><td {td}>{_sym(sym)}</td>'
+            f'<td {td}><span style="font-weight:700;color:{TEXT1};">{cur_pct:.1f}%</span></td>'
+            f'<td {td}><span style="font-weight:700;color:{NEURAL};">{target_pct:.0f}%</span></td>'
+            f'<td {td}><span style="font-weight:700;color:{adj_c};">{adj_lbl}</span></td>'
+            f'<td {td}><span style="font-size:11px;color:{TEXT2};">{rationale}</span>'
+            f'<span style="font-size:10px;color:{TEXT2};margin-left:6px;">{val_hint}</span></td>'
+            f'</tr>'
+        )
+
+    help_block = (
+        f'<div style="background:{BG};border-top:1px solid {BORDER};'
+        f'padding:8px 14px;font-size:10px;color:{TEXT2};line-height:1.6;">'
+        f'Target derived from AI ensemble score &nbsp;·&nbsp; '
+        f'75%+ = 12% &nbsp;·&nbsp; 65%+ = 8% &nbsp;·&nbsp; 55%+ = 5% &nbsp;·&nbsp; &lt;55% = 3%'
+        f'</div>'
+    )
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Current</th><th {TH}>Target</th>'
+        f'<th {TH}>Adjustment</th><th {TH}>Rationale</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>' + help_block
+    )
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("📐","Position Sizing","conviction-based target allocation")}{table}</div>')
+
+
+# ── Render: AI investment committee ─────────────────────────────────────────────
+def render_ai_committee() -> str:
+    d        = get_data()
+    open_pos = d["open_pos"]
+    df       = d["trades_df"]
+
+    if not open_pos:
+        empty = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
+                 f'No open positions — committee convenes when positions exist.</div>')
+        return (f'<div class="nt nt-wrap">'
+                f'{_section("🏛","AI Committee","XGBoost · LSTM · Sentiment votes")}'
+                f'{_wrap(empty)}</div>')
+
+    # Extract latest BUY scores per symbol from trades_df
+    _votes: dict[str, dict] = {}
+    if not df.empty:
+        buys = df[df["action"] == "BUY"]
+        for sym in open_pos:
+            sym_buys = buys[buys["symbol"] == sym]
+            if not sym_buys.empty:
+                lb = sym_buys.iloc[-1]
+                _votes[sym] = {
+                    "xgb":  float(lb.get("xgb_prob",        0.0) or 0.0),
+                    "lstm": float(lb.get("lstm_prob",        0.0) or 0.0),
+                    "sent": float(lb.get("sentiment_score",  0.0) or 0.0),
+                }
+
+    def _vote_chip(label: str, pct_val: float, threshold: float = 0.60) -> str:
+        vote  = "BUY" if pct_val >= threshold else ("HOLD" if pct_val >= 0.45 else "SELL")
+        c     = GAIN if vote == "BUY" else (TEXT2 if vote == "HOLD" else LOSS)
+        v_str = f"{pct_val*100:.0f}%" if pct_val > 0 else "—"
+        return (
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;'
+            f'background:{BG};border-radius:6px;padding:8px 10px;min-width:64px;">'
+            f'<div style="font-size:9px;color:{TEXT2};text-transform:uppercase;letter-spacing:.6px;">{label}</div>'
+            f'<div style="font-size:14px;font-weight:700;color:{c};">{v_str}</div>'
+            f'<div style="font-size:9px;font-weight:700;color:{c};">{vote}</div></div>'
+        )
+
+    rows_html = ""
+    for i, (sym, _pos) in enumerate(list(open_pos.items())[:8]):
+        v     = _votes.get(sym, {})
+        xgb   = v.get("xgb",  0.0)
+        lstm  = v.get("lstm", 0.0)
+        sent  = v.get("sent", 0.0)
+        sent_n = min(max((sent + 1) / 2, 0.0), 1.0)   # -1..1 → 0..1
+
+        buy_votes = (1 if xgb >= 0.60 else 0) + (1 if lstm >= 0.60 else 0) + (1 if sent_n >= 0.55 else 0)
+        verdict_c = GAIN if buy_votes >= 2 else (NEURAL if buy_votes == 1 else LOSS)
+        verdict   = f"{buy_votes}/3 BUY" if buy_votes > 0 else "No BUY votes"
+        no_data   = not v
+
+        border_b = f'border-bottom:1px solid {BORDER};' if i < min(len(open_pos), 8) - 1 else ''
+        if no_data:
+            chip_html = (f'<span style="font-size:11px;color:{TEXT2};">'
+                         f'No BUY trade on record yet</span>')
+        else:
+            chip_html = (
+                _vote_chip("XGBoost", xgb)
+                + _vote_chip("LSTM", lstm)
+                + _vote_chip("Sentiment", sent_n, 0.55)
+            )
+        rows_html += (
+            f'<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;{border_b}">'
+            f'{_sym(sym)}'
+            f'<div style="display:flex;gap:6px;flex:1;">{chip_html}</div>'
+            f'<div style="text-align:right;min-width:80px;">'
+            f'<div style="font-size:12px;font-weight:700;color:{verdict_c};">'
+            f'{"—" if no_data else verdict}</div></div></div>'
+        )
+
+    if not rows_html:
+        rows_html = f'<div style="color:{TEXT2};font-size:12px;padding:14px;">No positions to show.</div>'
+
+    return (f'<div class="nt nt-wrap">'
+            f'{_section("🏛","AI Committee","3-model vote per open position")}'
+            f'{_wrap(rows_html)}</div>')
+
+
+# ── PANEL 3: Sell Analysis — when should I sell? ─────────────────────────────
+def render_sell_analysis() -> str:
+    d        = get_data()
+    open_pos = d.get("open_pos", {})
+
+    if not open_pos:
+        empty = (
+            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
+            f'No open positions to analyse.</div>'
+        )
+        return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis","When should I sell?")}{_wrap(empty)}</div>'
+
+    _REC_COLOR = {
+        "HOLD":  (GAIN,      "#0a2010"),
+        "WATCH": (NEURAL,    "#1a1030"),
+        "TRIM":  ("#f59e0b", "#2a1f08"),
+        "SELL":  (LOSS,      "#2a0a0a"),
+        "EXIT":  (LOSS,      "#2a0a0a"),
+    }
+    _REC_ORDER = {"EXIT": 0, "SELL": 1, "TRIM": 2, "WATCH": 3, "HOLD": 4}
+
+    analyses = []
+    for sym in open_pos:
+        sa = get_sell_analysis(sym, d)
+        sa["symbol"] = sym
+        analyses.append(sa)
+    analyses.sort(key=lambda a: (_REC_ORDER.get(a["recommendation"], 9), -a["sell_score"]))
+
+    n    = len(analyses)
+    rows = ""
+    for i, sa in enumerate(analyses):
+        sym    = sa["symbol"]
+        score  = sa["sell_score"]
+        rec    = sa["recommendation"]
+        unreal = sa.get("unrealised_pct", 0.0)
+        pw     = sa.get("position_weight", 0.0)
+        ens    = sa.get("ensemble_score", 0.0)
+        reasons_sell = sa.get("reasons_to_sell", [])
+        reasons_hold = sa.get("reasons_to_hold", [])
+        trim_pct = sa.get("trim_amount_pct", 0)
+
+        txt_c, bg_c = _REC_COLOR.get(rec, (TEXT2, SURFACE2))
+        td = TD if i < n - 1 else TD0
+
+        badge_html = (
+            f'<span style="display:inline-block;padding:2px 8px;border-radius:3px;'
+            f'background:{bg_c};color:{txt_c};font-size:10px;font-weight:700;">{rec}</span>'
+        )
+        bar_c = LOSS if score > 65 else (NEURAL if score > 35 else GAIN)
+        bar_html = (
+            f'<div style="display:inline-flex;align-items:center;gap:6px;">'
+            f'<div style="background:{BORDER};border-radius:2px;height:4px;width:60px;">'
+            f'<div style="background:{bar_c};height:100%;width:{score}%;border-radius:2px;"></div>'
+            f'</div>'
+            f'<span style="font-size:10px;color:{bar_c};font-weight:600;">{score}</span>'
+            f'</div>'
+        )
+        unreal_c  = GAIN if unreal >= 0 else LOSS
+        unreal_str = f"{unreal:+.1f}%"
+        trim_note  = f"Trim {trim_pct}%" if trim_pct > 0 else ""
+
+        # Primary sell reason or hold reason
+        primary_reason = reasons_sell[0] if reasons_sell else (reasons_hold[0] if reasons_hold else "No signal")
+
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_sym(sym)}</td>'
+            f'<td {td}>{badge_html}</td>'
+            f'<td {td}>{bar_html}</td>'
+            f'<td {td}><span style="color:{unreal_c};font-weight:700;">{unreal_str}</span></td>'
+            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{pw:.0f}%</span></td>'
+            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{primary_reason}</span></td>'
+            f'<td {td}><span style="font-size:10px;color:{NEURAL};">{trim_note}</span></td>'
+            f'</tr>'
+        )
+
+    act_count = sum(1 for a in analyses if a["recommendation"] != "HOLD")
+    note = f"{act_count} need attention · stop-loss 8%" if act_count else f"{n} positions — all holding"
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Signal</th><th {TH}>Score</th>'
+        f'<th {TH}>P&amp;L</th><th {TH}>Weight</th><th {TH}>Top Reason</th><th {TH}>Action</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis",note)}{table}</div>'
+
+
+# ── PANEL 5: Position Sizing Panel — replaces render_position_sizing ──────────
+def render_position_sizing_panel() -> str:
+    d        = get_data()
+    open_pos = d.get("open_pos", {})
+
+    if not open_pos:
+        empty = (
+            f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:12px;">'
+            f'No open positions — nothing to size.</div>'
+        )
+        return f'<div class="nt nt-wrap">{_section("📐","Position Sizing","Conviction-based target allocations")}{_wrap(empty)}</div>'
+
+    sizings = []
+    for sym in open_pos:
+        sz = get_position_sizing(sym, d)
+        sz["symbol"] = sym
+        sizings.append(sz)
+    sizings.sort(key=lambda s: abs(s["delta_weight"]), reverse=True)
+
+    n    = len(sizings)
+    rows = ""
+    for i, sz in enumerate(sizings):
+        sym     = sz["symbol"]
+        cur_w   = sz["current_weight"]
+        tgt_w   = sz["target_weight"]
+        delta_w = sz["delta_weight"]
+        dol_disp = sz["dollar_display"]
+        reason  = sz["reason"]
+        action  = sz["action"]
+        td = TD if i < n - 1 else TD0
+
+        act_c = GAIN if action == "add" else (LOSS if action == "reduce" else TEXT2)
+        delta_str = f"{delta_w:+.1f}%"
+        delta_c   = GAIN if delta_w > 0 else (LOSS if delta_w < 0 else TEXT2)
+
+        # Weight bar showing current vs target
+        bar_max = max(tgt_w, cur_w, 5.0)
+        cur_bar_w = int(cur_w / bar_max * 100)
+        tgt_bar_w = int(tgt_w / bar_max * 100)
+        bar_html = (
+            f'<div style="position:relative;width:80px;height:6px;background:{BORDER};border-radius:3px;">'
+            f'<div style="position:absolute;left:0;top:0;height:100%;width:{cur_bar_w}%;'
+            f'background:{TEXT2};border-radius:3px;"></div>'
+            f'<div style="position:absolute;left:0;top:0;height:100%;width:{tgt_bar_w}%;'
+            f'background:{act_c};opacity:.4;border-radius:3px;"></div>'
+            f'</div>'
+        )
+
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_sym(sym)}</td>'
+            f'<td {td}><span style="font-family:Courier New,monospace;color:{TEXT1};">{cur_w:.1f}%</span></td>'
+            f'<td {td}><span style="font-family:Courier New,monospace;color:{act_c};">{tgt_w:.1f}%</span></td>'
+            f'<td {td}>{bar_html}</td>'
+            f'<td {td}><span style="font-weight:700;color:{delta_c};">{delta_str}</span></td>'
+            f'<td {td}><span style="font-family:Courier New,monospace;color:{act_c};">{dol_disp}</span></td>'
+            f'<td {td}><span style="font-size:10px;color:{TEXT2};">{reason}</span></td>'
+            f'</tr>'
+        )
+
+    note = f"{n} positions · conviction-weighted · max 25% single stock"
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Current</th><th {TH}>Target</th>'
+        f'<th {TH}>Bar</th><th {TH}>Delta</th><th {TH}>Amount</th><th {TH}>Reason</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return f'<div class="nt nt-wrap">{_section("📐","Position Sizing",note)}{table}</div>'
+
+
 # ── Gradio layout — 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) as demo:
@@ -2669,14 +3395,17 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            ai_rec_out        = gr.HTML(value=render_ai_recommendation)
-            hero_out          = gr.HTML(value=render_dashboard_hero)
-            whats_changed_out = gr.HTML(value=render_whats_changed)
-            risk_panel_out    = gr.HTML(value=render_risk_panel)
+            hero_out           = gr.HTML(value=render_portfolio_health_hero)
+            ai_rec_out         = gr.HTML(value=render_ai_recommendation)
+            todays_actions_out = gr.HTML(value=render_todays_actions)
+            whats_changed_out  = gr.HTML(value=render_whats_changed)
+            risk_panel_out     = gr.HTML(value=render_risk_panel)
+            actions_out        = gr.HTML(value=render_portfolio_actions)
             with gr.Row():
                 with gr.Column(scale=50):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
                 with gr.Column(scale=50):
+                    committee_out = gr.HTML(value=render_ai_committee)
                     watchlist_out = gr.HTML(value=render_watchlist)
             # ── Symbol drilldown ──────────────────────────────────────────────
             symbol_selector = gr.Dropdown(
@@ -2704,6 +3433,8 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
                 with gr.Column(scale=35):
                     alloc_plot = gr.Plot(value=render_allocation_chart, label="")
             pnl_plot   = gr.Plot(value=render_pnl_chart, label="")
+            sell_analysis_out = gr.HTML(value=render_sell_analysis)
+            sizing_panel_out  = gr.HTML(value=render_position_sizing_panel)
             pos_out    = gr.HTML(value=render_positions)
             trades_out = gr.HTML(value=render_trades)
 
@@ -2748,7 +3479,7 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
 
     # One shared timer — cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    timer.tick(fn=render_dashboard_hero,           outputs=hero_out)
+    timer.tick(fn=render_portfolio_health_hero,    outputs=hero_out)
     timer.tick(fn=render_whats_changed,            outputs=whats_changed_out)
     timer.tick(fn=render_ai_recommendation,        outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,               outputs=risk_panel_out)
@@ -2761,6 +3492,11 @@ with gr.Blocks(title="TradeGenius AI", theme=gr.themes.Base(), css=GRADIO_CSS) a
     timer.tick(fn=render_equity_chart,             outputs=eq_plot)
     timer.tick(fn=render_allocation_chart,         outputs=alloc_plot)
     timer.tick(fn=render_pnl_chart,                outputs=pnl_plot)
+    timer.tick(fn=render_todays_actions,       outputs=todays_actions_out)
+    timer.tick(fn=render_portfolio_actions,   outputs=actions_out)
+    timer.tick(fn=render_ai_committee,        outputs=committee_out)
+    timer.tick(fn=render_sell_analysis,       outputs=sell_analysis_out)
+    timer.tick(fn=render_position_sizing_panel, outputs=sizing_panel_out)
     timer.tick(fn=render_positions,                outputs=pos_out)
     timer.tick(fn=render_trades,                   outputs=trades_out)
     timer.tick(fn=render_investor_view,            outputs=investor_out)

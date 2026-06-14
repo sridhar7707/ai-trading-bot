@@ -1,8 +1,8 @@
 # TradeGenius — Living Requirements Document
 
 Auto-generated and auto-updated.
-Last updated: 2026-06-13 18:55:41
-Version: 1.0.5
+Last updated: 2026-06-13 19:29:31
+Version: 1.0.8
 
 ---
 
@@ -32,6 +32,19 @@ Purpose: Long-term and swing investment guidance with AI recommendations,
 | UI/UX Test Suite | ✅ Complete | SPEC 7 | 2026-06-13 | 14 test files in tests/ including test_dashboard_render.py |
 | UI Change Log | ✅ Complete | SPEC 8 | 2026-06-13 | tests/ui_changelog.py; 20 render_* components tracked |
 | Living Requirements Tracker | 🔄 In Progress | SPEC 9 | 2026-06-13 | tests/requirements_tracker.py — this file |
+| Portfolio Actions Panel | ✅ Complete | SPEC 27 | 2026-06-13 | render_portfolio_actions(): HOLD/WATCH/TRIM/EXIT per open position from ensemble score + sell score; Dashboard tab above market intelligence row |
+| Position Sizing Recommendation | ✅ Complete | SPEC 28 | 2026-06-13 | render_position_sizing(): conviction-based target allocation (3-12%) from ensemble score; Portfolio tab above positions table |
+| Today's Actions Summary | ✅ Complete | SPEC 29 | 2026-06-13 | render_todays_actions(): today BUY/SELL timeline with time, price, P&L, reason; Dashboard tab between hero and whats_changed |
+| AI Investment Committee | ✅ Complete | SPEC 30 | 2026-06-13 | render_ai_committee(): XGBoost/LSTM/Sentiment vote chips per open position with majority verdict; Dashboard tab right column above watchlist |
+| Symbol Detail Action Card | ✅ Complete | SPEC 31 | 2026-06-13 | Enhancement to render_symbol_detail(): action card (HOLD/WATCH/TRIM/EXIT), conviction bar, sizing guidance injected at top of detail card |
+| Recommendation Engine | ⏳ Planned | SPEC 32 | 2026-06-13 | P0: bot/core/recommendation_engine.py — 5 shared helpers: get_portfolio_action, get_position_sizing, get_sell_analysis, get_recommendation_explanation, get_portfolio_health. Single source of truth for all panels. |
+| Portfolio Health Hero Panel | ⏳ Planned | SPEC 33 | 2026-06-13 | P0: render_portfolio_health_hero() — replaces render_dashboard_hero(). 5-component health score (Risk/Diversification/Cash/Momentum/Quality) + biggest risk. Calls get_portfolio_health(d). |
+| Today's Actions Panel v2 | ⏳ Planned | SPEC 34 | 2026-06-13 | P0: render_todays_actions() rebuilt — sorted action list (EXIT/SELL/TRIM/ADD/BUY/WATCH/HOLD) with sizing from get_position_sizing(). Replaces SPEC 29 (executed trades view). |
+| Sell Analysis Panel | ⏳ Planned | SPEC 35 | 2026-06-13 | P0: render_sell_analysis() — sell score 0-100 table (position size + profit + conviction + drawdown) with expanded detail card for highest-scored position. Portfolio tab. |
+| Why Panel | ⏳ Planned | SPEC 36 | 2026-06-13 | P0: render_why_panel(symbol) — bullish/bearish factor split with model breakdown (XGBoost/LSTM/Sentiment) and plain-English summary. Shown above render_symbol_detail() on symbol select. |
+| Position Sizing Panel v2 | ⏳ Planned | SPEC 37 | 2026-06-13 | P0: render_position_sizing_panel() — current→target weight flow with delta $+shares, cash sufficiency footer. Replaces render_position_sizing() (SPEC 28). Portfolio tab. |
+| Rebalance Suggestions | ⏳ Planned | SPEC 38 | 2026-06-13 | P1: render_rebalance_suggestions() — full rebalance summary card: reduce/exit/add rows, net cash change, positions before/after, sector risk delta. Portfolio tab below position sizing. |
+| Paper Trading Scorecard | ⏳ Planned | SPEC 39 | 2026-06-13 | P1: render_paper_trading_scorecard() — return vs SPY/QQQ (yfinance), Sharpe, max DD, win rate, AI-follow rate. Models tab under Performance Tracking. |
 
 ### BACKEND FEATURES
 | Feature | Status | Spec | Last Updated | Notes |
@@ -89,6 +102,23 @@ Chronological list of all improvements:
 - tests/ui_changelog.py: snapshots all render_* functions via ast, diffs on each run
 - Appends entries to docs/UI_CHANGELOG.md; supports --diff, --history, --reset
 
+### [2026-06-13] 5 New Dashboard Components (SPEC 27-31)
+- render_todays_actions(): today BUY/SELL trade timeline with P&L and exit reason labels
+- render_portfolio_actions(): HOLD/WATCH/TRIM/EXIT recommendation panel per open position
+- render_ai_committee(): XGBoost/LSTM/Sentiment vote chips per position with majority verdict
+- render_position_sizing(): conviction-based target allocation guidance (Portfolio tab)
+- render_symbol_detail(): enhanced with action card, conviction bar, sizing guidance at top
+- Added _SELL_REASON module-level dict (latent bug fix)
+
+### [2026-06-13] Master Product Vision — Five Investor Questions (SPEC 32-39)
+- SPEC 32: bot/core/recommendation_engine.py — 5 shared helpers, single source of truth
+- SPEC 33: render_portfolio_health_hero() — 5-component health score, replaces hero panel
+- SPEC 34: render_todays_actions() rebuilt — sorted action list with sizing guidance
+- SPEC 35: render_sell_analysis() — sell score table + expanded detail card
+- SPEC 36: render_why_panel() — bullish/bearish split + model breakdown per symbol
+- SPEC 37: render_position_sizing_panel() — current→target weight flow with cash check
+- P1: SPEC 38 rebalance suggestions, SPEC 39 paper trading scorecard
+
 
 ---
 
@@ -140,3 +170,11 @@ Bot runs on scheduled GH Actions workflows. Dashboard auto-deploys from main bra
 Auto-updated based on planned specs and open bugs:
 
 1. SPEC 9 — Living Requirements Tracker (in progress)
+2. SPEC 32 — Recommendation Engine
+3. SPEC 33 — Portfolio Health Hero Panel
+4. SPEC 34 — Today's Actions Panel v2
+5. SPEC 35 — Sell Analysis Panel
+6. SPEC 36 — Why Panel
+7. SPEC 37 — Position Sizing Panel v2
+8. SPEC 38 — Rebalance Suggestions
+9. SPEC 39 — Paper Trading Scorecard

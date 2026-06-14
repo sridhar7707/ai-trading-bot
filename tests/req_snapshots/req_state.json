@@ -2,9 +2,9 @@
   "version": [
     1,
     0,
-    5
+    9
   ],
-  "last_updated": "2026-06-13 18:55:41",
+  "last_updated": "2026-06-13 19:50:00",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -89,6 +89,97 @@
       "spec": "SPEC 9",
       "last_updated": "2026-06-13",
       "notes": "tests/requirements_tracker.py \u2014 this file"
+    },
+    {
+      "name": "Portfolio Actions Panel",
+      "status": "complete",
+      "spec": "SPEC 27",
+      "last_updated": "2026-06-13",
+      "notes": "render_portfolio_actions(): HOLD/WATCH/TRIM/EXIT per open position from ensemble score + sell score; Dashboard tab above market intelligence row"
+    },
+    {
+      "name": "Position Sizing Recommendation",
+      "status": "complete",
+      "spec": "SPEC 28",
+      "last_updated": "2026-06-13",
+      "notes": "render_position_sizing(): conviction-based target allocation (3-12%) from ensemble score; Portfolio tab above positions table"
+    },
+    {
+      "name": "Today's Actions Summary",
+      "status": "complete",
+      "spec": "SPEC 29",
+      "last_updated": "2026-06-13",
+      "notes": "render_todays_actions(): today BUY/SELL timeline with time, price, P&L, reason; Dashboard tab between hero and whats_changed"
+    },
+    {
+      "name": "AI Investment Committee",
+      "status": "complete",
+      "spec": "SPEC 30",
+      "last_updated": "2026-06-13",
+      "notes": "render_ai_committee(): XGBoost/LSTM/Sentiment vote chips per open position with majority verdict; Dashboard tab right column above watchlist"
+    },
+    {
+      "name": "Symbol Detail Action Card",
+      "status": "complete",
+      "spec": "SPEC 31",
+      "last_updated": "2026-06-13",
+      "notes": "Enhancement to render_symbol_detail(): action card (HOLD/WATCH/TRIM/EXIT), conviction bar, sizing guidance injected at top of detail card"
+    },
+    {
+      "name": "Recommendation Engine",
+      "status": "complete",
+      "spec": "SPEC 32",
+      "last_updated": "2026-06-13",
+      "notes": "bot/core/recommendation_engine.py \u2014 5 shared helpers implemented and tested: get_portfolio_action, get_position_sizing, get_sell_analysis, get_recommendation_explanation, get_portfolio_health. Single source of truth for all panels."
+    },
+    {
+      "name": "Portfolio Health Hero Panel",
+      "status": "complete",
+      "spec": "SPEC 33",
+      "last_updated": "2026-06-13",
+      "notes": "render_portfolio_health_hero() \u2014 replaces render_dashboard_hero() in Dashboard tab. 5-component health score (Risk/Diversification/Cash/Momentum/Quality) + grade (A/B+/B/C/D) + biggest risk callout."
+    },
+    {
+      "name": "Today's Actions Panel v2",
+      "status": "complete",
+      "spec": "SPEC 34",
+      "last_updated": "2026-06-13",
+      "notes": "render_todays_actions() rebuilt \u2014 sorted action list (EXIT/SELL/TRIM/ADD/BUY/WATCH/HOLD) with sizing hint from get_position_sizing(). Calls get_portfolio_action() per position."
+    },
+    {
+      "name": "Sell Analysis Panel",
+      "status": "complete",
+      "spec": "SPEC 35",
+      "last_updated": "2026-06-13",
+      "notes": "render_sell_analysis() \u2014 sell score 0-100 table with HOLD/WATCH/TRIM/SELL/EXIT signal, P&L, weight, top reason, trim action. Portfolio tab. Calls get_sell_analysis()."
+    },
+    {
+      "name": "Why Panel",
+      "status": "complete",
+      "spec": "SPEC 36",
+      "last_updated": "2026-06-13",
+      "notes": "Why panel embedded in render_symbol_detail() \u2014 action badge + conviction bar + bullish/bearish factors from get_recommendation_explanation() + sizing from get_position_sizing()."
+    },
+    {
+      "name": "Position Sizing Panel v2",
+      "status": "complete",
+      "spec": "SPEC 37",
+      "last_updated": "2026-06-13",
+      "notes": "render_position_sizing_panel() \u2014 current\u2192target weight with dual-bar visualisation, delta $+shares. Portfolio tab. Replaces render_position_sizing()."
+    },
+    {
+      "name": "Rebalance Suggestions",
+      "status": "planned",
+      "spec": "SPEC 38",
+      "last_updated": "2026-06-13",
+      "notes": "P1: render_rebalance_suggestions() \u2014 full rebalance summary card: reduce/exit/add rows, net cash change, positions before/after, sector risk delta. Portfolio tab below position sizing."
+    },
+    {
+      "name": "Paper Trading Scorecard",
+      "status": "planned",
+      "spec": "SPEC 39",
+      "last_updated": "2026-06-13",
+      "notes": "P1: render_paper_trading_scorecard() \u2014 return vs SPY/QQQ (yfinance), Sharpe, max DD, win rate, AI-follow rate. Models tab under Performance Tracking."
     },
     {
       "name": "5-min Trading Loop",
@@ -276,6 +367,31 @@
       "lines": [
         "tests/ui_changelog.py: snapshots all render_* functions via ast, diffs on each run",
         "Appends entries to docs/UI_CHANGELOG.md; supports --diff, --history, --reset"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "5 New Dashboard Components (SPEC 27-31)",
+      "lines": [
+        "render_todays_actions(): today BUY/SELL trade timeline with P&L and exit reason labels",
+        "render_portfolio_actions(): HOLD/WATCH/TRIM/EXIT recommendation panel per open position",
+        "render_ai_committee(): XGBoost/LSTM/Sentiment vote chips per position with majority verdict",
+        "render_position_sizing(): conviction-based target allocation guidance (Portfolio tab)",
+        "render_symbol_detail(): enhanced with action card, conviction bar, sizing guidance at top",
+        "Added _SELL_REASON module-level dict (latent bug fix)"
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "title": "Master Product Vision \u2014 Five Investor Questions (SPEC 32-39)",
+      "lines": [
+        "SPEC 32: bot/core/recommendation_engine.py \u2014 5 shared helpers, single source of truth",
+        "SPEC 33: render_portfolio_health_hero() \u2014 5-component health score, replaces hero panel",
+        "SPEC 34: render_todays_actions() rebuilt \u2014 sorted action list with sizing guidance",
+        "SPEC 35: render_sell_analysis() \u2014 sell score table + expanded detail card",
+        "SPEC 36: render_why_panel() \u2014 bullish/bearish split + model breakdown per symbol",
+        "SPEC 37: render_position_sizing_panel() \u2014 current\u2192target weight flow with cash check",
+        "P1: SPEC 38 rebalance suggestions, SPEC 39 paper trading scorecard"
       ]
     }
   ],
