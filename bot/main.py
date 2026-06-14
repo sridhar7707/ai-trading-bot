@@ -863,7 +863,8 @@ def end_of_day_summary():
     try:
         spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
         vs_spy   = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"spy_bars_fetch: {exc}")
         vs_spy = 0.0
 
     # ── Best / worst trade today ───────────────────────────────────────────────
@@ -960,8 +961,8 @@ def end_of_day_summary():
                 spy_wk_bars = client.get_bars("SPY", timeframe="1Day", limit=6)
                 if len(spy_wk_bars) > 1:
                     spy_wk = float(spy_wk_bars["close"].iloc[-1] / spy_wk_bars["close"].iloc[-6] - 1)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"spy_wk_bars_fetch: {exc}")
             tg.alert_weekly_report(
                 week_return=week_return,
                 vs_spy=spy_wk,
@@ -984,7 +985,8 @@ def _wsb(symbol: str) -> tuple[str, dict]:
         return symbol, cached_result
     try:
         result = get_wsb_sentiment(symbol)
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"wsb_sentiment_fetch {symbol}: {exc}")
         result = {"mentions": 0, "sentiment": 0.0}
     _wsb_cache[symbol] = (now, result)
     return symbol, result
@@ -1223,7 +1225,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
     try:
         spy_day_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
         vs_spy_today = float(spy_day_bars["close"].pct_change().iloc[-1]) if len(spy_day_bars) > 1 else 0.0
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"spy_day_bars_fetch: {exc}")
         vs_spy_today = 0.0
 
     # Prefetch earnings proximity in parallel — avoids 25 sequential yfinance HTTP calls
@@ -1705,8 +1708,8 @@ def run_loop(mode: str = "paper"):
         if 0 < _wait < 600:   # max 10 min — guard against clock drift
             logger.info(f"Waiting {_wait:.0f}s for 4:05pm ET before sending daily summary.")
             time.sleep(_wait)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"eod_sleep_timer: {exc}")
     try:
         end_of_day_summary()
     except Exception as e:

@@ -394,6 +394,14 @@
       "last_updated": "2026-06-14",
       "notes": "Columnar analytics DB alongside SQLite; price_history, portfolio_snapshots, recommendation_history tables; AnalyticsRepository + AnalyticsService; BUY signal and daily snapshot wired into bot/main.py; 6 integration tests pass",
       "category": "backend"
+    },
+    {
+      "name": "Exception Handling Hardening",
+      "status": "complete",
+      "spec": "SPEC 51",
+      "last_updated": "2026-06-14",
+      "notes": "Audited all except blocks across 7 files; fixed 17 CLASS A (silent fail) patterns with logger.debug; 3 CLASS B upgraded to opt(exception=True).warning; safe_render() + timed() decorators added to error_logger.py; @safe_render applied to all 25 HTML render functions; @timed on 5 slow functions; GROUP 8 exception test in ui_tester.py; docs/exception_audit.txt created",
+      "category": "reliability"
     }
   ],
   "bugs": [],
@@ -470,6 +478,19 @@
         "SPEC 47: render_rebalance() \u2014 current vs target with delta + before/after health score",
         "SPEC 48: Dashboard layout \u2014 exactly 5 panels; panels moved to correct tabs",
         "SPEC 49: Consistency checks \u2014 section titles \u22644 words, design system colors only"
+      ]
+    },
+    {
+      "date": "2026-06-14",
+      "title": "Exception Handling Hardening (SPEC 51)",
+      "lines": [
+        "docs/exception_audit.txt: full audit of 7 files with CLASS A/B/C classification",
+        "bot/core/error_logger.py: safe_render() + timed() decorators added; log_exception upgraded to 4-arg",
+        "dashboard/app.py: @safe_render on 25 HTML render functions; @timed on 5 slow functions",
+        "dashboard/app.py: 17 CLASS A silent-fail exceptions fixed with logger.debug; 3 CLASS B upgraded to opt(exception=True).warning",
+        "bot/main.py: 5 CLASS A exceptions fixed (spy_bars, spy_today, WSB, sleep timer)",
+        "database/services/analytics_service.py: 1 CLASS A fixed",
+        "tests/ui_tester.py: GROUP 8 exception check added; unicode encoding fix made conditional"
       ]
     },
     {

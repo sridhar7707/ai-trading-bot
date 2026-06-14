@@ -43,8 +43,8 @@ class AnalyticsService:
             from bot.core.recommendation_engine import get_portfolio_health
             health = get_portfolio_health(portfolio_data)
             health_score = float(health.get("total", 0)) if isinstance(health, dict) else 0.0
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug(f"get_portfolio_health: {exc}")
 
         snapshot = {
             "snapshot_date": datetime.date.today(),

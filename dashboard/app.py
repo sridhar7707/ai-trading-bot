@@ -26,6 +26,8 @@ from loguru import logger
 import sys as _sys
 import os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from bot.core.error_logger import safe_render, timed
+_logger = logger  # alias used by safe_render and timed decorators
 from bot.core.recommendation_engine import (
     get_portfolio_action,
     get_position_sizing,
@@ -410,7 +412,7 @@ def _sync_db() -> None:
                 os.remove(DB_PATH)
                 logger.info("DB sync: trades.db deleted from HF — local copy removed")
         else:
-            logger.warning(f"DB sync: {e}")
+            logger.opt(exception=True).warning(f"DB sync: {e}")
     # Pull validation / explainability artefacts — non-fatal if absent
     for filename, dest in [
         ("validation_report.json",  "models/validation_report.json"),
@@ -422,8 +424,8 @@ def _sync_db() -> None:
                                       repo_type="dataset", token=HF_TOKEN, force_download=True)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy(cached, dest)
-        except Exception:
-            pass  # charts show placeholder until model has been retrained + pushed
+        except Exception as exc:
+            logger.debug(f"hf_artifact_download: {exc}")  # non-critical file absent
 
 
 def _current_prices(symbols: list[str]) -> dict[str, float]:
@@ -485,7 +487,7 @@ def _refresh_cache() -> dict:
                 "feature_drivers "
                 "FROM trades ORDER BY id", con)
         except Exception as _e:
-            logger.warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
+            logger.opt(exception=True).warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
             df = pd.read_sql(
                 "SELECT id,timestamp,symbol,action,shares,price,notional,"
                 "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
@@ -496,7 +498,7 @@ def _refresh_cache() -> dict:
             df["feature_drivers"] = None
         con.close()
     except Exception as e:
-        logger.warning(f"DB read: {e}")
+        logger.opt(exception=True).warning(f"DB read: {e}")
         return result
 
     if df.empty:
@@ -583,7 +585,8 @@ def _now_ct() -> str:
         ct = datetime.datetime.now(datetime.timezone.utc).astimezone(ZoneInfo("America/Chicago"))
         label = "CDT" if ct.dst() and ct.dst().total_seconds() else "CST"
         return ct.strftime(f"%b %d, %Y &nbsp;%H:%M {label}")
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_ct_now timezone: {exc}")
         return datetime.datetime.utcnow().strftime("%H:%M UTC")
 
 def _to_ct(ts) -> str:
@@ -598,7 +601,8 @@ def _to_ct(ts) -> str:
         ct = dt.astimezone(ZoneInfo("America/Chicago"))
         label = "CDT" if ct.dst() and ct.dst().total_seconds() else "CST"
         return ct.strftime(f"%Y-%m-%d %H:%M {label}")
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_to_ct parse: {exc}")
         return str(ts)[:16].replace("T", " ")
 
 def _market_status() -> tuple[str, str]:
@@ -615,7 +619,8 @@ def _market_status() -> tuple[str, str]:
         elif et < open_t:
             return "Pre-Market", NEURAL
         return "After Hours", TEXT2
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_market_status: {exc}")
         return "—", TEXT2
 
 
@@ -865,6 +870,7 @@ TD0 = (f'style="font-size:{FONT_VALUE};color:{TEXT1};padding:12px 14px;'
        f'white-space:nowrap;"')
 
 # ── Render: metrics ───────────────────────────────────────────────────────────
+@safe_render("Metrics")
 def render_metrics() -> str:
     d = get_data()
     open_syms      = d["open_pos"]
@@ -1150,7 +1156,8 @@ def _sym_perf(hist, buy_date) -> dict:
     today = datetime.date.today()
     try:
         dates = [d.date() if hasattr(d, "date") else d for d in hist.index]
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_pct_changes date parse: {exc}")
         return {}
     closes = list(hist["Close"])
     if not closes:
@@ -1173,7 +1180,8 @@ def _sym_perf(hist, buy_date) -> dict:
     if buy_date:
         try:
             result["All"] = _pct_at(datetime.date.fromisoformat(str(buy_date)[:10]))
-        except Exception:
+        except Exception as exc:
+            logger.debug(f"_pct_changes buy_date: {exc}")
             result["All"] = None
     else:
         result["All"] = None
@@ -1187,7 +1195,8 @@ def _sparkline(symbol: str) -> str:
         return f'<span style="color:{TEXT2};">—</span>'
     try:
         prices = [float(p) for p in hist["Close"].iloc[-30:]]
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_sparkline prices: {exc}")
         return f'<span style="color:{TEXT2};">—</span>'
     if not prices:
         return f'<span style="color:{TEXT2};">—</span>'
@@ -1218,6 +1227,8 @@ def _sparkline(symbol: str) -> str:
 
 
 # ── Render: positions table ───────────────────────────────────────────────────
+@timed(_logger)
+@safe_render("Positions")
 def render_positions() -> str:
     """Columns: Symbol | Action | Weight | Target | Confidence | P&L"""
     d         = get_data()
@@ -1237,8 +1248,8 @@ def render_positions() -> str:
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "—") != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value: {exc}")
 
     row_htmls = []
     items = list(open_syms.items())
@@ -1320,6 +1331,7 @@ def render_positions() -> str:
 
 
 # ── Render: trades table ──────────────────────────────────────────────────────
+@safe_render("Trades")
 def render_trades() -> str:
     d             = get_data()
     raw           = d["recent_trades"]
@@ -1484,6 +1496,7 @@ def render_feature_importance_chart():
 
 
 # ── Render: model validation report ──────────────────────────────────────────
+@safe_render("Validation Report")
 def render_validation_report() -> str:
     import json as _json
     vr_path = "models/validation_report.json"
@@ -1544,6 +1557,7 @@ def render_validation_report() -> str:
 
 
 # ── Render: dashboard hero (Bloomberg-style 4-pack + status bar) ─────────────
+@safe_render("Dashboard Hero")
 def render_dashboard_hero() -> str:
     d = get_data()
     open_syms = d["open_pos"]
@@ -1586,8 +1600,8 @@ def render_dashboard_hero() -> str:
     pv_float = 0.0
     try:
         pv_float = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value render_portfolio_health_hero: {exc}")
 
     cash_pct_h = ((pv_float - total_invested) / pv_float * 100) if pv_float > 0 else 100.0
 
@@ -1667,6 +1681,7 @@ def render_dashboard_hero() -> str:
 
 
 # ── PANEL 1: Portfolio Health Hero ────────────────────────────────────────────
+@safe_render("Portfolio Health")
 def render_portfolio_health_hero() -> str:
     d    = get_data()
     h    = get_portfolio_health(d)
@@ -1821,6 +1836,7 @@ def render_portfolio_health_hero() -> str:
 
 
 # ── Render: AI recommendation card — full-width hero ─────────────────────────
+@safe_render("AI Recommendation")
 def render_ai_recommendation() -> str:
     d   = get_data()
     lb  = d.get("latest_buy_signal", {})
@@ -1930,8 +1946,8 @@ def render_ai_recommendation() -> str:
             why  = _WHY_MAP.get(feat)
             name = why[0] if why else _FI_LABELS.get(feat, feat)
             neg_items.append(name)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_shap_items render_ai_recommendation: {exc}")
 
     if any(x in r_lower for x in ["bull"]) and not any("regime" in p[0].lower() for p in pos_items):
         pos_items.append(("Bull market regime", 15.0))
@@ -2019,6 +2035,7 @@ def render_ai_recommendation() -> str:
 
 
 # ── Render: market intelligence (VIX / regime / confidence / sentiment) ───────
+@safe_render("Market Intelligence")
 def render_market_intelligence() -> str:
     d        = get_data()
     vix      = d.get("vix", 0.0)
@@ -2060,6 +2077,7 @@ def render_market_intelligence() -> str:
 
 
 # ── Render: watchlist (open positions with live return vs avg cost) ────────────
+@safe_render("Watchlist")
 def render_watchlist() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -2100,6 +2118,7 @@ def render_watchlist() -> str:
 
 
 # ── Render: signals tab (recent BUY signals with confidence + SHAP) ───────────
+@safe_render("Signals")
 def render_signals_tab() -> str:
     d    = get_data()
     buys = d.get("today_buy_signals", [])
@@ -2131,8 +2150,8 @@ def render_signals_tab() -> str:
                 for f, v in (ds or [])[:2]
             ]
             driver_text = " · ".join(parts) if parts else "—"
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"parse_driver_text: {exc}")
         conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
         conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
         td   = TD if i < len(shown) - 1 else TD0
@@ -2172,6 +2191,7 @@ def render_signals_tab() -> str:
 
 
 # ── Render: risk controls panel ──────────────────────────────────────────────
+@safe_render("Risk Panel")
 def render_risk_panel() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -2183,8 +2203,8 @@ def render_risk_panel() -> str:
     pv = 0.0
     try:
         pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value render_risk_panel: {exc}")
 
     total_invested = sum(v["invested"] for v in open_pos.values())
     cash_pct = ((pv - total_invested) / pv * 100) if pv > 0 else 100.0
@@ -2279,6 +2299,7 @@ def render_risk_panel() -> str:
 
 
 # ── Render: institutional metrics ─────────────────────────────────────────────
+@safe_render("Institutional Metrics")
 def render_institutional_metrics() -> str:
     d  = get_data()
     df = d["trades_df"]
@@ -2372,6 +2393,7 @@ def render_institutional_metrics() -> str:
 
 
 # ── Render: AI decision feed (trade timeline) ────────────────────────────────
+@safe_render("Timeline")
 def render_timeline() -> str:
     d  = get_data()
     df = d["trades_df"]
@@ -2413,8 +2435,8 @@ def render_timeline() -> str:
                     best = max(pos, key=lambda x: x[1])
                     w = _WHY_MAP.get(best[0])
                     parts.append(w[0] if w else _FI_LABELS.get(best[0], best[0]))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"parse_detail_parts: {exc}")
             detail = " · ".join(parts)
         else:
             reason  = _SELL_REASON.get(action, "Exit")
@@ -2457,6 +2479,7 @@ def render_timeline() -> str:
 
 
 # ── Render: investor view (plain-language Models tab) ────────────────────────
+@safe_render("Investor View")
 def render_investor_view() -> str:
     d  = get_data()
     df = d["trades_df"]
@@ -2502,8 +2525,8 @@ def render_investor_view() -> str:
                 if float(val) > 0:
                     name = _WHY_MAP.get(feat, (_FI_LABELS.get(feat, feat),))[0]
                     signal_counts[name] = signal_counts.get(name, 0) + 1
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"parse_signal_counts: {exc}")
     top3 = sorted(signal_counts.items(), key=lambda x: -x[1])[:3]
     sig_rows = "".join(
         f'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid {BORDER};">'
@@ -2563,6 +2586,7 @@ def _get_symbol_choices() -> list[str]:
     return syms[:20]
 
 
+@safe_render("Symbol Detail")
 def render_symbol_detail(symbol: str) -> str:
     if not symbol:
         return (f'<div class="nt nt-wrap"><div style="color:{TEXT2};text-align:center;'
@@ -2622,8 +2646,8 @@ def render_symbol_detail(symbol: str) -> str:
                 f'<div><div style="font-size:{FONT_LABEL};color:{TEXT1};">{name}</div>'
                 f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{desc}</div></div></div>'
             )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"build_why_html: {exc}")
     if not why_html:
         why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
 
@@ -2782,6 +2806,8 @@ def render_symbol_detail(symbol: str) -> str:
 
 
 # ── Render: since-yesterday comparison panel ─────────────────────────────────
+@timed(_logger)
+@safe_render("Since Yesterday")
 def render_whats_changed() -> str:
     today     = datetime.date.today().isoformat()
     yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
@@ -3024,6 +3050,8 @@ def _perf_choices() -> list[str]:
     return choices
 
 
+@timed(_logger)
+@safe_render("Portfolio Performance")
 def render_portfolio_performance(period: str = "1M  —") -> str:
     # Strip the inline stat suffix so we always have a clean key
     key = period.split()[0] if period else "1M"
@@ -3112,6 +3140,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
 
 # ── Render: today's trades timeline ─────────────────────────────────────────────
 # ── PANEL 2: Today's Priority Actions — recommendation-based ─────────────────
+@safe_render("Today's Actions")
 def render_todays_actions() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
@@ -3190,6 +3219,7 @@ def render_todays_actions() -> str:
 
 
 # ── Render: portfolio actions — called internally by render_decision_center ───
+@safe_render("Portfolio Actions")
 def render_portfolio_actions() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -3204,8 +3234,8 @@ def render_portfolio_actions() -> str:
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value render_portfolio_actions: {exc}")
 
     # Latest ensemble score per open symbol from trades_df (no extra DB call)
     _ens: dict[str, float] = {}
@@ -3272,6 +3302,7 @@ def render_portfolio_actions() -> str:
 
 
 # ── Render: position sizing recommendations ────────────────────────────────────
+@safe_render("Position Sizing")
 def render_position_sizing() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -3286,8 +3317,8 @@ def render_position_sizing() -> str:
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value render_position_sizing: {exc}")
 
     _ens: dict[str, float] = {}
     if not df.empty:
@@ -3346,6 +3377,7 @@ def render_position_sizing() -> str:
 
 
 # ── Render: AI investment committee ─────────────────────────────────────────────
+@safe_render("AI Committee")
 def render_ai_committee() -> str:
     d        = get_data()
     open_pos = d["open_pos"]
@@ -3423,6 +3455,7 @@ def render_ai_committee() -> str:
 
 
 # ── PANEL 3: Sell Analysis — called internally by render_decision_center ──────
+@safe_render("Sell Analysis")
 def render_sell_analysis() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
@@ -3493,6 +3526,7 @@ def render_sell_analysis() -> str:
 
 
 # ── PANEL 5: Position Sizing — called internally by render_decision_center ────
+@safe_render("Position Sizing")
 def render_position_sizing_panel() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
@@ -3561,6 +3595,8 @@ def render_position_sizing_panel() -> str:
 # ── PANEL: Decision Center — what to do with each position ────────────────────
 # NOTE: render_portfolio_actions, render_sell_analysis, render_position_sizing_panel
 #       are consolidated here. They remain functional but are not wired to layout.
+@timed(_logger)
+@safe_render("Decision Center")
 def render_decision_center() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
@@ -3662,6 +3698,8 @@ def render_decision_center() -> str:
 
 
 # ── PANEL: Rebalance — current vs target allocation ───────────────────────────
+@timed(_logger)
+@safe_render("Rebalance")
 def render_rebalance() -> str:
     d        = get_data()
     open_pos = d.get("open_pos", {})
@@ -3674,8 +3712,8 @@ def render_rebalance() -> str:
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$","").replace(",","")) if d["portfolio"] != "—" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug(f"parse_portfolio_value render_rebalance: {exc}")
 
     prices = d.get("prices", {})
     invested_total = sum(

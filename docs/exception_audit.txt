@@ -1,0 +1,175 @@
+Exception Audit — TradeGenius AI
+Generated: 2026-06-14
+Tool: grep -n "except Exception" / ": pass" / "except:"
+
+══════════════════════════════════════════════════════
+dashboard/app.py
+══════════════════════════════════════════════════════
+
+405  CLASS B  except Exception as e: logger.warning(f"DB sync: {e}")
+              → upgrade: loses traceback on HF sync failure
+
+425  CLASS A  except Exception: pass
+              → HF non-critical artifact download; add logger.debug
+
+443  CLASS C  except Exception: pass
+              → SQLite ALTER TABLE (OperationalError when column exists); intentional
+
+446  CLASS B  except Exception as _e: logger.warning(f"Extended trades query... {_e}")
+              → upgrade: loses traceback on schema fallback
+
+487  CLASS B  except Exception as e: logger.warning(f"DB read: {e}")
+              → upgrade: loses traceback on DB read failure
+
+498  CLASS C  except Exception as e: logger.warning + fallback return
+              → already has string logging (low stakes yfinance)
+
+586  CLASS A  except Exception: return datetime fallback
+              → _ct_now() timezone; add logger.debug
+
+601  CLASS A  except Exception: return str(ts)[:16]
+              → _to_ct() timestamp; add logger.debug
+
+618  CLASS A  except Exception: return "—", TEXT2
+              → _market_status(); add logger.debug
+
+1019 CLASS B  except Exception as e: (chart fallback)
+              → already shows error in chart annotation — acceptable
+
+1072 CLASS B  except Exception as e: (chart fallback)
+              → already shows error in chart annotation — acceptable
+
+1119 CLASS B  except Exception as e: (chart fallback)
+              → already shows error in chart annotation — acceptable
+
+1141 CLASS C  except Exception as _exc: return HTML with exc text
+              → render_validation_report; shows error to user
+
+1153 CLASS A  except Exception: return {}
+              → _pct_changes() date list; add logger.debug
+
+1176 CLASS A  except Exception: result["All"] = None
+              → date fromisoformat; add logger.debug
+
+1190 CLASS A  except Exception: return placeholder SVG
+              → _sparkline() price list; add logger.debug
+
+1240 CLASS A  except Exception: pass
+              → portfolio value float parse in render_positions; add logger.debug
+
+1476 CLASS C  except Exception as e: Plotly figure with annotation
+              → chart error already shown in figure — acceptable
+
+1497 CLASS C  except Exception as exc: return HTML error
+              → render_validation_report JSON load; shows error
+
+1589 CLASS A  except Exception: pass
+              → JSON driver_text parse in render_todays_actions; add logger.debug
+
+1933 CLASS A  except Exception: pass
+              → portfolio float parse in render_dashboard_hero; add logger.debug
+
+2134 CLASS A  except Exception: pass
+              → JSON driver pos/neg parse in render_ai_recommendation; add logger.debug
+
+2186 CLASS A  except Exception: pass
+              → JSON driver text in render_ai_recommendation; add logger.debug
+
+2416 CLASS A  except Exception: pass
+              → JSON detail parse in render_todays_actions; add logger.debug
+
+2505 CLASS A  except Exception: pass
+              → portfolio float parse in render_portfolio_actions; add logger.debug
+
+2625 CLASS A  except Exception: pass
+              → portfolio float parse in render_position_sizing; add logger.debug
+
+2826 CLASS C  except Exception as exc: (already handled)
+              → need to verify
+
+3008 CLASS C  except Exception as exc: (already handled)
+              → need to verify
+
+3207 CLASS A  except Exception: pass
+              → why_html SHAP processing; add logger.debug
+
+3289 CLASS A  except Exception: pass
+              → driver text parse; add logger.debug
+
+3677 CLASS A  except Exception: pass
+              → portfolio float parse in render_rebalance; add logger.debug
+
+══════════════════════════════════════════════════════
+bot/main.py
+══════════════════════════════════════════════════════
+
+36   CLASS C  except Exception as exc: (re-checked — proper handling)
+75   CLASS C  except Exception as exc: (re-checked — proper handling)
+147  CLASS B  except Exception as e: string-only log
+489  CLASS B  except Exception as e: string-only log
+533  CLASS B  except Exception as e: string-only log
+589  CLASS B  except Exception as e: string-only log
+866  CLASS A  except Exception: vs_spy = 0.0 (no log)
+883  CLASS C  except Exception as _e: logger.warning (best/worst trade fetch)
+912  CLASS C  except Exception as _e: logger.warning (health score calc)
+934  CLASS C  except Exception as _ae: logger.debug (analytics snapshot)
+963  CLASS A  except Exception: pass (WSB sentiment cache — add debug)
+973  CLASS B  except Exception as e: logger.warning string-only
+987  CLASS A  except Exception: pass (sleep timer — add debug)
+1005 CLASS B  except Exception as e: (end-of-day summary — has logging)
+1106 CLASS B  except Exception as e: string-only log
+1186 CLASS B  except Exception as e: string-only log
+1226 CLASS A  except Exception: vs_spy_today = 0.0 (no log)
+1545 CLASS C  except Exception as _ae: logger.debug (analytics save)
+1610 CLASS B  except Exception as e: string-only log
+1636 CLASS C  except Exception as _e: logger.warning
+1648 CLASS C  except Exception as _e: logger.warning
+1663 CLASS C  except Exception as _e: logger.warning
+1690 CLASS B  except Exception as e: string-only log
+1708 CLASS A  except Exception: pass (sleep timing — acceptable, add debug)
+1712 CLASS B  except Exception as e: logger.error + print (not string-only but limited)
+1781 CLASS C  except Exception as exc: proper traceback logging
+1817 CLASS A  except Exception: bot crash handler — HAS traceback in logger.error
+
+══════════════════════════════════════════════════════
+bot/risk/risk_manager.py
+══════════════════════════════════════════════════════
+
+No "except Exception" found — file is clean.
+
+══════════════════════════════════════════════════════
+bot/strategy/*.py
+══════════════════════════════════════════════════════
+
+features.py:66    CLASS A  except Exception: pass
+lstm_predictor.py CLASS B  multiple except Exception as e: with string logs
+macro.py:70       CLASS B  except Exception as e:
+reddit_sentiment  CLASS B  multiple
+rl_agent.py:92    CLASS B
+sentiment.py      CLASS B  multiple
+xgb_predictor.py  CLASS B  multiple
+
+══════════════════════════════════════════════════════
+bot/execution/alpaca_client.py
+══════════════════════════════════════════════════════
+
+88,135,153,160,173,188,202 — all CLASS B (string-only logging)
+Critical: order submission exceptions need traceback
+
+══════════════════════════════════════════════════════
+database/repositories/analytics_repository.py
+══════════════════════════════════════════════════════
+
+44,57,73,86,101 — CLASS C (already uses traceback.format_exc in logger.error)
+
+database/services/analytics_service.py
+
+46 — CLASS A  except Exception: pass (in save_daily_snapshot health import)
+
+══════════════════════════════════════════════════════
+SUMMARY
+══════════════════════════════════════════════════════
+
+CLASS A (must fix): ~19 in app.py, 4 in bot/main.py, 1 in features.py, 1 in analytics_service.py
+CLASS B (upgrade): 3 in app.py, many in bot/strategy/*.py and alpaca_client.py
+CLASS C (leave):   many already correct

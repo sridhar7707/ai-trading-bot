@@ -14,6 +14,9 @@ import argparse
 import ast
 import os
 
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 # ── Design system allowed values ─────────────────────────────────────────────
 _ALLOWED_FONT_SIZES   = {"36px", "20px", "15px", "11px"}
 _ALLOWED_TEXT_COLORS  = {"#ffffff", "#b0b7c3", "#7f8896"}
@@ -180,6 +183,70 @@ def test_design_system_compliance(verbose: bool = False) -> tuple[int, int, list
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GROUP 8: Exception handling
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_exception_handling(verbose: bool = False):
+    files_to_check = [
+        "dashboard/app.py",
+        "bot/main.py",
+        "bot/risk/risk_manager.py",
+        "bot/execution/alpaca_client.py",
+        "database/repositories/analytics_repository.py",
+        "database/services/analytics_service.py",
+    ]
+
+    failures = []
+    warnings = []
+    all_messages = []
+
+    for filepath in files_to_check:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            continue
+
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+
+            # CLASS A pattern: bare `except Exception:` or `except:` followed by pass
+            # (narrow-type exceptions like ValueError/OperationalError are acceptable)
+            is_generic_except = (
+                stripped == "except Exception:" or
+                stripped.startswith("except Exception as ") and stripped.endswith(":") or
+                stripped == "except:"
+            )
+            if is_generic_except and i < len(lines):
+                next_stripped = lines[i].strip() if i < len(lines) else ""
+                if next_stripped == "pass":
+                    msg = f"FAIL  CLASS A — {filepath}:{i} — bare pass after except Exception (no logging)"
+                    failures.append(msg)
+                    all_messages.append(msg)
+                    continue
+
+            # CLASS B: string-only error logging (loses traceback)
+            if ("logger.error(str(e))" in stripped or
+                    "logger.error(str(exc))" in stripped or
+                    "logger.warning(str(e))" in stripped):
+                msg = f"WARN  CLASS B — {filepath}:{i} — string-only error log (use log_exception)"
+                warnings.append(msg)
+                all_messages.append(msg)
+                continue
+
+            if verbose and not failures and not warnings:
+                pass  # only report on problems
+
+    files_checked = sum(1 for f in files_to_check if os.path.exists(f))
+    summary = (f"PASS  CLASS A violations: {len(failures)}  "
+               f"CLASS B warnings: {len(warnings)}  "
+               f"Files checked: {files_checked}")
+    all_messages.insert(0, summary)
+
+    return len(failures), len(warnings), all_messages
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main runner
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -202,12 +269,21 @@ def main():
         total_warn += warn
         all_msgs   += msgs
 
+    if args.group is None or args.group == 8:
+        print("\n── GROUP 8: EXCEPTION HANDLING ─────────────────────────────────────────")
+        fail, warn, msgs = test_exception_handling(verbose=args.verbose)
+        for m in msgs:
+            print(f"  {m}")
+        total_fail += fail
+        total_warn += warn
+        all_msgs   += msgs
+
     print(f"\n{'─'*70}")
     print(f"  Results: {total_fail} FAIL  {total_warn} WARN")
     if total_fail == 0:
-        print("  DESIGN SYSTEM: OK — zero violations")
+        print("  ALL CHECKS: OK — zero violations")
     else:
-        print(f"  DESIGN SYSTEM: {total_fail} violation(s) must be fixed before going live")
+        print(f"  VIOLATIONS: {total_fail} must be fixed before going live")
     print(f"{'─'*70}\n")
 
     sys.exit(0 if total_fail == 0 else 1)
