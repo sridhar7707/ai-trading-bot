@@ -242,7 +242,7 @@
       "status": "complete",
       "spec": "SPEC 52",
       "last_updated": "2026-06-14",
-      "notes": "Split 3979-line dashboard/app.py into focused modules: design_system.py (constants+helpers), data.py (cache+DB layer), charts.py (Plotly chart functions), components/ (12 component files grouped by domain). App.py becomes 300-500 line wiring-only file. Zero logic changes — pure file split."
+      "notes": "Split 3979-line dashboard/app.py into focused modules: design_system.py (constants+helpers), data.py (cache+DB layer), charts.py (Plotly chart functions), components/ (12 component files grouped by domain). App.py becomes 300-500 line wiring-only file. Zero logic changes \u00e2\u20ac\u201d pure file split."
     },
     {
       "name": "Dashboard View Model Pattern",
@@ -250,6 +250,13 @@
       "spec": "SPEC 53",
       "last_updated": "2026-06-14",
       "notes": "Separate business logic from rendering. Created viewmodels.py (pure Python dataclasses, no HTML), builders.py (8 builder functions), refactored 6 component files (portfolio, overview, actions, decision, rebalance, ai_panel). design_system.py split: CSS/HTML extracted to layout.py (338 lines, under 500). 20 viewmodel tests pass. Zero UI changes."
+    },
+    {
+      "name": "Critical Function Test Coverage",
+      "status": "complete",
+      "spec": "SPEC 55",
+      "last_updated": "2026-06-14",
+      "notes": "Comprehensive tests for the three critical recommendation engine functions (get_portfolio_action, get_sell_analysis, get_portfolio_health). Created tests/fixtures.py with 10 portfolio scenarios (healthy, oversized, all_cash, all_invested, high_vix, single_stock, large_gain, large_loss, high_concentration, tiny). 77 tests: structural, signal, cross-consistency, and parametrized crash-safety. Fixed 4 bugs found by tests: get_sell_analysis underscored extreme concentration (now 60pts for >50% position), catastrophic losses (now 45pts for <-40%), large profits (now 30pts for >100% gain); _max_sector_conc now uses pv as denominator so cash dilutes concentration; latest_buy_signal used as fallback when trades_df is None; get_portfolio_health momentum uses latest_buy_signal fallback. Also fixed log_exception call signature bug (was 2-arg, now correct 3-arg) in 5 places."
     },
     {
       "name": "Analytics Exception Hardening",
@@ -422,6 +429,14 @@
       "spec": "SPEC 51",
       "last_updated": "2026-06-14",
       "notes": "Audited all except blocks across 7 files; fixed 17 CLASS A (silent fail) patterns with logger.debug; 3 CLASS B upgraded to opt(exception=True).warning; safe_render() + timed() decorators added to error_logger.py; @safe_render applied to all 25 HTML render functions; @timed on 5 slow functions; GROUP 8 exception test in ui_tester.py; docs/exception_audit.txt created",
+      "category": "reliability"
+    },
+    {
+      "name": "SQLite Threading Safety",
+      "status": "complete",
+      "spec": "SPEC 56",
+      "last_updated": "2026-06-14",
+      "notes": "Audited all SQLite connections (docs/sqlite_audit.txt); added get_db_conn() context manager, safe_query(), safe_execute(), _db_locks to dashboard/data.py; _init_db() enables WAL+NORMAL sync on import; _enable_wal_mode() added to bot/main.py called at startup; dashboard/components/history.py converted to get_db_conn(); tests/test_sqlite_threading.py: 5 tests all pass; ui_tester 0 FAIL 0 WARN",
       "category": "reliability"
     }
   ],

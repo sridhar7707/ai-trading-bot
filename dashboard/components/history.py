@@ -13,9 +13,8 @@ from dashboard.design_system import (
     _metric_row, _divider, _empty_state, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
-from dashboard.data import get_data, DB_PATH
+from dashboard.data import get_data, get_db_conn, DB_PATH
 from bot.core.error_logger import safe_render, timed
-import sqlite3
 import os
 _logger = logger
 
@@ -38,31 +37,29 @@ def render_whats_changed() -> str:
         return _empty("No trade data yet.")
 
     try:
-        con = sqlite3.connect(DB_PATH)
+        with get_db_conn() as con:
+            def _latest_per_symbol(date_str: str) -> list:
+                return con.execute(
+                    "SELECT t.symbol, t.ensemble_score, t.regime, t.sentiment_score, t.portfolio_value "
+                    "FROM trades t "
+                    "INNER JOIN (SELECT symbol, MAX(id) AS mid FROM trades "
+                    "            WHERE date(timestamp) = ? GROUP BY symbol) m "
+                    "ON t.id = m.mid",
+                    (date_str,),
+                ).fetchall()
 
-        def _latest_per_symbol(date_str: str) -> list:
-            return con.execute(
-                "SELECT t.symbol, t.ensemble_score, t.regime, t.sentiment_score, t.portfolio_value "
-                "FROM trades t "
-                "INNER JOIN (SELECT symbol, MAX(id) AS mid FROM trades "
-                "            WHERE date(timestamp) = ? GROUP BY symbol) m "
-                "ON t.id = m.mid",
-                (date_str,),
-            ).fetchall()
+            today_rows = _latest_per_symbol(today)
+            yest_rows  = _latest_per_symbol(yesterday)
 
-        today_rows = _latest_per_symbol(today)
-        yest_rows  = _latest_per_symbol(yesterday)
-
-        # Portfolio bookends: yesterday's last overall value vs today's last
-        yest_pv_row  = con.execute(
-            "SELECT portfolio_value FROM trades WHERE date(timestamp) = ? "
-            "AND portfolio_value > 0 ORDER BY id DESC LIMIT 1", (yesterday,)
-        ).fetchone()
-        today_pv_row = con.execute(
-            "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 "
-            "ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        con.close()
+            # Portfolio bookends: yesterday's last overall value vs today's last
+            yest_pv_row  = con.execute(
+                "SELECT portfolio_value FROM trades WHERE date(timestamp) = ? "
+                "AND portfolio_value > 0 ORDER BY id DESC LIMIT 1", (yesterday,)
+            ).fetchone()
+            today_pv_row = con.execute(
+                "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 "
+                "ORDER BY id DESC LIMIT 1"
+            ).fetchone()
     except Exception as exc:
         logger.warning(f"render_whats_changed DB error: {exc}")
         return _empty("Could not load comparison data.")
@@ -195,56 +192,53 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
     if not os.path.exists(DB_PATH):
         return {k: None for k, _ in _PERF_PERIODS}
     try:
-        con    = sqlite3.connect(DB_PATH)
-        today  = datetime.date.today()
-        now_ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with get_db_conn() as con:
+            today  = datetime.date.today()
 
-        # Current (latest) portfolio value
-        cur_row = con.execute(
-            "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-        if not cur_row:
-            con.close()
-            return {k: None for k, _ in _PERF_PERIODS}
-        cur_val = float(cur_row[0])
+            # Current (latest) portfolio value
+            cur_row = con.execute(
+                "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            if not cur_row:
+                return {k: None for k, _ in _PERF_PERIODS}
+            cur_val = float(cur_row[0])
 
-        # First ever portfolio value
-        first_row = con.execute(
-            "SELECT portfolio_value, timestamp FROM trades WHERE portfolio_value > 0 ORDER BY id ASC LIMIT 1"
-        ).fetchone()
-        first_val = float(first_row[0]) if first_row else None
-        first_ts  = first_row[1][:10]  if first_row else None
+            # First ever portfolio value
+            first_row = con.execute(
+                "SELECT portfolio_value, timestamp FROM trades WHERE portfolio_value > 0 ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            first_val = float(first_row[0]) if first_row else None
+            first_ts  = first_row[1][:10]  if first_row else None
 
-        result: dict[str, tuple[float, float, str] | None] = {}
+            result: dict[str, tuple[float, float, str] | None] = {}
 
-        for key, days in _PERF_PERIODS:
-            if key == "All Time":
-                if first_val is not None and first_val != cur_val:
-                    result[key] = (first_val, cur_val, first_ts or "")
+            for key, days in _PERF_PERIODS:
+                if key == "All Time":
+                    if first_val is not None and first_val != cur_val:
+                        result[key] = (first_val, cur_val, first_ts or "")
+                    else:
+                        result[key] = None
+                    continue
+
+                if key == "YTD":
+                    cutoff = datetime.date(today.year, 1, 1).isoformat()
+                else:
+                    cutoff = (today - datetime.timedelta(days=days)).isoformat()
+
+                # First DB record on or after the cutoff date (start-of-period proxy)
+                row = con.execute(
+                    "SELECT portfolio_value, timestamp FROM trades "
+                    "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
+                    (cutoff,),
+                ).fetchone()
+                if row:
+                    start_val  = float(row[0])
+                    start_date = row[1][:10]
+                    result[key] = (start_val, cur_val, start_date)
                 else:
                     result[key] = None
-                continue
 
-            if key == "YTD":
-                cutoff = datetime.date(today.year, 1, 1).isoformat()
-            else:
-                cutoff = (today - datetime.timedelta(days=days)).isoformat()
-
-            # First DB record on or after the cutoff date (start-of-period proxy)
-            row = con.execute(
-                "SELECT portfolio_value, timestamp FROM trades "
-                "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
-                (cutoff,),
-            ).fetchone()
-            if row:
-                start_val  = float(row[0])
-                start_date = row[1][:10]
-                result[key] = (start_val, cur_val, start_date)
-            else:
-                result[key] = None
-
-        con.close()
-        return result
+            return result
     except Exception as exc:
         logger.warning(f"_query_perf_stats: {exc}")
         return {k: None for k, _ in _PERF_PERIODS}

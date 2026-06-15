@@ -166,7 +166,20 @@ def _is_market_hours(alpaca_api=None) -> bool:
     return in_window
 
 
+def _enable_wal_mode(db_path: str) -> None:
+    """Enable WAL journal mode so dashboard readers don't block the bot writer."""
+    try:
+        con = sqlite3.connect(db_path)
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA synchronous=NORMAL")
+        con.close()
+        logger.info(f"WAL mode enabled: {db_path}")
+    except Exception as exc:
+        log_exception(logger, "_enable_wal_mode", exc, {"db_path": db_path})
+
+
 def init_db():
+    _enable_wal_mode(TRADE_DB_PATH)
     con = sqlite3.connect(TRADE_DB_PATH)
     con.execute("""
         CREATE TABLE IF NOT EXISTS trades (

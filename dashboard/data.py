@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 
 import pandas as pd
 from loguru import logger
@@ -34,6 +35,74 @@ _EMPTY_CACHE: dict = {
     "vix": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
     "latest_buy_signal": {}, "today_buy_signals": [],
 }
+
+# ── Thread-safe SQLite helpers ─────────────────────────────────────────────────
+_db_locks: dict[str, threading.Lock] = {}
+_db_locks_meta = threading.Lock()
+
+
+def _get_db_lock(path: str) -> threading.Lock:
+    with _db_locks_meta:
+        if path not in _db_locks:
+            _db_locks[path] = threading.Lock()
+        return _db_locks[path]
+
+
+@contextmanager
+def get_db_conn(db_path=None, timeout: float = 5.0):
+    """Thread-safe SQLite connection context manager.
+
+    Creates a new connection per call (new-connection-per-call = thread-safe).
+    check_same_thread=False avoids spurious errors when Gradio's thread pool
+    re-enters a function from a different thread between creation and use.
+    """
+    path = db_path or DB_PATH
+    conn = sqlite3.connect(path, check_same_thread=False, timeout=timeout)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def safe_query(sql: str, params: tuple = (), db_path=None, default=None):
+    """Run a SELECT and return fetchall(), or `default` on any error."""
+    try:
+        with get_db_conn(db_path) as conn:
+            return conn.execute(sql, params).fetchall()
+    except Exception as exc:
+        logger.warning(f"safe_query: {exc}")
+        return default
+
+
+def safe_execute(sql: str, params: tuple = (), db_path=None) -> bool:
+    """Run an INSERT/UPDATE/DELETE, commit, and return True on success."""
+    path = db_path or DB_PATH
+    lock = _get_db_lock(path)
+    try:
+        with lock:
+            with get_db_conn(path) as conn:
+                conn.execute(sql, params)
+                conn.commit()
+                return True
+    except Exception as exc:
+        logger.warning(f"safe_execute: {exc}")
+        return False
+
+
+def _init_db() -> None:
+    """Enable WAL mode on the dashboard DB so readers don't block the bot writer."""
+    if not os.path.exists(DB_PATH):
+        return
+    try:
+        with get_db_conn() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+    except Exception as exc:
+        logger.warning(f"_init_db WAL: {exc}")
+
+
+_init_db()
 
 
 def _sync_db() -> None:
@@ -95,44 +164,43 @@ def _refresh_cache() -> dict:
     if not os.path.exists(DB_PATH):
         return result
     try:
-        con = sqlite3.connect(DB_PATH)
-        for _col in (
-            "xgb_prob REAL DEFAULT 0.0",
-            "lstm_prob REAL DEFAULT 0.0",
-            "sentiment_score REAL DEFAULT 0.0",
-            "macro_score REAL DEFAULT 0.0",
-            "ensemble_score REAL DEFAULT 0.0",
-            "realized_pnl REAL DEFAULT 0.0",
-            "order_id TEXT DEFAULT NULL",
-            "holding_days INTEGER DEFAULT 0",
-            "feature_drivers TEXT DEFAULT NULL",
-        ):
+        with get_db_conn() as con:
+            for _col in (
+                "xgb_prob REAL DEFAULT 0.0",
+                "lstm_prob REAL DEFAULT 0.0",
+                "sentiment_score REAL DEFAULT 0.0",
+                "macro_score REAL DEFAULT 0.0",
+                "ensemble_score REAL DEFAULT 0.0",
+                "realized_pnl REAL DEFAULT 0.0",
+                "order_id TEXT DEFAULT NULL",
+                "holding_days INTEGER DEFAULT 0",
+                "feature_drivers TEXT DEFAULT NULL",
+            ):
+                try:
+                    con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
+                    con.commit()
+                except sqlite3.OperationalError:
+                    pass
             try:
-                con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
-                con.commit()
-            except sqlite3.OperationalError:
-                pass
-        try:
-            df = pd.read_sql(
-                "SELECT id,timestamp,symbol,action,shares,price,notional,"
-                "pnl_pct,portfolio_value,regime,"
-                "COALESCE(ensemble_score,0.0) AS ensemble_score,"
-                "COALESCE(sentiment_score,0.0) AS sentiment_score,"
-                "COALESCE(xgb_prob,0.0)       AS xgb_prob,"
-                "COALESCE(lstm_prob,0.0)       AS lstm_prob,"
-                "feature_drivers "
-                "FROM trades ORDER BY id", con)
-        except Exception as _e:
-            logger.opt(exception=True).warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
-            df = pd.read_sql(
-                "SELECT id,timestamp,symbol,action,shares,price,notional,"
-                "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
-            df["ensemble_score"] = 0.0
-            df["sentiment_score"] = 0.0
-            df["xgb_prob"]        = 0.0
-            df["lstm_prob"]       = 0.0
-            df["feature_drivers"] = None
-        con.close()
+                df = pd.read_sql(
+                    "SELECT id,timestamp,symbol,action,shares,price,notional,"
+                    "pnl_pct,portfolio_value,regime,"
+                    "COALESCE(ensemble_score,0.0) AS ensemble_score,"
+                    "COALESCE(sentiment_score,0.0) AS sentiment_score,"
+                    "COALESCE(xgb_prob,0.0)       AS xgb_prob,"
+                    "COALESCE(lstm_prob,0.0)       AS lstm_prob,"
+                    "feature_drivers "
+                    "FROM trades ORDER BY id", con)
+            except Exception as _e:
+                logger.opt(exception=True).warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
+                df = pd.read_sql(
+                    "SELECT id,timestamp,symbol,action,shares,price,notional,"
+                    "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
+                df["ensemble_score"] = 0.0
+                df["sentiment_score"] = 0.0
+                df["xgb_prob"]        = 0.0
+                df["lstm_prob"]       = 0.0
+                df["feature_drivers"] = None
     except Exception as e:
         logger.opt(exception=True).warning(f"DB read: {e}")
         return result

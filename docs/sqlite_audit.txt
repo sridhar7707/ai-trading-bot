@@ -1,0 +1,49 @@
+SQLite Connection Audit — SPEC 56
+Generated: 2026-06-14
+==================================================
+
+Classification:
+  SAFE              — new connection per call, closed before function returns
+  SAFE WITH FLAG    — check_same_thread=False present (redundant but harmless)
+  DANGEROUS         — connection shared across threads / stored as module global
+
+--------------------------------------------------
+
+dashboard/data.py:98
+  sqlite3.connect(DB_PATH)  [inside _refresh_cache()]
+  Classification: SAFE — call is serialized by _CACHE_LOCK; connection created
+  and closed within the same lock-held region.
+  Action: CONVERT to get_db_conn() for consistency.
+
+dashboard/components/history.py:41
+  sqlite3.connect(DB_PATH)  [inside render_whats_changed()]
+  Classification: SAFE — connection is local to the render function; created
+  and closed within one call. Gradio threads each get their own connection.
+  Action: CONVERT to get_db_conn() for consistency.
+
+dashboard/components/history.py:198
+  sqlite3.connect(DB_PATH)  [inside _query_perf_stats()]
+  Classification: SAFE — same pattern as above; local connection.
+  Action: CONVERT to get_db_conn() for consistency.
+
+bot/main.py:170
+  sqlite3.connect(TRADE_DB_PATH)  [inside init_db()]
+  Classification: SAFE — bot runs in a single thread; the returned connection
+  is used only in the bot's main loop thread.
+  Action: ADD PRAGMA journal_mode=WAL via _enable_wal_mode() at startup.
+
+bot/monitor/dashboard_data.py:78
+  sqlite3.connect(_DB, check_same_thread=False)  [inside _con()]
+  Classification: SAFE WITH FLAG — _con() creates a new connection per call;
+  check_same_thread=False is redundant since no connection is shared. Pattern
+  is already thread-safe.
+  Action: No change needed; DuckDB pattern already correct.
+
+database/repositories/analytics_repository.py
+  duckdb.connect(str(DB_PATH))  [inside _get_conn()]
+  Classification: SAFE — DuckDB, not SQLite. New connection per call.
+  Action: No change needed.
+
+--------------------------------------------------
+Summary: 3 connections to convert (dashboard code), 1 WAL setup needed (bot/main.py).
+No DANGEROUS connections found.
