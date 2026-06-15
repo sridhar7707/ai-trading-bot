@@ -2,9 +2,13 @@ name: Pre-Market Screener
 
 on:
   schedule:
-    # 12:00 UTC = 7:00 AM CDT / 8:00 AM EDT — ~90 min before market open.
-    # Screens and ranks today's trading universe so trade.yml starts with a
-    # fresh symbol list rather than running the screener mid-session.
+    # Two triggers give GitHub two chances to fire before market open.
+    # GitHub cron is best-effort and frequently delayed 30–60+ min.
+    # 11:30 UTC = 6:30 AM CDT / 7:30 AM EDT — 2h before market open (early slot)
+    # 12:00 UTC = 7:00 AM CDT / 8:00 AM EDT — 90 min before market open (main slot)
+    # The screener is idempotent: the universe cache key is today's date, so
+    # whichever trigger fires first populates the cache and the second is a no-op.
+    - cron: '30 11 * * 1-5'
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
 

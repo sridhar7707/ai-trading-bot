@@ -2,8 +2,9 @@ name: Trading Bot Watchdog
 
 on:
   schedule:
-    # Pre-market screener watchdog: fires 30 min after screener slot (12:00→12:30 UTC)
-    - cron: '30 12 * * 1-5'
+    # Pre-market screener watchdog: fires 60 min after the main screener slot (12:00→13:00 UTC).
+    # Checks the last 120 min so it catches runs from the early 11:30 trigger too.
+    - cron: '0 13 * * 1-5'
     # Trading bot watchdog: fires 30 min after each trading slot (Mon-Fri)
     # Slot → Watchdog: 13:30→14:00, 15:30→16:00, 17:30→18:00, 19:30→20:00 UTC
     - cron: '0 14,16,18,20 * * 1-5'
@@ -12,7 +13,7 @@ on:
 jobs:
   watch-premarket:
     # Only meaningful at 12:30 UTC — skip this job at the trading-slot times
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && contains(github.event.schedule, '30 12'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && contains(github.event.schedule, '0 13'))
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -54,7 +55,7 @@ jobs:
               except Exception:
                   pass
 
-          cutoff = datetime.now(timezone.utc) - timedelta(minutes=75)
+          cutoff = datetime.now(timezone.utc) - timedelta(minutes=120)
           runs_data = gh("GET", "actions/workflows/premarket.yml/runs?per_page=10")
           recent = [
               r for r in runs_data.get("workflow_runs", [])
