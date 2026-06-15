@@ -37,7 +37,7 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Manual dispatch — deploying."
           elif git diff --name-only HEAD~1 HEAD \
-                | grep -Eq '^(dashboard/app\.py|bot/monitor/dashboard_data\.py|requirements_space\.txt|config\.py)$'; then
+                | grep -Eq '^(dashboard/|database/|bot/|requirements_space\.txt|config\.py)'; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Dashboard/requirements/config changed — deploying."
           else
@@ -87,8 +87,17 @@ jobs:
           # dashboard/app.py → app.py  (Gradio Spaces entry point)
           shutil.copy("dashboard/app.py", staging / "app.py")
 
+          # Full dashboard package (app.py imports design_system, layout, data, charts, components/*)
+          shutil.copytree("dashboard", staging / "dashboard",
+                          ignore=shutil.ignore_patterns("__pycache__"))
+
+          # database package (dashboard components import analytics_service, analytics_repository)
+          shutil.copytree("database", staging / "database",
+                          ignore=shutil.ignore_patterns("__pycache__", "*.duckdb"))
+
           # Full bot package (dashboard imports from many submodules)
-          shutil.copytree("bot", staging / "bot")
+          shutil.copytree("bot", staging / "bot",
+                          ignore=shutil.ignore_patterns("__pycache__"))
 
           # config.py + minimal Space-only requirements (no ML/trading packages)
           shutil.copy("config.py",               staging / "config.py")
