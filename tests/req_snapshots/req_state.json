@@ -238,6 +238,27 @@
       "notes": "All render_* functions pass: (1) section titles \u22644 words, (2) only design system hex colors, (3) only 36/20/15/11px font sizes, (4) _symbol() for all ticker symbols, (5) _confidence_bar() for all confidence displays. Add dead code comments to render_portfolio_actions/sell_analysis/position_sizing_panel (called internally by decision_center). Add superseded comment to render_dashboard_hero."
     },
     {
+      "name": "Dashboard App.py Modular Refactor",
+      "status": "complete",
+      "spec": "SPEC 52",
+      "last_updated": "2026-06-14",
+      "notes": "Split 3979-line dashboard/app.py into focused modules: design_system.py (constants+helpers), data.py (cache+DB layer), charts.py (Plotly chart functions), components/ (12 component files grouped by domain). App.py becomes 300-500 line wiring-only file. Zero logic changes — pure file split."
+    },
+    {
+      "name": "Dashboard View Model Pattern",
+      "status": "complete",
+      "spec": "SPEC 53",
+      "last_updated": "2026-06-14",
+      "notes": "Separate business logic from rendering. Created viewmodels.py (pure Python dataclasses, no HTML), builders.py (8 builder functions), refactored 6 component files (portfolio, overview, actions, decision, rebalance, ai_panel). design_system.py split: CSS/HTML extracted to layout.py (338 lines, under 500). 20 viewmodel tests pass. Zero UI changes."
+    },
+    {
+      "name": "Analytics Exception Hardening",
+      "status": "complete",
+      "spec": "SPEC 54",
+      "last_updated": "2026-06-14",
+      "notes": "Fixed all swallowed exceptions in analytics_service.py and analytics_repository.py. save_daily_snapshot() now logs at WARNING when health_score=0, INFO on success, and uses log_exception() on any failure. Added try/except+log_exception to get_sharpe_ratio() and get_max_drawdown(). Added check_health() method. Upgraded all 5 CLASS B handlers in analytics_repository.py to log_exception(). Wired check_health() into run_loop() startup and upgraded end_of_day call site in bot/main.py. Added test_analytics_service_check_health to test_duckdb_integration.py and test_analytics_check_health to ui_tester.py GROUP 8."
+    },
+    {
       "name": "Rebalance Suggestions",
       "status": "planned",
       "spec": "SPEC 38",

@@ -1,12 +1,132 @@
 # TradeGenius UI/UX Changelog
 
 Auto-generated. Do not edit manually.
-Last updated: 2026-06-14 12:16:22
-Total changes recorded: 5
+Last updated: 2026-06-14 20:23:24
+Total changes recorded: 6
 Most changed component: render_todays_actions
 First snapshot: 2026-06-13 19:24:59
-Latest snapshot: 2026-06-14 12:16:22
-Components tracked: 29
+Latest snapshot: 2026-06-14 20:23:24
+Components tracked: 0
+
+---
+
+## [2026-06-14 20:23:24] — 29 components changed
+
+### render_metrics — REMOVED
+- Component removed
+- Was: 5,187 chars
+
+### render_equity_chart — REMOVED
+- Component removed
+- Was: 2,606 chars
+
+### render_allocation_chart — REMOVED
+- Component removed
+- Was: 2,228 chars
+
+### render_pnl_chart — REMOVED
+- Component removed
+- Was: 2,351 chars
+
+### render_positions — REMOVED
+- Component removed
+- Was: 4,185 chars
+
+### render_trades — REMOVED
+- Component removed
+- Was: 2,616 chars
+
+### render_feature_importance_chart — REMOVED
+- Component removed
+- Was: 2,422 chars
+
+### render_validation_report — REMOVED
+- Component removed
+- Was: 3,161 chars
+
+### render_dashboard_hero — REMOVED
+- Component removed
+- Was: 5,522 chars
+
+### render_portfolio_health_hero — REMOVED
+- Component removed
+- Was: 6,398 chars
+
+### render_ai_recommendation — REMOVED
+- Component removed
+- Was: 9,540 chars
+
+### render_market_intelligence — REMOVED
+- Component removed
+- Was: 1,818 chars
+
+### render_watchlist — REMOVED
+- Component removed
+- Was: 1,622 chars
+
+### render_signals_tab — REMOVED
+- Component removed
+- Was: 3,234 chars
+
+### render_risk_panel — REMOVED
+- Component removed
+- Was: 4,813 chars
+
+### render_institutional_metrics — REMOVED
+- Component removed
+- Was: 4,570 chars
+
+### render_timeline — REMOVED
+- Component removed
+- Was: 4,239 chars
+
+### render_investor_view — REMOVED
+- Component removed
+- Was: 5,398 chars
+
+### render_symbol_detail — REMOVED
+- Component removed
+- Was: 12,202 chars
+
+### render_whats_changed — REMOVED
+- Component removed
+- Was: 6,337 chars
+
+### render_portfolio_performance — REMOVED
+- Component removed
+- Was: 4,026 chars
+
+### render_todays_actions — REMOVED
+- Component removed
+- Was: 3,389 chars
+
+### render_portfolio_actions — REMOVED
+- Component removed
+- Was: 3,720 chars
+
+### render_position_sizing — REMOVED
+- Component removed
+- Was: 3,321 chars
+
+### render_ai_committee — REMOVED
+- Component removed
+- Was: 3,589 chars
+
+### render_sell_analysis — REMOVED
+- Component removed
+- Was: 3,125 chars
+
+### render_position_sizing_panel — REMOVED
+- Component removed
+- Was: 2,899 chars
+
+### render_decision_center — REMOVED
+- Component removed
+- Was: 4,553 chars
+
+### render_rebalance — REMOVED
+- Component removed
+- Was: 4,531 chars
 
 ---
 
