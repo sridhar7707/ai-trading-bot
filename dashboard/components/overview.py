@@ -442,7 +442,7 @@ def render_benchmark_comparison() -> str:
                       _vs_badge(bm["vs_qqq"]))
     )
 
-    note = "YTD · live" if "error" not in bm else "YTD · SPY/QQQ unavailable"
+    note = "YTD · paper trading" if "error" not in bm else "YTD · SPY/QQQ unavailable"
     return (
         f'<div class="nt nt-wrap">'
         f'{_section("📈", "vs Benchmark", note)}'
