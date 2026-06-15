@@ -1190,13 +1190,15 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
     def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame]:
         try:
             bars = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
-            # Staleness guard: skip symbols whose last bar is >15 min old during market hours
+            # Staleness guard: skip symbols whose last bar is >30 min old during market hours.
+            # Alpaca free-tier uses IEX data with a ~15-20 min delay, so 30 min gives headroom
+            # for normal delayed data while still catching genuinely stale feeds (post-close, outage).
             if not bars.empty:
                 last_ts = bars.index[-1]
                 now_utc = pd.Timestamp.now(tz="UTC")
                 last_utc = last_ts.tz_localize("UTC") if last_ts.tzinfo is None else last_ts.tz_convert("UTC")
                 age_mins = (now_utc - last_utc).total_seconds() / 60
-                if age_mins > 15:
+                if age_mins > 30:
                     logger.warning(f"Stale bars for {symbol}: last bar is {age_mins:.0f}m old — skipping")
                     bars = pd.DataFrame()
         except Exception as e:
