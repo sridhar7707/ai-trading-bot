@@ -235,15 +235,12 @@ HEADER_HTML = f"""{STYLES}
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <div style="display:flex;align-items:center;gap:6px;background:{GAIN_BG};
-      border:1px solid {GAIN_BD};color:{GAIN};padding:5px 14px;
+    <div style="display:flex;align-items:center;gap:6px;background:{NEURAL_BG};
+      border:1px solid {NEURAL_BD};color:{NEURAL};padding:5px 14px;
       border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.3px;">
-      <span style="width:6px;height:6px;background:{GAIN};border-radius:50%;
-        display:inline-block;animation:pulse 2s infinite;flex-shrink:0;"></span>LIVE
+      <span style="width:6px;height:6px;background:{NEURAL};border-radius:50%;
+        display:inline-block;animation:pulse 2s infinite;flex-shrink:0;"></span>PAPER TRADING
     </div>
-    <div style="background:{SURFACE2};border:1px solid {BORDER};
-      color:{TEXT2};padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;">
-      PAPER</div>
   </div>
 </div>
 </div>"""
