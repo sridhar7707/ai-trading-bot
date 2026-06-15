@@ -119,12 +119,27 @@ jobs:
           )
 
           api = HfApi(token=token)
+          # Upload everything except README.md — huggingface_hub's upload_folder
+          # calls a YAML-validation endpoint for README.md which occasionally
+          # returns an empty body, crashing with JSONDecodeError.  upload_file
+          # goes through a different code path that doesn't trigger the bug.
           api.upload_folder(
               folder_path=str(staging),
               repo_id=space_id,
               repo_type="space",
               commit_message="chore: update dashboard from CI",
+              ignore_patterns=["README.md"],
           )
+          try:
+              api.upload_file(
+                  path_or_fileobj=str(staging / "README.md"),
+                  path_in_repo="README.md",
+                  repo_id=space_id,
+                  repo_type="space",
+                  commit_message="chore: update Space card metadata",
+              )
+          except Exception as e:
+              print(f"::warning::README.md upload failed: {e} — Space card metadata may be stale")
 
           # Push Alpaca credentials as Space secrets so the dashboard can use the
           # official data API for live prices. Skipped cleanly if not provided.
