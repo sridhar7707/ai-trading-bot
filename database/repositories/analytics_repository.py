@@ -90,19 +90,78 @@ class AnalyticsRepository:
             log_exception(_log, "load_snapshots", exc, {"days": days})
             return pd.DataFrame()
 
-    def save_recommendation(self, symbol: str, prediction_date: datetime.date,
-                            recommendation: str, confidence: float) -> bool:
+    def save_recommendation(self, symbol: str, recommendation: str,
+                            confidence: float, price: float = None,
+                            change_reason: str = None) -> bool:
         try:
+            # Detect previous recommendation for this symbol
+            prev: str | None = None
+            try:
+                with self._get_conn() as conn:
+                    row = conn.execute(
+                        "SELECT recommendation FROM recommendation_history "
+                        "WHERE symbol = ? ORDER BY prediction_date DESC LIMIT 1",
+                        [symbol],
+                    ).fetchone()
+                    if row:
+                        prev = row[0]
+            except Exception as exc:
+                log_exception(_log, "save_recommendation.get_prev", exc, {"symbol": symbol})
+
+            if prev and prev != recommendation and not change_reason:
+                change_reason = f"Changed from {prev} to {recommendation}"
+
             with self._get_conn() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO recommendation_history "
-                    "(symbol, prediction_date, recommendation, confidence) "
-                    "VALUES (?, ?, ?, ?)",
-                    [symbol, prediction_date, recommendation, confidence],
+                    "(symbol, prediction_date, recommendation, confidence, "
+                    "prev_recommendation, change_reason, price_at_recommendation, "
+                    "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    [symbol, datetime.date.today(), recommendation, confidence,
+                     prev, change_reason, price],
+                )
+
+            if prev and prev != recommendation:
+                _log.info(
+                    "Recommendation change: %s %s → %s confidence=%.0f%%",
+                    symbol, prev, recommendation, confidence * 100,
                 )
             return True
+
         except Exception as exc:
             log_exception(_log, "save_recommendation", exc, {
                 "symbol": symbol, "recommendation": recommendation,
             })
             return False
+
+    def load_recommendation_history(self, symbol: str = None, days: int = 30,
+                                    changes_only: bool = False) -> pd.DataFrame:
+        """Load recommendation history; symbol=None returns all symbols."""
+        try:
+            where_clauses = ["prediction_date >= CURRENT_DATE - ?"]
+            params: list = [days]
+
+            if symbol:
+                where_clauses.append("symbol = ?")
+                params.append(symbol)
+
+            if changes_only:
+                where_clauses.append(
+                    "prev_recommendation IS NOT NULL "
+                    "AND prev_recommendation != recommendation"
+                )
+
+            where = " AND ".join(where_clauses)
+            with self._get_conn() as conn:
+                return conn.execute(
+                    f"SELECT symbol, prediction_date, recommendation, "
+                    f"prev_recommendation, confidence, change_reason, "
+                    f"price_at_recommendation, actual_return, resolved "
+                    f"FROM recommendation_history WHERE {where} "
+                    f"ORDER BY prediction_date DESC, symbol ASC",
+                    params,
+                ).df()
+        except Exception as exc:
+            log_exception(_log, "load_recommendation_history", exc,
+                          {"symbol": symbol, "days": days})
+            return pd.DataFrame()

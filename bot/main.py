@@ -1558,7 +1558,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     WEIGHTS["sentiment"] * ((sentiment + 1.0) / 2.0) +
                     WEIGHTS["macro"]     * macro_score
                 )
-                _as.save_recommendation(symbol, "BUY", float(_buy_conf))
+                _as.save_recommendation(symbol, "BUY", float(_buy_conf),
+                                        price=current_price)
             except Exception as _ae:
                 logger.debug(f"analytics save_recommendation skipped: {_ae}")
 

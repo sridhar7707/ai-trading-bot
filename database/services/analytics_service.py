@@ -1,5 +1,6 @@
 import datetime
 import logging
+import time
 from typing import Optional
 
 import numpy as np
@@ -7,6 +8,10 @@ import pandas as pd
 
 from bot.core.error_logger import log_exception
 from database.repositories.analytics_repository import AnalyticsRepository
+
+_benchmark_cache: dict = {}
+_benchmark_cache_ts: float = 0.0
+_BENCHMARK_TTL: float = 3600.0  # 1 hour — yfinance not hammered every 60s refresh
 
 _log = logging.getLogger("tradegenie.analytics_service")
 
@@ -45,10 +50,65 @@ class AnalyticsService:
             return 0.0
 
     def save_recommendation(self, symbol: str, recommendation: str,
-                            confidence: float) -> bool:
+                            confidence: float, price: float = None,
+                            change_reason: str = None) -> bool:
         return self._repo.save_recommendation(
-            symbol, datetime.date.today(), recommendation, confidence
+            symbol, recommendation, confidence,
+            price=price, change_reason=change_reason,
         )
+
+    def get_benchmark_comparison(self, portfolio_return_pct: float,
+                                 period: str = "YTD") -> dict:
+        """Return portfolio vs SPY/QQQ for the given period. Cached for 1 hour."""
+        global _benchmark_cache, _benchmark_cache_ts
+
+        now = time.time()
+        if period in _benchmark_cache and (now - _benchmark_cache_ts) < _BENCHMARK_TTL:
+            cached = _benchmark_cache[period].copy()
+            cached["portfolio_return"] = portfolio_return_pct
+            cached["vs_spy"] = portfolio_return_pct - cached["spy_return"]
+            cached["vs_qqq"] = portfolio_return_pct - cached["qqq_return"]
+            return cached
+
+        today = datetime.date.today()
+        if period == "YTD":
+            start = datetime.date(today.year, 1, 1).isoformat()
+        else:
+            days_map = {"1D": 1, "1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365}
+            start = (today - datetime.timedelta(days=days_map.get(period, 365))).isoformat()
+
+        def _fetch_return(ticker: str) -> float:
+            try:
+                import yfinance as yf
+                data = yf.download(ticker, start=start, progress=False,
+                                   auto_adjust=True)
+                if data is None or data.empty or len(data) < 2:
+                    return 0.0
+                first = float(data["Close"].values.flat[0])
+                last  = float(data["Close"].values.flat[-1])
+                return (last - first) / first * 100 if first else 0.0
+            except Exception as exc:
+                log_exception(_log, f"get_benchmark_comparison.{ticker}", exc,
+                              {"period": period, "start": start})
+                return 0.0
+
+        spy_ret = _fetch_return("SPY")
+        qqq_ret = _fetch_return("QQQ")
+
+        result = {
+            "portfolio_return": portfolio_return_pct,
+            "spy_return":       spy_ret,
+            "qqq_return":       qqq_ret,
+            "vs_spy":           portfolio_return_pct - spy_ret,
+            "vs_qqq":           portfolio_return_pct - qqq_ret,
+            "period":           period,
+            "start_date":       start,
+        }
+
+        _benchmark_cache[period] = {k: v for k, v in result.items()
+                                    if k not in ("portfolio_return", "vs_spy", "vs_qqq")}
+        _benchmark_cache_ts = now
+        return result
 
     def save_daily_snapshot(self, portfolio_data: dict) -> bool:
         try:

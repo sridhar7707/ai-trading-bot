@@ -61,6 +61,7 @@ from dashboard.charts import (
 # ── Component render functions ────────────────────────────────────────────────
 from dashboard.components.overview import (
     render_metrics, render_dashboard_hero, render_portfolio_health_hero,
+    render_benchmark_comparison,
 )
 from dashboard.components.ai_panel import (
     render_ai_recommendation, render_ai_committee, _WHY_MAP,
@@ -80,6 +81,7 @@ from dashboard.components.signals import (
 )
 from dashboard.components.history import (
     render_whats_changed, render_portfolio_performance, _perf_choices,
+    render_recommendation_history,
 )
 from dashboard.components.actions import (
     render_todays_actions, render_portfolio_actions,
@@ -165,6 +167,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             todays_actions_out = gr.HTML(value=render_todays_actions)
             ai_rec_out         = gr.HTML(value=render_ai_recommendation)
             risk_panel_out     = gr.HTML(value=render_risk_panel)
+            benchmark_out      = gr.HTML(value=render_benchmark_comparison)
             whats_changed_out  = gr.HTML(value=render_whats_changed)
             # ── Symbol drilldown ──────────────────────────────────────────────
             symbol_selector = gr.Dropdown(
@@ -209,6 +212,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                 value="📊 Investor View",
                 label="", container=False,
             )
+            rec_history_out = gr.HTML(value=render_recommendation_history)
             investor_out = gr.HTML(value=render_investor_view, visible=True)
             with gr.Column(visible=False) as dev_col:
                 metrics_out = gr.HTML(value=render_institutional_metrics)
@@ -249,6 +253,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
     timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
+    timer.tick(fn=render_benchmark_comparison,  outputs=benchmark_out)
     timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
     timer.tick(fn=lambda: gr.update(choices=_get_symbol_choices()), outputs=symbol_selector)
     # Signals tab
@@ -268,6 +273,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_positions,             outputs=pos_out)
     timer.tick(fn=render_trades,                outputs=trades_out)
     # Models tab
+    timer.tick(fn=render_recommendation_history,   outputs=rec_history_out)
     timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)

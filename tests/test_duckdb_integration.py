@@ -60,7 +60,7 @@ def test_portfolio_snapshot_save_load():
 
 def test_recommendation_save():
     r = _repo()
-    assert r.save_recommendation("AAPL", datetime.date.today(), "BUY", 0.85) is True
+    assert r.save_recommendation("AAPL", "BUY", 0.85, price=150.0) is True
 
 
 def test_sharpe_ratio():
@@ -85,3 +85,35 @@ def test_analytics_service_check_health():
     assert health["overall"] in ("ok", "degraded")
     assert health["duckdb_connection"] == "ok"
     assert health["sharpe_calculation"] == "ok"
+
+
+def test_recommendation_history_change_detected():
+    """save_recommendation() must record prev and detect a BUY→SELL change."""
+    r = _repo()
+    r.save_recommendation("TESTX", "BUY", 0.80, price=100.0)
+    r.save_recommendation("TESTX", "SELL", 0.65, price=95.0)
+
+    df = r.load_recommendation_history(symbol="TESTX", days=1, changes_only=True)
+    assert len(df) >= 1
+    row = df[df["symbol"] == "TESTX"].iloc[0]
+    assert row["prev_recommendation"] == "BUY"
+    assert row["recommendation"] == "SELL"
+
+
+def test_benchmark_comparison_returns_dict():
+    """get_benchmark_comparison() must return all required keys."""
+    from database.services.analytics_service import AnalyticsService
+    svc = AnalyticsService()
+    result = svc.get_benchmark_comparison(10.0, "YTD")
+    assert isinstance(result, dict)
+    for key in ("portfolio_return", "spy_return", "qqq_return", "vs_spy", "vs_qqq"):
+        assert key in result, f"Missing key: {key}"
+
+
+def test_benchmark_spy_return_is_numeric():
+    """Benchmark returns must be floats regardless of network availability."""
+    from database.services.analytics_service import AnalyticsService
+    svc = AnalyticsService()
+    result = svc.get_benchmark_comparison(5.0, "1M")
+    assert isinstance(result["spy_return"], float)
+    assert isinstance(result["qqq_return"], float)

@@ -10,7 +10,7 @@ from dashboard.design_system import (
     WEIGHT_BOLD, WEIGHT_MEDIUM, WEIGHT_NORMAL,
     CARD_PADDING, SECTION_GAP,
     _card, _label, _section_title, _action_badge, _symbol,
-    _metric_row, _divider, _empty_state, _section, _wrap,
+    _confidence_bar, _metric_row, _divider, _empty_state, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
 from dashboard.data import get_data, get_db_conn, DB_PATH
@@ -344,6 +344,79 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
         )
 
     return f'<div class="nt nt-wrap">{strip}{detail}</div>'
+
+
+# ── Render: recommendation history ───────────────────────────────────────────────
+@safe_render("Recommendation History")
+def render_recommendation_history() -> str:
+    from database.repositories.analytics_repository import AnalyticsRepository
+    repo = AnalyticsRepository()
+    df = repo.load_recommendation_history(days=14, changes_only=False)
+
+    if df.empty:
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("📋", "Rec History", "")}'
+            f'{_card(_empty_state("📋", "No history yet", "Recommendations are recorded daily. Check back after market hours."))}'
+            f'</div>'
+        )
+
+    n        = len(df)
+    n_changes = int(df[
+        df["prev_recommendation"].notna() &
+        (df["prev_recommendation"] != df["recommendation"])
+    ].shape[0])
+    note = f"{n} records · {n_changes} changes" if n_changes else f"{n} records"
+
+    rows = ""
+    for i, row in df.iterrows():
+        is_last = (i == df.index[-1])
+        td      = TD0 if is_last else TD
+        rec     = str(row["recommendation"] or "—")
+        prev    = row.get("prev_recommendation")
+        conf    = float(row["confidence"] or 0)
+        changed = bool(prev and prev != rec)
+
+        change_html = ""
+        if changed:
+            change_html = (
+                f' <span style="font-size:{FONT_LABEL};color:{ACTION_SELL};">'
+                f'was {prev}</span>'
+            )
+
+        ret = row.get("actual_return")
+        if ret is not None and not (isinstance(ret, float) and ret != ret):
+            ret_color = ACTION_BUY if float(ret) >= 0 else ACTION_SELL
+            ret_html  = (
+                f'<span style="color:{ret_color};font-weight:{WEIGHT_BOLD};">'
+                f'{float(ret):+.1f}%</span>'
+            )
+        else:
+            ret_html = "—"
+
+        date_str = str(row["prediction_date"])[:10]
+        rows += (
+            f'<tr>'
+            f'<td {td}>{_symbol(str(row["symbol"]))}</td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{date_str}</span></td>'
+            f'<td {td}>{_action_badge(rec)}{change_html}</td>'
+            f'<td {td}>{_confidence_bar(conf, show_label=False)}</td>'
+            f'<td {td}>{ret_html}</td>'
+            f'</tr>'
+        )
+
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Date</th>'
+        f'<th {TH}>Action</th><th {TH}>Confidence</th><th {TH}>Outcome</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("📋", "Rec History", note)}'
+        f'{table}'
+        f'</div>'
+    )
 
 
 # ── Render: today's trades timeline ─────────────────────────────────────────────

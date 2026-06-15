@@ -17,7 +17,7 @@ from dashboard.design_system import (
 )
 from dashboard.data import get_data, _now_ct, _market_status
 from dashboard.builders import build_health_vm
-from bot.core.error_logger import safe_render, timed
+from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
 
 # ── Render: metrics ───────────────────────────────────────────────────────────
@@ -387,3 +387,65 @@ def render_portfolio_health_hero() -> str:
     )
     return f'<div class="nt nt-wrap">{inner}</div>'
 
+
+# ── Render: benchmark comparison (vs SPY / QQQ) ───────────────────────────────
+@timed(_logger)
+@safe_render("Benchmark")
+def render_benchmark_comparison() -> str:
+    from database.services.analytics_service import analytics_service
+    from database.repositories.analytics_repository import AnalyticsRepository
+    from dashboard.data import get_data
+
+    d = get_data()
+    pv = 0.0
+    try:
+        raw = d.get("portfolio", "—")
+        if raw != "—":
+            pv = float(raw.replace("$", "").replace(",", ""))
+    except (ValueError, TypeError):
+        pass
+
+    port_return = 0.0
+    if pv > 0:
+        try:
+            repo = AnalyticsRepository()
+            snapshots = repo.load_snapshots(days=365)
+            if not snapshots.empty:
+                first_val = float(snapshots["portfolio_value"].iloc[0])
+                if first_val > 0:
+                    port_return = (pv - first_val) / first_val * 100
+        except Exception as exc:
+            log_exception(_logger, "render_benchmark.calc_return", exc)
+
+    bm = analytics_service.get_benchmark_comparison(
+        portfolio_return_pct=port_return, period="YTD"
+    )
+
+    def _vs_badge(delta: float) -> str:
+        if delta > 0:
+            return (f'<span style="color:{ACTION_BUY};font-weight:{WEIGHT_BOLD};">'
+                    f'+{delta:.1f}% ahead</span>')
+        if delta < 0:
+            return (f'<span style="color:{ACTION_SELL};font-weight:{WEIGHT_BOLD};">'
+                    f'{delta:.1f}% behind</span>')
+        return f'<span style="color:{TEXT2};">In line</span>'
+
+    port_c = ACTION_BUY if port_return >= 0 else ACTION_SELL
+    spy_c  = ACTION_BUY if bm["spy_return"] >= 0 else ACTION_SELL
+    qqq_c  = ACTION_BUY if bm["qqq_return"] >= 0 else ACTION_SELL
+
+    content = (
+        _metric_row("Your Portfolio", f'{port_return:+.1f}%', port_c)
+        + _metric_row("S&P 500 (SPY)",  f'{bm["spy_return"]:+.1f}%', spy_c,
+                      _vs_badge(bm["vs_spy"]))
+        + _metric_row("Nasdaq (QQQ)",   f'{bm["qqq_return"]:+.1f}%', qqq_c,
+                      _vs_badge(bm["vs_qqq"]))
+    )
+
+    note = "YTD · live" if "error" not in bm else "YTD · SPY/QQQ unavailable"
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("📈", "vs Benchmark", note)}'
+        f'{_card(content)}'
+        f'</div>'
+    )
