@@ -58,7 +58,7 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # 15-minute RSI (multi-timeframe momentum) — resampled to 5-min frequency
     # Requires a DatetimeIndex; falls back to standard RSI when unavailable.
-    if hasattr(df.index, "dtype") and np.issubdtype(df.index.dtype, np.datetime64):
+    if isinstance(df.index, pd.DatetimeIndex):
         try:
             bars_15m       = df[["close"]].resample("15min").last().dropna()
             rsi_15m_series = ta.momentum.RSIIndicator(bars_15m["close"], window=14).rsi()
