@@ -60,12 +60,12 @@ class XGBPredictor:
             subsample=0.8,
             colsample_bytree=0.8,
             eval_metric="logloss",
+            early_stopping_rounds=50,  # XGBoost 2.x: moved from fit() to constructor
             random_state=42,
         )
         self.model.fit(
             X, y,
             eval_set=[(X_val, y_val)],
-            early_stopping_rounds=50,  # stop if val logloss doesn't improve for 50 trees
             verbose=False,
         )
         best_trees = self.model.best_iteration
