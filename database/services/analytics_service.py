@@ -84,8 +84,15 @@ class AnalyticsService:
                                    auto_adjust=True)
                 if data is None or data.empty or len(data) < 2:
                     return 0.0
-                first = float(data["Close"].values.flat[0])
-                last  = float(data["Close"].values.flat[-1])
+                # squeeze() collapses single-ticker MultiIndex to Series;
+                # dropna() skips any leading/trailing NaN rows from yfinance.
+                close = data["Close"].squeeze()
+                if hasattr(close, "dropna"):
+                    close = close.dropna()
+                if len(close) < 2:
+                    return 0.0
+                first = float(close.iloc[0])
+                last  = float(close.iloc[-1])
                 return (last - first) / first * 100 if first else 0.0
             except Exception as exc:
                 log_exception(_log, f"get_benchmark_comparison.{ticker}", exc,
@@ -105,9 +112,12 @@ class AnalyticsService:
             "start_date":       start,
         }
 
-        _benchmark_cache[period] = {k: v for k, v in result.items()
-                                    if k not in ("portfolio_return", "vs_spy", "vs_qqq")}
-        _benchmark_cache_ts = now
+        # Only cache when we got real data — a 0.0 SPY return is almost certainly
+        # a yfinance failure, not a flat market. Skip caching so next request retries.
+        if spy_ret != 0.0 or qqq_ret != 0.0:
+            _benchmark_cache[period] = {k: v for k, v in result.items()
+                                        if k not in ("portfolio_return", "vs_spy", "vs_qqq")}
+            _benchmark_cache_ts = now
         return result
 
     def save_daily_snapshot(self, portfolio_data: dict) -> bool:
