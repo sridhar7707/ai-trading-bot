@@ -188,6 +188,25 @@ jobs:
           PYTHONUNBUFFERED: "1"
         run: python bot/main.py --mode paper --loop
 
+      - name: Alert on workflow failure
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not set — cannot send failure alert."
+            exit 0
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SLOT=$(TZ=America/New_York date '+%H:%M ET')
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode="HTML" \
+            --data-urlencode text="🔴 <b>Trading Bot FAILED</b> at ${SLOT} — a step crashed before the loop started. Full logs: ${RUN_URL}" \
+            >/dev/null && echo "Failure alert sent." || echo "Failure alert send failed."
+
       - name: Send end-of-day summary (safety net)
         if: always()
         continue-on-error: true
