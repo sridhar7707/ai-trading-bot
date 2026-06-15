@@ -8,9 +8,12 @@ call get_data() once at the top and pass it here.
 from __future__ import annotations
 
 import json as _json
+import logging
 from typing import Any
 
 from bot.core.error_logger import log_exception
+
+_log = logging.getLogger("tradegenie.recommendation")
 
 # ── Sector map (matches dashboard/app.py) ────────────────────────────────────
 _SECTOR_MAP: dict[str, str] = {
@@ -164,7 +167,7 @@ def get_portfolio_action(symbol: str, d: dict) -> dict:
                 "urgency": "low"}
 
     except Exception as exc:
-        log_exception("get_portfolio_action", exc)
+        log_exception(_log, "get_portfolio_action", exc)
         return dict(_FALLBACK_ACTION)
 
 
@@ -232,7 +235,7 @@ def get_position_sizing(symbol: str, d: dict) -> dict:
                 "reason":         reason}
 
     except Exception as exc:
-        log_exception("get_position_sizing", exc)
+        log_exception(_log, "get_position_sizing", exc)
         return dict(_FALLBACK_SIZING)
 
 
@@ -252,6 +255,7 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
         cur_price = prices.get(symbol, 0.0)
 
         ens, sent, regime = 0.65, 0.0, ""
+        _from_trades = False
         if df is not None and not df.empty:
             sym_buys = df[(df["symbol"] == symbol) & (df["action"] == "BUY")]
             if not sym_buys.empty:
@@ -259,6 +263,14 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
                 ens  = float(lb.get("ensemble_score",  0.65) or 0.65)
                 sent = float(lb.get("sentiment_score", 0.0)  or 0.0)
                 regime = str(lb.get("regime") or "").lower()
+                _from_trades = True
+
+        if not _from_trades:
+            lbs = d.get("latest_buy_signal", {})
+            if isinstance(lbs, dict) and lbs.get("symbol") == symbol:
+                ens  = float(lbs.get("ensemble_score",  ens) or ens)
+                sent = float(lbs.get("sentiment_score", sent) or sent)
+                regime = str(lbs.get("regime") or regime).lower()
 
         cur_val   = (pos["shares"] * cur_price) if (pos and cur_price > 0) else (pos["invested"] if pos else 0.0)
         invested  = pos["invested"] if pos else 0.0
@@ -267,12 +279,14 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
 
         # ── Scoring ───────────────────────────────────────────────────────────
         size_pts, size_reasons = 0, []
-        if pos_w > 25:   size_pts, size_reasons = 30, ["Position >25% is extreme concentration"]
+        if pos_w > 50:   size_pts, size_reasons = 60, [f"Position {pos_w:.0f}% is extreme — critical concentration risk"]
+        elif pos_w > 25: size_pts, size_reasons = 30, [f"Position {pos_w:.0f}% exceeds 25% maximum"]
         elif pos_w > 15: size_pts, size_reasons = 20, [f"Position {pos_w:.0f}% exceeds 15% guideline"]
         elif pos_w > 10: size_pts, size_reasons = 10, [f"Position {pos_w:.0f}% above 10% target"]
 
         prof_pts, prof_reasons = 0, []
-        if unreal_pct > 50:   prof_pts, prof_reasons = 25, [f"Unrealised gain {unreal_pct:.0f}% — consider locking in"]
+        if unreal_pct > 100:  prof_pts, prof_reasons = 30, [f"Unrealised gain {unreal_pct:.0f}% — take profits"]
+        elif unreal_pct > 50: prof_pts, prof_reasons = 25, [f"Unrealised gain {unreal_pct:.0f}% — consider locking in"]
         elif unreal_pct > 25: prof_pts, prof_reasons = 15, [f"Unrealised gain {unreal_pct:.0f}%"]
         elif unreal_pct > 10: prof_pts, prof_reasons =  8, [f"Unrealised gain {unreal_pct:.0f}%"]
 
@@ -282,11 +296,14 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
         elif ens < 0.65: conv_pts, conv_reasons =  8, [f"AI conviction below target ({ens*100:.0f}%)"]
 
         dd_pts, dd_reasons = 0, []
-        if unreal_pct < -10:  dd_pts, dd_reasons = 20, [f"Loss {unreal_pct:.0f}% exceeds 10% stop"]
-        elif unreal_pct < -7: dd_pts, dd_reasons = 15, [f"Loss {unreal_pct:.0f}% approaching 8% stop"]
-        elif unreal_pct < -5: dd_pts, dd_reasons =  8, [f"Loss {unreal_pct:.0f}% — drawdown watch"]
+        if unreal_pct < -40:  dd_pts, dd_reasons = 45, [f"Catastrophic loss {unreal_pct:.0f}%"]
+        elif unreal_pct < -25: dd_pts, dd_reasons = 35, [f"Severe loss {unreal_pct:.0f}%"]
+        elif unreal_pct < -15: dd_pts, dd_reasons = 25, [f"Loss {unreal_pct:.0f}% exceeds 15% stop"]
+        elif unreal_pct < -10: dd_pts, dd_reasons = 20, [f"Loss {unreal_pct:.0f}% exceeds 10% stop"]
+        elif unreal_pct < -7:  dd_pts, dd_reasons = 15, [f"Loss {unreal_pct:.0f}% approaching 8% stop"]
+        elif unreal_pct < -5:  dd_pts, dd_reasons =  8, [f"Loss {unreal_pct:.0f}% — drawdown watch"]
 
-        score = size_pts + prof_pts + conv_pts + dd_pts
+        score = min(100, size_pts + prof_pts + conv_pts + dd_pts)
         reasons_to_sell = size_reasons + prof_reasons + conv_reasons + dd_reasons
 
         if score <= 25:   rec = "HOLD"
@@ -319,7 +336,7 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
                 "ensemble_score": ens}
 
     except Exception as exc:
-        log_exception("get_sell_analysis", exc)
+        log_exception(_log, "get_sell_analysis", exc)
         return dict(_FALLBACK_SELL)
 
 
@@ -413,7 +430,7 @@ def get_recommendation_explanation(symbol: str, d: dict) -> dict:
                 "summary": summary}
 
     except Exception as exc:
-        log_exception("get_recommendation_explanation", exc)
+        log_exception(_log, "get_recommendation_explanation", exc)
         fb = dict(_FALLBACK_EXPLAIN)
         fb["symbol"] = symbol
         return fb
@@ -456,14 +473,18 @@ def get_portfolio_health(d: dict) -> dict:
 
         # ── Momentum score (15 pts) — avg ensemble score ──────────────────────
         avg_ens = 0.0
+        scores: list[float] = []
         if df is not None and not df.empty and open_pos:
             buys = df[df["action"] == "BUY"]
-            scores = []
             for sym in open_pos:
                 sb = buys[buys["symbol"] == sym]
                 if not sb.empty:
                     scores.append(float(sb.iloc[-1].get("ensemble_score", 0.0) or 0.0))
             avg_ens = sum(scores) / len(scores) if scores else 0.0
+        if not scores:
+            lbs = d.get("latest_buy_signal", {})
+            if isinstance(lbs, dict) and lbs.get("ensemble_score"):
+                avg_ens = float(lbs["ensemble_score"])
         if avg_ens > 0.75:   mom_s = 15
         elif avg_ens > 0.65: mom_s = 10
         elif avg_ens > 0.55: mom_s =  5
@@ -520,7 +541,7 @@ def get_portfolio_health(d: dict) -> dict:
                 }}
 
     except Exception as exc:
-        log_exception("get_portfolio_health", exc)
+        log_exception(_log, "get_portfolio_health", exc)
         return dict(_FALLBACK_HEALTH)
 
 
@@ -557,8 +578,8 @@ def _max_sector_conc(open_pos: dict, prices: dict, pv: float) -> float:
         val = pos["shares"] * cur if cur > 0 else pos["invested"]
         s   = _SECTOR_MAP.get(sym.upper(), "Other")
         sector_vals[s] = sector_vals.get(s, 0.0) + val
-    total = sum(sector_vals.values()) or 1.0
-    return max(v / total * 100 for v in sector_vals.values()) if sector_vals else 0.0
+    # Denominator is total portfolio value so uninvested cash dilutes concentration
+    return max(v / pv * 100 for v in sector_vals.values()) if sector_vals else 0.0
 
 
 def _worst_sector(open_pos: dict, prices: dict, pv: float) -> str:
