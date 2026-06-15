@@ -5,7 +5,7 @@ from dashboard.design_system import (
     BG, SURFACE, SURFACE2, BORDER,
     TEXT1, TEXT2,
     ACTION_BUY,
-    PRIMARY, GAIN, PRIMARY_BG, GAIN_BG, GAIN_BD, NEURAL_BD,
+    PRIMARY, GAIN, NEURAL, PRIMARY_BG, GAIN_BG, GAIN_BD, NEURAL_BG, NEURAL_BD,
 )
 
 # ── Gradio CSS: dark page + strip Gradio chrome ───────────────────────────────
