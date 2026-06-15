@@ -59,7 +59,7 @@ class AlpacaClient:
 
     def get_bars(self, symbol: str, timeframe: str = "5Min", limit: int = 100) -> pd.DataFrame:
         bars = self.api.get_bars(symbol, timeframe, limit=limit).df
-        bars.index = pd.to_datetime(bars.index)
+        bars.index = pd.to_datetime(bars.index, utc=True)
         return bars
 
     def buy(self, symbol: str, notional: float, limit_price: float | None = None) -> dict | None:
