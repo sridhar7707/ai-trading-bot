@@ -17,6 +17,16 @@ class AlpacaClient:
                 "value will read $0.00. Set these as environment/Space secrets."
             )
         self.api = tradeapi.REST(ALPACA_KEY, ALPACA_SECRET, ALPACA_BASE_URL, api_version="v2")
+        # Inject a 30s timeout so a hung Alpaca connection fails fast instead
+        # of waiting the OS-default ~2 min, which wastes an entire 5-min cycle.
+        try:
+            _orig = self.api._session.send
+            def _send_timeout(*a, **kw):
+                kw.setdefault("timeout", 30)
+                return _orig(*a, **kw)
+            self.api._session.send = _send_timeout
+        except AttributeError:
+            pass
         logger.info(
             f"Alpaca connected — mode: {'paper' if 'paper' in ALPACA_BASE_URL else 'live'}, "
             f"url={ALPACA_BASE_URL}, key=...{ALPACA_KEY[-4:] if ALPACA_KEY else 'MISSING'}"

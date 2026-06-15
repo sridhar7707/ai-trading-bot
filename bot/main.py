@@ -1708,14 +1708,22 @@ def run_loop(mode: str = "paper"):
         log_exception(logger, "run_loop.analytics_health", _ahe)
 
     cycle = 0
+    consecutive_failures = 0
     while _is_market_hours(client.api):
         cycle += 1
         logger.info(f"\n=== Loop cycle {cycle} ===")
         try:
             run(mode=mode, _regime_clf=regime_clf, _xgb=xgb, _lstm=lstm)
+            consecutive_failures = 0
         except Exception as e:
+            consecutive_failures += 1
             logger.error(f"Cycle {cycle} crashed: {e}")
             tg._send(f"⚠️ <b>CYCLE {cycle} CRASHED</b> — {e}. Continuing to next cycle.")
+            if consecutive_failures == 3:
+                tg._send(
+                    f"🔴 <b>3 consecutive cycle crashes</b> — likely Alpaca API outage. "
+                    f"Bot is retrying every 5 min. Check status.alpaca.markets"
+                )
         for _ in range(10):
             time.sleep(30)
             if not _is_market_hours(client.api):
