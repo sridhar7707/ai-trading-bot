@@ -22,3 +22,6 @@ notebooks/.ipynb_checkpoints/
 
 # Auto-generated requirement snapshot backups (req_state.json is the source of truth)
 tests/req_snapshots/req_2*.json
+
+# DuckDB generated database file (created at runtime)
+database/duckdb/*.duckdb
