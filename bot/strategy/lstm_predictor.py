@@ -141,7 +141,7 @@ class LSTMPredictor:
         optimizer  = torch.optim.Adam(self.model.parameters(), lr=1e-3)
         scheduler  = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=LR_PATIENCE,
-            min_lr=LR_MIN, verbose=False,
+            min_lr=LR_MIN,
         )
         dataset = torch.utils.data.TensorDataset(X_train_t, y_train_t)
         loader  = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
