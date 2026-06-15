@@ -1,10 +1,11 @@
 import datetime
 import logging
-import traceback
 from pathlib import Path
 
 import duckdb
 import pandas as pd
+
+from bot.core.error_logger import log_exception
 
 _SCHEMA_PATH = Path(__file__).resolve().parent.parent / "duckdb" / "schema.sql"
 DB_PATH = Path(__file__).resolve().parent.parent / "duckdb" / "analytics.duckdb"
@@ -42,7 +43,7 @@ class AnalyticsRepository:
                     )
             return True
         except Exception as exc:
-            _log.error(f"save_price_history error: {exc}\n{traceback.format_exc()}")
+            log_exception(_log, "save_price_history", exc, {"symbol": symbol})
             return False
 
     def load_price_history(self, symbol: str, days: int = 365) -> pd.DataFrame:
@@ -55,7 +56,7 @@ class AnalyticsRepository:
                     [symbol, cutoff],
                 ).df()
         except Exception as exc:
-            _log.error(f"load_price_history error: {exc}\n{traceback.format_exc()}")
+            log_exception(_log, "load_price_history", exc, {"symbol": symbol, "days": days})
             return pd.DataFrame()
 
     def save_portfolio_snapshot(self, snapshot: dict) -> bool:
@@ -71,7 +72,9 @@ class AnalyticsRepository:
                 )
             return True
         except Exception as exc:
-            _log.error(f"save_portfolio_snapshot error: {exc}\n{traceback.format_exc()}")
+            log_exception(_log, "save_portfolio_snapshot", exc, {
+                "date": str(snapshot.get("snapshot_date")),
+            })
             return False
 
     def load_snapshots(self, days: int = 365) -> pd.DataFrame:
@@ -84,7 +87,7 @@ class AnalyticsRepository:
                     [cutoff],
                 ).df()
         except Exception as exc:
-            _log.error(f"load_snapshots error: {exc}\n{traceback.format_exc()}")
+            log_exception(_log, "load_snapshots", exc, {"days": days})
             return pd.DataFrame()
 
     def save_recommendation(self, symbol: str, prediction_date: datetime.date,
@@ -99,5 +102,7 @@ class AnalyticsRepository:
                 )
             return True
         except Exception as exc:
-            _log.error(f"save_recommendation error: {exc}\n{traceback.format_exc()}")
+            log_exception(_log, "save_recommendation", exc, {
+                "symbol": symbol, "recommendation": recommendation,
+            })
             return False

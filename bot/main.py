@@ -12,6 +12,7 @@ import traceback
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date, datetime, timedelta, timezone
 from loguru import logger
+from bot.core.error_logger import log_exception
 
 _UNIVERSE_PATH  = "data/universe_today.json"
 _HALT_FILE      = "data/HALT_TRADING"   # create this file to pause the bot without canceling the workflow
@@ -933,7 +934,7 @@ def end_of_day_summary():
         from database.services.analytics_service import analytics_service as _as
         _as.save_daily_snapshot({"portfolio_value": portfolio_value, "cash": available_cash})
     except Exception as _ae:
-        logger.debug(f"analytics snapshot skipped: {_ae}")
+        log_exception(logger, "end_of_day.save_snapshot", _ae)
 
     # Friday weekly report — Portfolio Manager visibility into week performance
     et = datetime.now(zoneinfo.ZoneInfo("America/New_York"))
@@ -1683,6 +1684,14 @@ def run_loop(mode: str = "paper"):
         logger.info("Market is closed at session start — nothing to trade.")
         tg._send("⚠️ <b>Trading Bot fired but market is closed</b>. Check cron schedule or holiday calendar.")
         return
+
+    try:
+        from database.services.analytics_service import analytics_service as _as
+        _health = _as.check_health()
+        if _health.get("overall") != "ok":
+            logger.warning(f"Analytics service degraded at startup: {_health}")
+    except Exception as _ahe:
+        log_exception(logger, "run_loop.analytics_health", _ahe)
 
     cycle = 0
     while _is_market_hours(client.api):

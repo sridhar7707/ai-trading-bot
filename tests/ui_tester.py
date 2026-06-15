@@ -39,27 +39,44 @@ _OLD_COLORS = {
 }
 
 
-# ── Collect render functions from app.py source ───────────────────────────────
+# ── Collect render functions from all dashboard source files ─────────────────
 def _collect_render_fn_names() -> list[str]:
-    src_path = os.path.join(
-        os.path.dirname(__file__), "..", "dashboard", "app.py"
-    )
-    with open(src_path, "r", encoding="utf-8") as f:
-        src = f.read()
-    tree = ast.parse(src)
-    return [
-        node.name for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-        and node.name.startswith("render_")
-    ]
+    dash_dir = os.path.join(os.path.dirname(__file__), "..", "dashboard")
+    names = []
+    for root, _, files in os.walk(dash_dir):
+        for fname in files:
+            if not fname.endswith(".py"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    src = f.read()
+                tree = ast.parse(src)
+                names += [
+                    node.name for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef)
+                    and node.name.startswith("render_")
+                ]
+            except Exception:
+                pass
+    return list(dict.fromkeys(names))  # deduplicate, preserve order
 
 
 def _read_app_source() -> str:
-    src_path = os.path.join(
-        os.path.dirname(__file__), "..", "dashboard", "app.py"
-    )
-    with open(src_path, "r", encoding="utf-8") as f:
-        return f.read()
+    """Read all dashboard Python source files combined (app.py + modules)."""
+    dash_dir = os.path.join(os.path.dirname(__file__), "..", "dashboard")
+    parts = []
+    for root, _, files in os.walk(dash_dir):
+        for fname in sorted(files):
+            if not fname.endswith(".py"):
+                continue
+            fpath = os.path.join(root, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    parts.append(f.read())
+            except Exception:
+                pass
+    return "\n".join(parts)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,6 +263,42 @@ def test_exception_handling(verbose: bool = False):
     return len(failures), len(warnings), all_messages
 
 
+def test_analytics_check_health(verbose: bool = False):
+    """Verify AnalyticsService.check_health() exists and returns a valid structure."""
+    failures = []
+    warnings = []
+    all_messages = []
+
+    try:
+        import sys, os as _os
+        sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+        from database.services.analytics_service import AnalyticsService
+        svc = AnalyticsService()
+
+        if not hasattr(svc, "check_health"):
+            msg = "FAIL  analytics: AnalyticsService missing check_health() method"
+            failures.append(msg)
+            all_messages.append(msg)
+        else:
+            health = svc.check_health()
+            if health.get("overall") not in ("ok", "degraded"):
+                msg = f"FAIL  analytics: check_health() returned unexpected overall={health.get('overall')!r}"
+                failures.append(msg)
+                all_messages.append(msg)
+            elif "duckdb_connection" not in health:
+                msg = "FAIL  analytics: check_health() missing duckdb_connection key"
+                failures.append(msg)
+                all_messages.append(msg)
+            else:
+                all_messages.append(f"PASS  analytics: check_health() overall={health['overall']!r}")
+    except Exception as exc:
+        msg = f"FAIL  analytics: check_health() raised {type(exc).__name__}: {exc}"
+        failures.append(msg)
+        all_messages.append(msg)
+
+    return len(failures), len(warnings), all_messages
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main runner
 # ─────────────────────────────────────────────────────────────────────────────
@@ -272,6 +325,13 @@ def main():
     if args.group is None or args.group == 8:
         print("\n── GROUP 8: EXCEPTION HANDLING ─────────────────────────────────────────")
         fail, warn, msgs = test_exception_handling(verbose=args.verbose)
+        for m in msgs:
+            print(f"  {m}")
+        total_fail += fail
+        total_warn += warn
+        all_msgs   += msgs
+
+        fail, warn, msgs = test_analytics_check_health(verbose=args.verbose)
         for m in msgs:
             print(f"  {m}")
         total_fail += fail

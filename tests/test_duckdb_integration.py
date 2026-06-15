@@ -76,3 +76,12 @@ def test_max_drawdown():
     result = svc.get_max_drawdown(values)
     assert result < 0
     assert result > -100
+
+
+def test_analytics_service_check_health():
+    from database.services.analytics_service import AnalyticsService
+    svc = AnalyticsService()
+    health = svc.check_health()
+    assert health["overall"] in ("ok", "degraded")
+    assert health["duckdb_connection"] == "ok"
+    assert health["sharpe_calculation"] == "ok"
