@@ -25,6 +25,7 @@ def push():
         REGIME_MODEL_PATH,
         "models/saved/xgb_predictor.pkl",
         "models/saved/lstm_predictor.pt",
+        "models/saved/lstm_scaler.pkl",
     ]
 
     _MIN_MODEL_BYTES = 1024  # reject suspiciously small files — likely corrupt or empty
