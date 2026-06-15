@@ -4,7 +4,7 @@ on:
   schedule:
     # The bot is ONE long-running job that loops a trading cycle every ~5 min until
     # market close — not a per-cycle cron. We fire several start times across the
-    # session (Mon-Fri, ET) rather than once, for two reasons:
+    # session (Mon-Fri, CDT) rather than once, for two reasons:
     #   1. GitHub scheduled workflows are best-effort and frequently delayed by
     #      30 min to several hours (or skipped) — multiple triggers give the bot
     #      several chances to actually start near each slot.
@@ -12,7 +12,7 @@ on:
     #      6.5h — so a single run can't cover it. cancel-in-progress makes each new
     #      trigger restart a fresh job (only ever one running), keeping every job
     #      well under the cap while staying continuous.
-    # Slots: 9:30, 11:30, 13:30, 15:30 ET  =  13:30, 15:30, 17:30, 19:30 UTC
+    # Slots: 8:30, 10:30, 12:30, 2:30 PM CDT  =  13:30, 15:30, 17:30, 19:30 UTC
     - cron: '30 13,15,17,19 * * 1-5'
   workflow_dispatch:
     inputs:
@@ -55,7 +55,7 @@ jobs:
           if [ -z "$TELEGRAM_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
             echo "Telegram secrets not set — skipping startup alert."
           else
-            SLOT=$(TZ=America/New_York date '+%H:%M ET')
+            SLOT=$(TZ=America/Chicago date '+%H:%M CDT')
             RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
               -d chat_id="${TELEGRAM_CHAT_ID}" \
@@ -200,7 +200,7 @@ jobs:
             exit 0
           fi
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          SLOT=$(TZ=America/New_York date '+%H:%M ET')
+          SLOT=$(TZ=America/Chicago date '+%H:%M CDT')
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d parse_mode="HTML" \

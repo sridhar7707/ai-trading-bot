@@ -62,7 +62,7 @@ jobs:
               if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > cutoff
           ]
 
-          now_et = datetime.now(timezone(timedelta(hours=-4))).strftime("%H:%M ET")
+          now_et = datetime.now(timezone(timedelta(hours=-5))).strftime("%H:%M CDT")
           print(f"Pre-Market Screener runs in last 75 min: {len(recent)}", flush=True)
 
           if recent:
@@ -129,7 +129,7 @@ jobs:
               if datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) > cutoff
           ]
 
-          now_et = datetime.now(timezone(timedelta(hours=-4))).strftime("%H:%M ET")
+          now_et = datetime.now(timezone(timedelta(hours=-5))).strftime("%H:%M CDT")
           print(f"Trading Bot runs in last 75 min: {len(recent)}", flush=True)
 
           if recent:

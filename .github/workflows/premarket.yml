@@ -91,7 +91,7 @@ jobs:
           syms = d.get('symbols', d) if isinstance(d, dict) else d
           print(len(syms))
           " 2>/dev/null || echo "?")
-              NOW=$(TZ=America/New_York date '+%H:%M ET')
+              NOW=$(TZ=America/Chicago date '+%H:%M CDT')
               MSG="📋 <b>Pre-market screen complete</b> — ${COUNT} symbols selected at ${NOW}. Ready for market open."
             fi
             curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \

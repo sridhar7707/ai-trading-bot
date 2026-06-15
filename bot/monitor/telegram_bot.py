@@ -1,7 +1,14 @@
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from loguru import logger
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+
+_CDT = timezone(timedelta(hours=-5))
+
+
+def _now_cdt() -> str:
+    """Current time as 'HH:MM AM/PM CDT' for Telegram messages."""
+    return datetime.now(_CDT).strftime("%-I:%M %p CDT")
 
 
 def _send(text: str):
@@ -45,7 +52,7 @@ _SELL_REASON_LABELS: dict[str, str] = {
 
 
 def alert_bot_started(mode: str, portfolio: float):
-    _send(f"🟢 <b>Trading Day Started</b> — {mode.upper()}\n   Portfolio: ${portfolio:,.2f}")
+    _send(f"🟢 <b>Trading Day Started</b> — {mode.upper()}  · {_now_cdt()}\n   Portfolio: ${portfolio:,.2f}")
 
 
 def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: float,
@@ -73,7 +80,7 @@ def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: 
     why_str = " · ".join(why_parts) if why_parts else "Ensemble consensus"
 
     lines = [
-        f"🟢 <b>BUY EXECUTED — {symbol}</b>",
+        f"🟢 <b>BUY EXECUTED — {symbol}</b>  · {_now_cdt()}",
         f"   Entry: ${price:.2f} | Confidence: {ensemble_score * 100:.0f}%",
         f"   Models: XGBoost {xgb_prob * 100:.0f}% · LSTM {lstm_prob * 100:.0f}% · Sentiment {sent_str}",
         f"   Regime: {regime_label}",
@@ -95,7 +102,7 @@ def alert_sell(symbol: str, shares: float, price: float, pnl_pct: float,
     reason_label = _SELL_REASON_LABELS.get(reason, reason.replace("-", " ").title())
 
     lines = [
-        f"{emoji} <b>SELL — {symbol}</b>",
+        f"{emoji} <b>SELL — {symbol}</b>  · {_now_cdt()}",
         f"   Exit: ${price:.2f} | P&amp;L: {pnl_pct:+.2%}{pnl_dollars}",
         f"   Reason: {reason_label}",
     ]
@@ -111,7 +118,7 @@ def alert_hold(symbol: str, regime: str):
 
 def alert_stop_loss(symbol: str, pnl_pct: float, notional: float = 0.0):
     pnl_dollars = f" (${notional * pnl_pct:+,.2f})" if notional else ""
-    _send(f"⚠️ <b>STOP-LOSS</b> triggered — {symbol}  P&amp;L: {pnl_pct:+.2%}{pnl_dollars}")
+    _send(f"⚠️ <b>STOP-LOSS</b> triggered — {symbol}  · {_now_cdt()}  P&amp;L: {pnl_pct:+.2%}{pnl_dollars}")
 
 
 def alert_sell_failed(symbol: str, reason: str = "stop-loss"):
@@ -143,7 +150,7 @@ def alert_daily_summary(
     cash_pct: float = 0.0,
     health_score: int = 0,
 ):
-    now     = datetime.now()
+    now     = datetime.now(_CDT)
     today   = now.strftime(f"%B {now.day}, %Y")
     outperf = day_return - vs_spy
     trophy  = " 🏆" if outperf > 0 else ""
