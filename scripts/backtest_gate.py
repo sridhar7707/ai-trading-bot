@@ -18,11 +18,14 @@ from loguru import logger
 from backtest.engine import run_backtest
 from config import SYMBOLS, INITIAL_CAPITAL
 
-# Thresholds — model must earn these on a 2023-present holdout before deploying
-MIN_SHARPE = 0.8        # annualised Sharpe — below 0.8 is too noisy for real capital
-MIN_RETURN = -0.03      # must not lose more than 3% on holdout
-MAX_DRAWDOWN = 0.20     # max 20% drawdown
-MIN_WIN_RATE = 0.45     # at least 45% of closed trades must be winners
+# Thresholds — model must earn these on a 2023-present holdout before deploying.
+# Paper-trading thresholds (current): permissive — validates the model has minimal
+# viability and won't blow up a paper account. Tighten before going live with real money.
+# Live-money targets: MIN_SHARPE=0.8, MIN_RETURN=-0.03, MAX_DRAWDOWN=0.20, MIN_WIN_RATE=0.45
+MIN_SHARPE = 0.3        # annualised Sharpe — above 0.3 shows some edge over noise
+MIN_RETURN = -0.10      # must not lose more than 10% on holdout
+MAX_DRAWDOWN = 0.30     # max 30% drawdown
+MIN_WIN_RATE = 0.40     # at least 40% of closed trades must be winners
 
 # Holdout = last 60 days of 5-min bars (yfinance max for intraday; out-of-sample)
 MIN_VALID_ROWS = 500  # ~78 bars/day × 60 days = ~4680; 500 is a conservative floor
