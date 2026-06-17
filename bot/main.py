@@ -1187,29 +1187,57 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             "NewsAPI quota (100 req/day) is not consumed in-cycle."
         )
 
-    def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame]:
+    def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, pd.DataFrame]:
+        """Return (symbol, bars_5m, bars_daily).
+
+        bars_5m  — intraday 5-min bars; empty when not enough today yet (< 60 bars) or
+                   stale (feed broken).  Used for current price only.
+        bars_daily — 200 days of daily OHLCV; used for XGB/LSTM/regime (matches training).
+        Both empty → skip this symbol entirely (feed is stale/broken).
+        IEX free-tier only provides same-session 5-min bars, so the LSTM would get < 60
+        rows early in the day without the daily fallback.
+        """
+        feed_stale = False
+        bars_5m    = pd.DataFrame()
+
         try:
-            bars = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
-            # Staleness guard: skip symbols whose last bar is >30 min old during market hours.
-            # Alpaca free-tier uses IEX data with a ~15-20 min delay, so 30 min gives headroom
-            # for normal delayed data while still catching genuinely stale feeds (post-close, outage).
-            if not bars.empty:
-                last_ts = bars.index[-1]
-                now_utc = pd.Timestamp.now(tz="UTC")
-                last_utc = last_ts.tz_localize("UTC") if last_ts.tzinfo is None else last_ts.tz_convert("UTC")
+            raw = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
+            if not raw.empty:
+                last_ts  = raw.index[-1]
+                now_utc  = pd.Timestamp.now(tz="UTC")
+                last_utc = (last_ts.tz_localize("UTC")
+                            if last_ts.tzinfo is None else last_ts.tz_convert("UTC"))
                 age_mins = (now_utc - last_utc).total_seconds() / 60
                 if age_mins > 30:
-                    logger.warning(f"Stale bars for {symbol}: last bar is {age_mins:.0f}m old — skipping")
-                    bars = pd.DataFrame()
+                    logger.warning(
+                        f"Stale bars for {symbol}: last bar is {age_mins:.0f}m old — skipping"
+                    )
+                    feed_stale = True
+                else:
+                    bars_5m = raw
+        except ValueError:
+            # Not enough intraday bars yet (normal early-day condition with IEX free tier)
+            pass
         except Exception as e:
-            logger.warning(f"Bar fetch failed for {symbol}: {e}")
-            bars = pd.DataFrame()
-        return symbol, bars
+            logger.warning(f"5min bar fetch failed for {symbol}: {e}")
+            feed_stale = True
+
+        if feed_stale:
+            return symbol, pd.DataFrame(), pd.DataFrame()
+
+        # Daily bars for XGB/LSTM/regime — matches training data; always 150+ rows after dropna
+        bars_daily = pd.DataFrame()
+        try:
+            bars_daily = compute_features(client.get_bars(symbol, timeframe="1Day", limit=200))
+        except Exception as e:
+            logger.warning(f"Daily bar fetch failed for {symbol}: {e}")
+
+        return symbol, bars_5m, bars_daily
 
     with ThreadPoolExecutor(max_workers=len(active_symbols)) as pool:
         fetched = list(pool.map(_fetch_symbol, active_symbols))
 
-    bars_map = {sym: bars for sym, bars in fetched}
+    bars_map = {sym: (b5, bd) for sym, b5, bd in fetched}
 
     if premarket_sentiment:
         finbert_scores = premarket_sentiment
@@ -1230,11 +1258,11 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         else:
             sentiments[symbol] = score
 
-    # Pre-compute SPY 5-bar return for relative strength gate
-    spy_bars_5m = bars_map.get("SPY", pd.DataFrame())
+    # Pre-compute SPY N-bar return for relative strength gate (daily bars so it matches sig_bars)
+    _, spy_daily = bars_map.get("SPY", (pd.DataFrame(), pd.DataFrame()))
     spy_5bar_return: float | None = None
-    if not spy_bars_5m.empty and len(spy_bars_5m) > RS_LOOKBACK_BARS:
-        v = spy_bars_5m["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
+    if not spy_daily.empty and len(spy_daily) > RS_LOOKBACK_BARS:
+        v = spy_daily["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
         if not math.isnan(v):
             spy_5bar_return = float(v)
 
@@ -1251,19 +1279,26 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
         try:
-            bars = bars_map.get(symbol, pd.DataFrame())
-            if bars is None or bars.empty:
+            bars_5m, bars_daily = bars_map.get(symbol, (pd.DataFrame(), pd.DataFrame()))
+            # Use daily bars for XGB/LSTM/regime (matches training data; never < 60 rows).
+            # Fall back to 5-min only when daily fetch fails.
+            sig_bars = bars_daily if not bars_daily.empty else bars_5m
+            if sig_bars.empty:
                 continue
 
-            latest        = bars.iloc[-1]
-            current_price = float(latest["close"])
+            latest = sig_bars.iloc[-1]
+            # Prefer the freshest intraday close for price-sensitive calcs (limit orders, ATR stops).
+            # Fall back to daily close when 5-min bars are not yet available (early morning).
+            current_price = float(
+                bars_5m.iloc[-1]["close"] if not bars_5m.empty else latest["close"]
+            )
             current_atr   = float(latest.get("atr", 0) or 0)
             volume_ratio  = float(latest.get("volume_ratio", 1.0) or 1.0)
             regime_code   = regime_clf.predict(latest)
             regime_name   = regime_clf.regime_name(regime_code)
 
             xgb_prob          = xgb.predict_proba(latest)
-            lstm_prob         = lstm.predict_proba(bars)
+            lstm_prob         = lstm.predict_proba(sig_bars)
             sentiment         = sentiments.get(symbol, 0.0)
             action_str, ensemble_size = ensemble_signal(
                 xgb_prob, lstm_prob, sentiment, regime_name, macro_score=macro_score
@@ -1442,7 +1477,7 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
             # Gate 4 — Relative strength: stock must be outperforming SPY over last N bars
             if spy_5bar_return is not None and symbol != "SPY":
-                stock_5bar = bars["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
+                stock_5bar = sig_bars["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
                 if not math.isnan(stock_5bar) and float(stock_5bar) < spy_5bar_return:
                     logger.info(
                         f"BUY {symbol} skipped — RS weak ({stock_5bar:.2%} vs SPY {spy_5bar_return:.2%})"
