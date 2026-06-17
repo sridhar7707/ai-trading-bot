@@ -7,7 +7,8 @@ on:
     - cron: '0 13 * * 1-5'
     # Trading bot watchdog: fires 30 min after each trading slot (Mon-Fri)
     # Slot → Watchdog: 13:30→14:00, 15:30→16:00, 17:30→18:00, 19:30→20:00 UTC
-    - cron: '0 14,16,18,20 * * 1-5'
+    # Extra slot at 15:00 UTC (10:00 AM CDT) catches a missed 8:30 AM open within 90 min.
+    - cron: '0 14,15,16,18,20 * * 1-5'
   workflow_dispatch:
 
 jobs:
