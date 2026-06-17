@@ -1,13 +1,8 @@
 name: Keep-Alive & Trade Dispatch
 
 on:
-  schedule:
-    # Runs every weekday at 13:15 UTC (8:15 AM CDT / 9:15 AM EDT)
-    # — 15 min before market open. Dispatches trade.yml so the bot starts
-    # even if GitHub's cron scheduler delays or skips trade.yml itself.
-    # Also runs daily at noon UTC (all days) to keep the HF Space awake.
-    - cron: '15 13 * * 1-5'   # weekdays: dispatch trade + ping Space
-    - cron: '0 12 * * 0,6'    # weekends: ping Space only
+  # Triggered by cron-job.org at 8:15 AM CDT Mon-Fri
+  # (GitHub's built-in scheduler was too unreliable — replaced with external cron)
   workflow_dispatch:
 
 jobs:
@@ -17,9 +12,6 @@ jobs:
       actions: write
     steps:
       - name: Dispatch trade.yml (weekdays only)
-        # Only dispatch on weekdays — the cron already restricts this but
-        # workflow_dispatch could be used on weekends too, so guard here.
-        if: github.event_name == 'workflow_dispatch' || contains('1,2,3,4,5', format('{0}', github.event.schedule != '' && 1 || 0))
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
