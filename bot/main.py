@@ -674,15 +674,22 @@ def _kelly_fraction(con, symbol: str, default: float = BUY_FRACTION) -> float:
 
 
 def _passes_correlation_gate(symbol: str, positions: dict, bars_map: dict) -> bool:
-    """Block buy if any held position has > CORRELATION_THRESHOLD 5-min return correlation."""
-    bars_sym = bars_map.get(symbol)
+    """Block buy if any held position has > CORRELATION_THRESHOLD daily-return correlation.
+    bars_map values are (bars_5m, bars_daily) tuples; daily bars are used for correlation
+    since they have consistent history regardless of time-of-day.
+    """
+    entry = bars_map.get(symbol)
+    bars_sym = (entry[1] if entry and not entry[1].empty else
+                entry[0] if entry else None)
     if bars_sym is None or bars_sym.empty:
         return True
     ret_sym = bars_sym["close"].pct_change().dropna()
     for held in positions:
         if held == symbol:
             continue
-        bars_held = bars_map.get(held)
+        h_entry   = bars_map.get(held)
+        bars_held = (h_entry[1] if h_entry and not h_entry[1].empty else
+                     h_entry[0] if h_entry else None)
         if bars_held is None or bars_held.empty:
             continue
         ret_held  = bars_held["close"].pct_change().dropna()
@@ -1473,6 +1480,18 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             rsi_15m = float(latest.get("rsi_15m", 50) or 50)
             if rsi_15m < 50:
                 logger.info(f"BUY {symbol} skipped — 15min RSI {rsi_15m:.1f} < 50")
+                continue
+
+            # Gate 3.5 — Trend confirmation: EMA-20 must be above EMA-50 (golden-cross filter).
+            # ema20_pct = ema_20/close - 1; ema50_pct = ema_50/close - 1
+            # ema20_pct > ema50_pct  ⟺  ema_20 > ema_50  ⟺  uptrend
+            ema20 = float(latest.get("ema20_pct", 0) or 0)
+            ema50 = float(latest.get("ema50_pct", 0) or 0)
+            if ema20 < ema50:
+                logger.info(
+                    f"BUY {symbol} skipped — downtrend: EMA20 below EMA50 "
+                    f"(ema20_pct={ema20:.4f} < ema50_pct={ema50:.4f})"
+                )
                 continue
 
             # Gate 4 — Relative strength: stock must be outperforming SPY over last N bars

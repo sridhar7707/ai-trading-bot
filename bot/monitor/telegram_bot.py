@@ -192,7 +192,10 @@ def alert_confidence_passed():
     _send("🚀 <b>CONFIDENCE CHECK PASSED</b> — Bot is ready for real money!")
 
 
-def alert_weekly_report(week_return: float, vs_spy: float, win_rate: float, sharpe: float, drawdown: float):
+def alert_weekly_report(
+    week_return: float, vs_spy: float, win_rate: float,
+    sharpe: float, drawdown: float, extra: str = "",
+):
     _send(
         f"📈 <b>Weekly Performance Report</b>\n"
         f"   Week Return:  {week_return:+.2%}\n"
@@ -200,4 +203,10 @@ def alert_weekly_report(week_return: float, vs_spy: float, win_rate: float, shar
         f"   Win Rate:     {win_rate:.1%}\n"
         f"   Sharpe Ratio: {sharpe:.2f}\n"
         f"   Max Drawdown: {drawdown:.2%}"
+        + extra
     )
+
+
+def send(text: str):
+    """Public alias for _send — use when other modules need to send ad-hoc messages."""
+    _send(text)

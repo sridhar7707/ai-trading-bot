@@ -1,12 +1,12 @@
 """Quality gate: run backtest on holdout data and block model push if metrics fail.
 
 Two-stage check:
-  1. Recent performance gate (BLOCKS CI): 60-day 5-min bars across all SYMBOLS.
+  1. Recent performance gate (BLOCKS CI): 3-year daily bars across all SYMBOLS.
+     Uses daily bars to match both training data and live-bot inference.
      If average Sharpe/return/drawdown/win_rate miss thresholds → sys.exit(1).
   2. Historical stress check (INFORMATIONAL only): daily bars for 3 crisis windows
      (2008, 2020, 2022).  Logs WARNING if strategy would have underperformed but
-     does NOT block the push — daily bars use a different regime distribution than
-     the 5-min intraday model was trained on.
+     does NOT block the push.
 """
 import sys
 from pathlib import Path
@@ -27,18 +27,18 @@ MIN_RETURN = -0.10      # must not lose more than 10% on holdout
 MAX_DRAWDOWN = 0.30     # max 30% drawdown
 MIN_WIN_RATE = 0.40     # at least 40% of closed trades must be winners
 
-# Holdout = last 60 days of 5-min bars (yfinance max for intraday; out-of-sample)
-MIN_VALID_ROWS = 500  # ~78 bars/day × 60 days = ~4680; 500 is a conservative floor
+# Holdout = 3 years of daily bars (out-of-sample; matches live-bot inference timeframe)
+MIN_VALID_ROWS = 200  # 200 trading days ≈ 10 months; floor for meaningful backtest
 
 
 def main():
     logger.info("=== Backtest quality gate (holdout: 2023-present) ===")
     results = []
 
-    # Test all SYMBOLS, not just 3 — we have more data now so this is affordable
     for symbol in SYMBOLS:
         try:
-            df = yf.download(symbol, period="60d", interval="5m", progress=False, auto_adjust=True)
+            # Daily bars — matches both training data and live-bot inference (daily sig_bars)
+            df = yf.download(symbol, period="3y", interval="1d", progress=False, auto_adjust=True)
             if df is None or len(df) < MIN_VALID_ROWS:
                 logger.warning(f"{symbol}: insufficient holdout data ({len(df) if df is not None else 0} rows), skipping")
                 continue
