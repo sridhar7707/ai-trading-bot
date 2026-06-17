@@ -678,9 +678,13 @@ def _passes_correlation_gate(symbol: str, positions: dict, bars_map: dict) -> bo
     bars_map values are (bars_5m, bars_daily) tuples; daily bars are used for correlation
     since they have consistent history regardless of time-of-day.
     """
+    def _resolve(e):
+        if isinstance(e, tuple):
+            return e[1] if not e[1].empty else (e[0] if not e[0].empty else None)
+        return e if e is not None and not e.empty else None
+
     entry = bars_map.get(symbol)
-    bars_sym = (entry[1] if entry and not entry[1].empty else
-                entry[0] if entry else None)
+    bars_sym = _resolve(entry)
     if bars_sym is None or bars_sym.empty:
         return True
     ret_sym = bars_sym["close"].pct_change().dropna()
@@ -688,8 +692,7 @@ def _passes_correlation_gate(symbol: str, positions: dict, bars_map: dict) -> bo
         if held == symbol:
             continue
         h_entry   = bars_map.get(held)
-        bars_held = (h_entry[1] if h_entry and not h_entry[1].empty else
-                     h_entry[0] if h_entry else None)
+        bars_held = _resolve(h_entry)
         if bars_held is None or bars_held.empty:
             continue
         ret_held  = bars_held["close"].pct_change().dropna()
