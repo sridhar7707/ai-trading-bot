@@ -18,6 +18,8 @@ _MACRO_TTL: float  = 4 * 3600  # FRED data is daily — re-fetch every 4 hours
 
 def _fetch_macro_raw() -> dict:
     """Fetch yield curve, VIX, and fed rate from FRED. Returns raw values dict."""
+    if not FRED_API_KEY:
+        raise ValueError("FRED_API_KEY not set — macro data unavailable. Set it as a GitHub secret.")
     from fredapi import Fred
     fred = Fred(api_key=FRED_API_KEY)
     return {
