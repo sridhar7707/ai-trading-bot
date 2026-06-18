@@ -1207,15 +1207,37 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             "NewsAPI quota (100 req/day) is not consumed in-cycle."
         )
 
+    # Batch-fetch all daily bars via yfinance before the thread pool.
+    # Per-symbol yf.download inside threads is not thread-safe and causes
+    # data corruption (wrong shapes). One batch call also reduces Yahoo Finance
+    # requests from N/cycle to 1/cycle (~78/day vs ~1560/day).
+    _yf_batch: dict[str, pd.DataFrame] = {}
+    try:
+        _batch_syms = list(active_symbols)
+        if "SPY" not in _batch_syms:
+            _batch_syms.append("SPY")
+        _raw_batch = yf.download(_batch_syms, period="1y", interval="1d",
+                                 progress=False, auto_adjust=True, group_by="ticker")
+        for _sym in _batch_syms:
+            try:
+                _sym_df = _raw_batch[_sym].copy()
+                _sym_df.columns = [c.lower() for c in _sym_df.columns]
+                _sym_df = _sym_df[["open", "high", "low", "close", "volume"]].dropna()
+                if not _sym_df.empty:
+                    _yf_batch[_sym] = _sym_df
+            except Exception:
+                pass
+        logger.info(f"yfinance batch: {len(_yf_batch)}/{len(_batch_syms)} symbols loaded")
+    except Exception as _e:
+        logger.warning(f"yfinance batch prefetch failed — daily bars unavailable: {_e}")
+
     def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, pd.DataFrame]:
         """Return (symbol, bars_5m, bars_daily).
 
         bars_5m  — intraday 5-min bars; empty when not enough today yet (< 60 bars) or
                    stale (feed broken).  Used for current price only.
-        bars_daily — 200 days of daily OHLCV; used for XGB/LSTM/regime (matches training).
+        bars_daily — 1-year daily OHLCV from yfinance; used for XGB/LSTM/regime (matches training).
         Both empty → skip this symbol entirely (feed is stale/broken).
-        IEX free-tier only provides same-session 5-min bars, so the LSTM would get < 60
-        rows early in the day without the daily fallback.
         """
         feed_stale = False
         bars_5m    = pd.DataFrame()
@@ -1245,22 +1267,14 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         if feed_stale:
             return symbol, pd.DataFrame(), pd.DataFrame()
 
-        # Daily bars for XGB/LSTM/regime via yfinance — Alpaca IEX free tier returns only
-        # 1 daily bar (today's session), making compute_features fail. yfinance provides
-        # full 1-year history (~252 rows) with no API key required.
+        # Daily bars from pre-fetched batch (thread-safe; computed before thread pool)
         bars_daily = pd.DataFrame()
-        try:
-            raw_d = yf.download(symbol, period="1y", interval="1d",
-                                progress=False, auto_adjust=True)
-            if raw_d is not None and not raw_d.empty:
-                if isinstance(raw_d.columns, pd.MultiIndex):
-                    raw_d.columns = [col[0].lower() for col in raw_d.columns]
-                else:
-                    raw_d.columns = [c.lower() for c in raw_d.columns]
-                raw_d = raw_d[["open", "high", "low", "close", "volume"]].dropna()
+        raw_d = _yf_batch.get(symbol)
+        if raw_d is not None and not raw_d.empty:
+            try:
                 bars_daily = compute_features(raw_d)
-        except Exception as e:
-            logger.warning(f"Daily bar fetch (yfinance) failed for {symbol}: {e}")
+            except Exception as e:
+                logger.warning(f"Daily bar features failed for {symbol}: {e}")
 
         return symbol, bars_5m, bars_daily
 
