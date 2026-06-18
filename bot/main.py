@@ -885,12 +885,17 @@ def end_of_day_summary():
     positions = client.get_positions()
     day_return = ((portfolio_value - daily_start) / daily_start) if daily_start else 0.0
 
+    vs_spy = 0.0
     try:
-        spy_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
-        vs_spy   = float(spy_bars["close"].pct_change().iloc[-1]) if len(spy_bars) > 1 else 0.0
+        _spy = yf.download("SPY", period="5d", interval="1d", progress=False, auto_adjust=True)
+        if _spy is not None and len(_spy) > 1:
+            if isinstance(_spy.columns, pd.MultiIndex):
+                _spy.columns = [c[0].lower() for c in _spy.columns]
+            else:
+                _spy.columns = [c.lower() for c in _spy.columns]
+            vs_spy = float(_spy["close"].pct_change().iloc[-1])
     except Exception as exc:
-        logger.debug(f"spy_bars_fetch: {exc}")
-        vs_spy = 0.0
+        logger.debug(f"spy_yf_fetch: {exc}")
 
     # ── Best / worst trade today ───────────────────────────────────────────────
     best_trade: tuple | None  = None
@@ -983,11 +988,15 @@ def end_of_day_summary():
                     week_dd = max(week_dd, (pk - v) / (pk + 1e-8))
             spy_wk = 0.0
             try:
-                spy_wk_bars = client.get_bars("SPY", timeframe="1Day", limit=6)
-                if len(spy_wk_bars) > 1:
-                    spy_wk = float(spy_wk_bars["close"].iloc[-1] / spy_wk_bars["close"].iloc[-6] - 1)
+                _spy_wk = yf.download("SPY", period="15d", interval="1d", progress=False, auto_adjust=True)
+                if _spy_wk is not None and len(_spy_wk) >= 6:
+                    if isinstance(_spy_wk.columns, pd.MultiIndex):
+                        _spy_wk.columns = [c[0].lower() for c in _spy_wk.columns]
+                    else:
+                        _spy_wk.columns = [c.lower() for c in _spy_wk.columns]
+                    spy_wk = float(_spy_wk["close"].iloc[-1] / _spy_wk["close"].iloc[-6] - 1)
             except Exception as exc:
-                logger.debug(f"spy_wk_bars_fetch: {exc}")
+                logger.debug(f"spy_wk_yf_fetch: {exc}")
             tg.alert_weekly_report(
                 week_return=week_return,
                 vs_spy=spy_wk,
@@ -1287,12 +1296,13 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         if not math.isnan(v):
             spy_5bar_return = float(v)
 
-    try:
-        spy_day_bars = client.get_bars("SPY", timeframe="1Day", limit=2)
-        vs_spy_today = float(spy_day_bars["close"].pct_change().iloc[-1]) if len(spy_day_bars) > 1 else 0.0
-    except Exception as exc:
-        logger.debug(f"spy_day_bars_fetch: {exc}")
-        vs_spy_today = 0.0
+    # Use already-fetched SPY daily bars (yfinance) — avoids redundant Alpaca call that
+    # returns only 1 bar on the IEX free tier
+    vs_spy_today = 0.0
+    if not spy_daily.empty and len(spy_daily) > 1:
+        _v = spy_daily["close"].pct_change().iloc[-1]
+        if not math.isnan(_v):
+            vs_spy_today = float(_v)
 
     # Prefetch earnings proximity in parallel — avoids 25 sequential yfinance HTTP calls
     earnings_map = _prefetch_earnings_parallel(con, active_symbols)
