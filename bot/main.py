@@ -1227,9 +1227,21 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     _yf_batch[_sym] = _sym_df
             except Exception:
                 pass
-        logger.info(f"yfinance batch: {len(_yf_batch)}/{len(_batch_syms)} symbols loaded")
+        loaded, total = len(_yf_batch), len(_batch_syms)
+        logger.info(f"yfinance batch: {loaded}/{total} symbols loaded")
+        if loaded < total * 0.5:
+            tg.send(
+                f"⚠️ <b>yfinance data degraded</b> — only {loaded}/{total} symbols loaded.\n"
+                "Yahoo Finance may have changed their API format. "
+                "XGB/LSTM signals falling back to 5-min bars (out-of-distribution).\n"
+                "Check: <code>pip install --upgrade yfinance</code>"
+            )
     except Exception as _e:
         logger.warning(f"yfinance batch prefetch failed — daily bars unavailable: {_e}")
+        tg.send(
+            f"⚠️ <b>yfinance batch fetch failed</b> — {_e}\n"
+            "Daily bars unavailable this cycle. Check if Yahoo Finance format changed."
+        )
 
     def _fetch_symbol(symbol: str) -> tuple[str, pd.DataFrame, pd.DataFrame]:
         """Return (symbol, bars_5m, bars_daily).
