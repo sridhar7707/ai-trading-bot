@@ -6,7 +6,7 @@ Outputs after a successful run:
   models/validation_report.json   — XGB val AUC, LSTM val loss, training metadata
   models/feature_importance.json  — XGBoost feature importances (used by dashboard chart)
 
-Walk-forward split: train on data before TRAIN_CUTOFF (2007–2022), validate on 2023-present.
+Walk-forward split: train on data before TRAIN_CUTOFF (2007–2025), validate on 2026-present.
 Re-run scripts/download_data.py first if raw data is missing or stale.
 """
 from __future__ import annotations
@@ -26,8 +26,8 @@ from config import TRAINING_SYMBOLS, INITIAL_CAPITAL
 
 DATA_DIR = "data/raw"
 
-# Walk-forward split: train on 2007–2022, validate/test on 2023-present
-TRAIN_CUTOFF = "2023-01-01"
+# Walk-forward split: train on 2007–2025, validate/test on 2026-present
+TRAIN_CUTOFF = "2026-01-01"
 
 
 def load_combined(cutoff: str | None = None) -> pd.DataFrame:
