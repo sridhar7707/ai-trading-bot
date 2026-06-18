@@ -103,6 +103,7 @@ from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION, WEIGHTS
 from bot.risk.risk_manager import RiskManager, _business_days_between
 import bot.monitor.telegram_bot as tg
+import yfinance as yf
 
 os.makedirs("logs", exist_ok=True)
 logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
@@ -1235,12 +1236,22 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         if feed_stale:
             return symbol, pd.DataFrame(), pd.DataFrame()
 
-        # Daily bars for XGB/LSTM/regime — matches training data; always 150+ rows after dropna
+        # Daily bars for XGB/LSTM/regime via yfinance — Alpaca IEX free tier returns only
+        # 1 daily bar (today's session), making compute_features fail. yfinance provides
+        # full 1-year history (~252 rows) with no API key required.
         bars_daily = pd.DataFrame()
         try:
-            bars_daily = compute_features(client.get_bars(symbol, timeframe="1Day", limit=200))
+            raw_d = yf.download(symbol, period="1y", interval="1d",
+                                progress=False, auto_adjust=True)
+            if raw_d is not None and not raw_d.empty:
+                if isinstance(raw_d.columns, pd.MultiIndex):
+                    raw_d.columns = [col[0].lower() for col in raw_d.columns]
+                else:
+                    raw_d.columns = [c.lower() for c in raw_d.columns]
+                raw_d = raw_d[["open", "high", "low", "close", "volume"]].dropna()
+                bars_daily = compute_features(raw_d)
         except Exception as e:
-            logger.warning(f"Daily bar fetch failed for {symbol}: {e}")
+            logger.warning(f"Daily bar fetch (yfinance) failed for {symbol}: {e}")
 
         return symbol, bars_5m, bars_daily
 

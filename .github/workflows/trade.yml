@@ -142,7 +142,16 @@ jobs:
           mkdir -p data
           python scripts/screen_universe.py --max 20 --max-per-sector 3
 
+      - name: Restore sentiment cache
+        id: cache-sentiment
+        continue-on-error: true
+        uses: actions/cache@v4
+        with:
+          path: data/sentiment_today.json
+          key: sentiment-${{ steps.date.outputs.today }}
+
       - name: Prefetch sentiment (pre-market)
+        if: steps.cache-sentiment.outputs.cache-hit != 'true'
         continue-on-error: true
         env:
           NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
