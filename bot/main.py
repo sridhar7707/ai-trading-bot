@@ -504,6 +504,10 @@ def _get_macro_from_db(con) -> tuple[float, float, bool]:
     except Exception as e:
         logger.warning(f"Macro fetch failed — using neutral defaults: {e}")
         result = {"score": 0.5, "cap": 1.0, "halt": False}
+        tg.send(
+            f"⚠️ <b>FRED macro data unavailable</b> — {e}\n"
+            "VIX/yield-curve circuit breaker is disabled. Market halt protection off."
+        )
     ts = datetime.now(timezone.utc).isoformat()
     for key in ("score", "cap", "halt"):
         con.execute(
@@ -1229,6 +1233,9 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                 pass
         loaded, total = len(_yf_batch), len(_batch_syms)
         logger.info(f"yfinance batch: {loaded}/{total} symbols loaded")
+        if "SPY" not in _yf_batch:
+            logger.warning("SPY missing from yfinance batch — relative strength gate disabled this cycle")
+            tg.send("⚠️ <b>SPY data missing</b> — relative strength gate disabled. Buys not filtered by SPY comparison.")
         if loaded < total * 0.5:
             tg.send(
                 f"⚠️ <b>yfinance data degraded</b> — only {loaded}/{total} symbols loaded.\n"
@@ -1294,6 +1301,13 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         fetched = list(pool.map(_fetch_symbol, active_symbols))
 
     bars_map = {sym: (b5, bd) for sym, b5, bd in fetched}
+    _n_5m = sum(1 for _, b5, _ in fetched if not b5.empty)
+    if _n_5m < len(active_symbols) * 0.5:
+        tg.send(
+            f"⚠️ <b>Alpaca feed degraded</b> — only {_n_5m}/{len(active_symbols)} symbols "
+            "have live 5-min bars. Most symbols will be skipped this cycle. "
+            "Check Alpaca IEX status."
+        )
 
     if premarket_sentiment:
         finbert_scores = premarket_sentiment
@@ -1798,6 +1812,13 @@ def run_loop(mode: str = "paper"):
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()
     lstm       = LSTMPredictor()
+    _missing_models = [m for m, p in [("XGBoost", xgb), ("LSTM", lstm)] if p.model is None]
+    if _missing_models:
+        tg.send(
+            f"⚠️ <b>Model(s) missing: {', '.join(_missing_models)}</b>\n"
+            "All signals default to 0.5 (neutral) — no trades will fire.\n"
+            "Check HuggingFace model sync or run retraining."
+        )
 
     client = AlpacaClient()
     if not _is_market_hours(client.api):
