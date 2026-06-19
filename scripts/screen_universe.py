@@ -381,11 +381,19 @@ def screen(
 
     if raw.empty:
         logger.error("yfinance returned empty data — falling back to config.SYMBOLS")
-        return list(SYMBOLS)
+        return list(SYMBOLS), pd.DataFrame(), "UNKNOWN"
 
-    close_df  = raw["Close"]
-    open_df   = raw.get("Open")
-    volume_df = raw.get("Volume")
+    close_df  = raw["Close"] if "Close" in raw.columns.get_level_values(0) else raw
+    try:
+        open_df = raw["Open"]
+    except (KeyError, Exception):
+        open_df = None
+    try:
+        volume_df = raw["Volume"]
+    except (KeyError, Exception):
+        volume_df = None
+
+    logger.info(f"yfinance raw columns (first 5): {list(raw.columns[:5])} | close_df type: {type(close_df).__name__} | close_df shape: {close_df.shape if hasattr(close_df, 'shape') else 'N/A'} | volume_df: {'OK' if volume_df is not None else 'MISSING'}")
 
     spy_closes = close_df.get("SPY", pd.Series(dtype=float)).dropna()
     regime     = _detect_regime(spy_closes)
@@ -404,35 +412,44 @@ def screen(
     # ── Stage 1: hard filters + factor computation ────────────────────────────
     scores: dict[str, dict] = {}
     n_filtered = 0
+    _skip = {"no_data": 0, "history": 0, "price": 0, "earnings": 0,
+             "volume": 0, "adv": 0, "sma50": 0, "gap": 0, "beta": 0}
 
     for sym in candidates:
         if sym not in close_df.columns:
+            _skip["no_data"] += 1
             continue
         closes = close_df[sym].dropna()
 
         # IPO age / history requirement — LSTM needs 252 bars for a full year sequence
         if len(closes) < min_history:
+            _skip["history"] += 1
             continue
 
         last_price = float(closes.iloc[-1])
         if last_price < min_price:
+            _skip["price"] += 1
             continue
 
         # Earnings blackout ±2 days
         if sym in earnings_blocked:
+            _skip["earnings"] += 1
             continue
 
         # ADV filter (20-day average dollar volume)
         if volume_df is None or sym not in volume_df.columns:
+            _skip["volume"] += 1
             continue
         vols = volume_df[sym].dropna()
         adv  = float((closes.reindex(vols.index) * vols).tail(20).mean())
         if adv < min_adv:
+            _skip["adv"] += 1
             continue
 
         # Above 50-SMA — no falling knives
         sma50 = float(closes.tail(50).mean())
         if last_price < sma50:
+            _skip["sma50"] += 1
             continue
 
         # Overnight gap filter — skip chronic gappers (limit orders fill far from signal)
@@ -441,12 +458,14 @@ def screen(
             avg_gap = _avg_overnight_gap(closes.reindex(opens.index), opens)
             if avg_gap > MAX_AVG_OVERNIGHT_GAP:
                 logger.debug(f"{sym} skipped — avg overnight gap {avg_gap:.1%} > {MAX_AVG_OVERNIGHT_GAP:.0%}")
+                _skip["gap"] += 1
                 continue
 
         # Beta filter — too slow or too wild
         sym_rets = closes.pct_change().dropna()
         beta = _compute_beta(sym_rets, spy_rets)
         if beta < BETA_MIN or beta > BETA_MAX:
+            _skip["beta"] += 1
             continue
 
         n_filtered += 1
@@ -495,11 +514,16 @@ def screen(
             "defensive": defensive, "analyst_signal": 0.0,  # filled in Stage 2b
         }
 
-    logger.info(f"Candidates: {len(candidates)} → passed filters: {n_filtered} → scored: {len(scores)}")
+    logger.info(
+        f"Candidates: {len(candidates)} → passed filters: {n_filtered} → scored: {len(scores)} | "
+        f"skipped: no_data={_skip['no_data']} history={_skip['history']} price={_skip['price']} "
+        f"earnings={_skip['earnings']} volume={_skip['volume']} adv={_skip['adv']} "
+        f"sma50={_skip['sma50']} gap={_skip['gap']} beta={_skip['beta']}"
+    )
 
     if not scores:
         logger.error("No symbols passed all filters — falling back to config.SYMBOLS")
-        return list(SYMBOLS)
+        return list(SYMBOLS), pd.DataFrame(), "UNKNOWN"
 
     # ── Stage 2a: initial rank without analyst signal ─────────────────────────
     score_df  = pd.DataFrame(scores).T
