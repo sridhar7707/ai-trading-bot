@@ -92,7 +92,7 @@ class XGBPredictor:
         if self.model is None:
             return 0.5
         try:
-            features = row[FEATURE_COLS].values.reshape(1, -1)
+            features = pd.DataFrame([row[FEATURE_COLS]])
             return float(self.model.predict_proba(features)[0, 1])
         except Exception as e:
             logger.error(f"XGBoost predict failed: {e}")

@@ -81,7 +81,7 @@ class RegimeClassifier:
 
     def predict(self, row: pd.Series) -> int:
         if self.model is not None:
-            features = row[REGIME_FEATURES].values.reshape(1, -1)
+            features = pd.DataFrame([row[REGIME_FEATURES]])
             return int(self.model.predict(features)[0])
         return self._rule_based(row)
 
