@@ -133,8 +133,12 @@ KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades use
 KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
 CORRELATION_THRESHOLD = float(os.getenv("CORRELATION_THRESHOLD", 0.85))  # block buy if corr > this with held pos
 RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5-min relative strength vs SPY
-# Only open new positions in these regimes — blocks entries in downtrends and high-vol whipsaws
-ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING").split(","))
+# Regimes that allow new long entries. HIGH_VOLATILITY is included because the
+# risk manager still caps position size and the stop-loss hard-overrides any exit.
+ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING,HIGH_VOLATILITY").split(","))
+# Minimum 5-min bar volume relative to its 20-bar rolling average. 0.7 handles
+# quiet Mondays where volume runs ~30-40% below a typical mid-week session.
+MIN_VOLUME_RATIO      = float(os.getenv("MIN_VOLUME_RATIO", 0.7))
 
 # --- PDT rule ---
 PDT_MAX_DAY_TRADES = 3

@@ -89,7 +89,7 @@ from config import (
     MARKET_OPEN_BUFFER_MINS, MARKET_CLOSE_BUFFER_MINS,
     EARNINGS_WINDOW_DAYS,
     MAX_HOLD_DAYS, KELLY_LOOKBACK_TRADES, KELLY_FRACTION_MAX,
-    CORRELATION_THRESHOLD, RS_LOOKBACK_BARS, ENTRY_REGIMES,
+    CORRELATION_THRESHOLD, RS_LOOKBACK_BARS, ENTRY_REGIMES, MIN_VOLUME_RATIO,
     PDT_MAX_DAY_TRADES, PDT_WINDOW_DAYS, PAPER_SIM_CAPITAL,
     MAX_RISK_PER_TRADE_PCT,
     ATR_STOP_MULTIPLIER, ATR_MIN_STOP_PCT, ATR_MAX_STOP_PCT, STOP_LOSS_PCT,
@@ -1542,8 +1542,8 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                 continue
 
             # Gate 2 — Volume: confirm institutional participation
-            if volume_ratio < 1.0:
-                _log_buy_skip(symbol, f"volume ratio {volume_ratio:.2f} < 1.0")
+            if volume_ratio < MIN_VOLUME_RATIO:
+                _log_buy_skip(symbol, f"volume ratio {volume_ratio:.2f} < {MIN_VOLUME_RATIO}")
                 continue
 
             # Gate 3 — 15-min RSI: multi-timeframe momentum must be bullish
