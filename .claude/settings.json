@@ -11,6 +11,14 @@
             "shell": "bash",
             "timeout": 30,
             "statusMessage": "Updating REQUIREMENTS.md before commit..."
+          },
+          {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": "cd \"c:\\Users\\ksri7\\projects\\ai-trading-bot\" && python scripts/arch_review.py --diff",
+            "shell": "bash",
+            "timeout": 60,
+            "statusMessage": "Running arch + standards review before push..."
           }
         ]
       }

@@ -2,9 +2,9 @@
   "version": [
     1,
     2,
-    0
+    1
   ],
-  "last_updated": "2026-06-14 00:00:00",
+  "last_updated": "2026-06-22 11:58:57",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -444,7 +444,7 @@
       "status": "complete",
       "spec": "SPEC 57",
       "last_updated": "2026-06-15",
-      "notes": "PART 1: save_recommendation() now records prev_recommendation, change_reason, price_at_recommendation via ALTER TABLE migration in schema.sql; load_recommendation_history() added to AnalyticsRepository with symbol/days/changes_only filters; render_recommendation_history() in dashboard/components/history.py; Models tab. PART 2: get_benchmark_comparison() in AnalyticsService with 1-hour module-level cache; render_benchmark_comparison() in dashboard/components/overview.py; Dashboard tab after risk panel. PART 3: 3 new DuckDB integration tests: test_recommendation_history_change_detected, test_benchmark_comparison_returns_dict, test_benchmark_spy_return_is_numeric — all pass; ui_tester 0 FAIL 0 WARN",
+      "notes": "PART 1: save_recommendation() now records prev_recommendation, change_reason, price_at_recommendation via ALTER TABLE migration in schema.sql; load_recommendation_history() added to AnalyticsRepository with symbol/days/changes_only filters; render_recommendation_history() in dashboard/components/history.py; Models tab. PART 2: get_benchmark_comparison() in AnalyticsService with 1-hour module-level cache; render_benchmark_comparison() in dashboard/components/overview.py; Dashboard tab after risk panel. PART 3: 3 new DuckDB integration tests: test_recommendation_history_change_detected, test_benchmark_comparison_returns_dict, test_benchmark_spy_return_is_numeric \u2014 all pass; ui_tester 0 FAIL 0 WARN",
       "category": "observability"
     }
   ],
