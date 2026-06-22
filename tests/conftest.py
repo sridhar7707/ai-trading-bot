@@ -17,8 +17,8 @@ if "alpaca_trade_api" not in sys.modules:
         sys.modules[_mod] = _alpaca_mock
 
 
-def make_ohlcv(n: int = 100, seed: int = 42) -> pd.DataFrame:
-    """Synthetic OHLCV DataFrame with enough rows for all indicators."""
+def make_ohlcv(n: int = 270, seed: int = 42) -> pd.DataFrame:
+    """Synthetic OHLCV DataFrame with enough rows for all indicators including 252-bar momentum."""
     rng = np.random.default_rng(seed)
     close = 100 + np.cumsum(rng.normal(0, 0.5, n))
     close = np.clip(close, 1, None)

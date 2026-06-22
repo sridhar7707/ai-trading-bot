@@ -18,14 +18,14 @@ def test_compute_features_drops_nan_rows(ohlcv):
 
 def test_compute_features_returns_fewer_rows_than_input():
     # Use a fresh df so mutation of the input doesn't affect the length comparison
-    df = make_ohlcv(100)
+    df = make_ohlcv(270)
     original_len = len(df)
     result = compute_features(df)
     assert len(result) < original_len  # warmup rows dropped by dropna
 
 
 def test_volume_ratio_no_inf():
-    df = make_ohlcv(100)
+    df = make_ohlcv(270)
     # Force volume_sma to 0 for the first 20 rows by setting volume to 0
     df.loc[df.index[:20], "volume"] = 0.0
     result = compute_features(df)
@@ -33,7 +33,7 @@ def test_volume_ratio_no_inf():
 
 
 def test_volume_ratio_inf_replaced_with_nan_then_dropped():
-    df = make_ohlcv(100)
+    df = make_ohlcv(270)
     df["volume"] = 0.0  # all volume = 0 → volume_sma = 0 → inf → replaced with NaN
     result = compute_features(df)
     # All volume_ratio values are NaN, so the column should be NaN or missing in result

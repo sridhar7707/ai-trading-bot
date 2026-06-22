@@ -9,6 +9,7 @@ import sqlite3
 import sys
 import time
 import traceback
+from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date, datetime, timedelta, timezone
 from loguru import logger
@@ -782,7 +783,7 @@ def _maybe_record_day_trade(con, risk: RiskManager, symbol: str, sell_success: b
         _save_risk_state(con, risk)
 
 
-def _reconcile_positions(con, alpaca_positions: dict, portfolio_value: float = 0.0):
+def _reconcile_positions(con, alpaca_positions: dict, portfolio_value: float = 0.0, client=None):
     """Sync position_state table with Alpaca's live positions at startup.
     Removes stale DB entries for positions closed externally;
     seeds DB entries for positions opened manually/outside the bot.
@@ -792,22 +793,39 @@ def _reconcile_positions(con, alpaca_positions: dict, portfolio_value: float = 0
     db_syms = {r[0] for r in con.execute("SELECT symbol FROM position_state").fetchall()}
     for sym in db_syms - set(alpaca_positions.keys()):
         logger.warning(f"Reconcile: {sym} in DB but not Alpaca — closing open trades record")
-        # Calculate net open shares from trades table so the dashboard closes the position.
         rows = con.execute(
             "SELECT action, shares FROM trades WHERE symbol=?", (sym,)
         ).fetchall()
         net_shares = sum(r[1] if r[0] == "BUY" else -r[1] for r in rows)
         if net_shares > 0.001:
             ps = con.execute(
-                "SELECT entry_price FROM position_state WHERE symbol=?", (sym,)
+                "SELECT entry_price, opened_at FROM position_state WHERE symbol=?", (sym,)
             ).fetchone()
             entry_price = float(ps[0]) if ps else 0.0
-            notional = net_shares * entry_price
-            log_trade(con, sym, "SELL_RECONCILE", net_shares, entry_price,
-                      notional, "reconcile", portfolio_value, 0.0)
+            # Fetch actual current market price so realized P&L is correct.
+            sell_price = entry_price
+            if client is not None:
+                try:
+                    sell_price = client.get_latest_price(sym)
+                except Exception:
+                    sell_price = entry_price
+            pnl_pct = (sell_price - entry_price) / entry_price if entry_price > 0 else 0.0
+            notional = net_shares * sell_price
+            # Calculate holding days from when the position was opened.
+            holding_days = 0
+            if ps and ps[1]:
+                try:
+                    opened = datetime.fromisoformat(ps[1].replace("Z", "+00:00"))
+                    holding_days = (datetime.now(timezone.utc) - opened).days
+                except Exception:
+                    holding_days = 0
+            log_trade(con, sym, "SELL_RECONCILE", net_shares, sell_price,
+                      notional, "reconcile", portfolio_value, pnl_pct,
+                      entry_price=entry_price, holding_days=holding_days)
             logger.warning(
                 f"Reconcile: logged SELL_RECONCILE for {sym} "
-                f"({net_shares:.4f} shares @ ${entry_price:.2f}) — position removed externally"
+                f"({net_shares:.4f} shares @ ${sell_price:.2f}, entry=${entry_price:.2f}, "
+                f"pnl={pnl_pct:+.2%}, {holding_days}d held)"
             )
         _delete_position_state(con, sym)
     for sym, pos in alpaca_positions.items():
@@ -1153,7 +1171,7 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         pdt_exempt = False
 
     positions       = client.get_positions()
-    _reconcile_positions(con, positions, portfolio_value=portfolio_value)
+    _reconcile_positions(con, positions, portfolio_value=portfolio_value, client=client)
     buy_order_syms, sell_order_syms = client.get_open_order_symbols()
 
     # Restore intraday halt — persists across 5-min cycles so a mid-day breach
@@ -1225,7 +1243,7 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
         _batch_syms = list(active_symbols)
         if "SPY" not in _batch_syms:
             _batch_syms.append("SPY")
-        _raw_batch = yf.download(_batch_syms, period="1y", interval="1d",
+        _raw_batch = yf.download(_batch_syms, period="2y", interval="1d",
                                  progress=False, auto_adjust=True, group_by="ticker")
         for _sym in _batch_syms:
             try:
@@ -1442,9 +1460,9 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                     _upsert_position_state(con, symbol, entry_price, current_price, current_atr)
                     hwm = current_price
 
-                # ① Take-profit: max(6%, 3×ATR), capped at 8%
+                # ① Take-profit: max(10%, 4×ATR), capped at 15% — wider targets for 3-week momentum holds
                 if entry_price > 0 and current_atr > 0:
-                    tp_pct = max(0.06, min(0.08, (3 * current_atr) / entry_price))
+                    tp_pct = max(0.10, min(0.15, (4 * current_atr) / entry_price))
                     if pnl_pct >= tp_pct:
                         success = _signal_sell(
                             con, client, symbol, pos_qty, current_price,
@@ -1546,24 +1564,6 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                 _log_buy_skip(symbol, f"volume ratio {volume_ratio:.2f} < {MIN_VOLUME_RATIO}")
                 continue
 
-            # Gate 3 — 15-min RSI: multi-timeframe momentum must be bullish
-            rsi_15m = float(latest.get("rsi_15m", 50) or 50)
-            if rsi_15m < 50:
-                _log_buy_skip(symbol, f"15min RSI {rsi_15m:.1f} < 50")
-                continue
-
-            # Gate 3.5 — Trend confirmation: EMA-20 must be above EMA-50 (golden-cross filter).
-            # ema20_pct = ema_20/close - 1; ema50_pct = ema_50/close - 1
-            # ema20_pct > ema50_pct  ⟺  ema_20 > ema_50  ⟺  uptrend
-            ema20 = float(latest.get("ema20_pct", 0) or 0)
-            ema50 = float(latest.get("ema50_pct", 0) or 0)
-            if ema20 < ema50:
-                _log_buy_skip(
-                    symbol,
-                    f"downtrend: EMA20 below EMA50 (ema20_pct={ema20:.4f} < ema50_pct={ema50:.4f})"
-                )
-                continue
-
             # Gate 4 — Relative strength: stock must be outperforming SPY over last N bars
             if spy_5bar_return is not None and symbol != "SPY":
                 stock_5bar = sig_bars["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
@@ -1611,10 +1611,10 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             if current_atr and current_atr > 0 and current_price > 0:
                 stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT,
                                (ATR_STOP_MULTIPLIER * current_atr) / current_price))
-                tp_target_pct = max(0.06, min(0.08, (3 * current_atr) / current_price))
+                tp_target_pct = max(0.10, min(0.15, (4 * current_atr) / current_price))
             else:
                 stop_pct = STOP_LOSS_PCT
-                tp_target_pct = 0.06
+                tp_target_pct = 0.10
 
             # Gate 8a — Minimum absolute profit target: not worth entering if upside < MIN_TP_PCT
             if tp_target_pct < MIN_TP_PCT:
@@ -1826,6 +1826,28 @@ def run_loop(mode: str = "paper"):
             "All signals default to 0.5 (neutral) — no trades will fire.\n"
             "Check HuggingFace model sync or run retraining."
         )
+
+    # Stale-model detection: check validation report matches current feature set.
+    _report_path = Path("models/validation_report.json")
+    if _report_path.exists():
+        try:
+            import json as _json
+            _report = _json.loads(_report_path.read_text())
+            _trained_features = _report.get("feature_count", 0)
+            _current_features = len(FEATURE_COLS)
+            if _trained_features != _current_features:
+                tg.send(
+                    f"⚠️ <b>Stale models detected</b>\n"
+                    f"Models trained on {_trained_features} features; "
+                    f"current code expects {_current_features}.\n"
+                    "Signals will fail or be random. Run retraining immediately."
+                )
+                logger.error(
+                    f"STALE MODEL: trained_features={_trained_features} "
+                    f"!= current={_current_features}. Retrain required."
+                )
+        except Exception as _ve:
+            logger.warning(f"Could not validate model report: {_ve}")
 
     client = AlpacaClient()
     if not _is_market_hours(client.api):

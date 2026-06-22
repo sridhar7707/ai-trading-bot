@@ -74,7 +74,7 @@ PORTFOLIO_DRAWDOWN_LIMIT_PCT = float(os.getenv("PORTFOLIO_DRAWDOWN_LIMIT_PCT", 0
 MACRO_HALT_VIX = float(os.getenv("MACRO_HALT_VIX", 28.0))    # halt all new buys above this VIX level
 MAX_RISK_PER_TRADE_PCT  = float(os.getenv("MAX_RISK_PER_TRADE_PCT",  0.015))  # max 1.5% of portfolio at risk per trade
 MIN_RR_RATIO            = float(os.getenv("MIN_RR_RATIO",            1.5))    # skip trade if TP target < 1.5× the stop distance
-MIN_TP_PCT              = float(os.getenv("MIN_TP_PCT",              0.03))   # skip trade if TP ceiling < 3%
+MIN_TP_PCT              = float(os.getenv("MIN_TP_PCT",              0.05))   # skip trade if TP ceiling < 5% (raised from 3% for 3-week holds)
 RANGING_SIZE_FACTOR     = float(os.getenv("RANGING_SIZE_FACTOR",     0.75))   # reduce position by 25% in sideways markets
 MAX_SECTOR_EXPOSURE_PCT = float(os.getenv("MAX_SECTOR_EXPOSURE_PCT", 0.30))   # max 30% of portfolio in any one sector
 MAX_POSITION_DRIFT_PCT  = float(os.getenv("MAX_POSITION_DRIFT_PCT",  0.25))   # trim position back if it drifts above 25%
@@ -128,7 +128,7 @@ INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))
 EARNINGS_WINDOW_DAYS = int(os.getenv("EARNINGS_WINDOW_DAYS", 2))   # block buys ±N days from earnings
 
 # --- Advanced entry/exit parameters ---
-MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 5))          # force exit after N days with <1% gain
+MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 25))         # force exit after N days with <1% gain (25 = 5 weeks max for 3-week momentum trades)
 KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades used to estimate Kelly fraction
 KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
 CORRELATION_THRESHOLD = float(os.getenv("CORRELATION_THRESHOLD", 0.85))  # block buy if corr > this with held pos

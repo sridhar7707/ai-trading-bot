@@ -13,7 +13,7 @@ from bot.strategy.features import FEATURE_COLS
 LSTM_MODEL_PATH  = Path("models/saved/lstm_predictor.pt")
 SCALER_PATH      = Path("models/saved/lstm_scaler.pkl")
 SEQ_LEN          = 60
-FORWARD_PERIODS  = 5
+FORWARD_PERIODS  = 15  # 3-week target — matches XGBPredictor; intermediate momentum window
 MIN_MOVE_PCT     = 0.003   # must match XGBPredictor — both models predict the same target
 PATIENCE         = 7       # stop if val_loss doesn't improve for this many epochs
 LR_PATIENCE      = 3       # halve LR after this many epochs without improvement

@@ -66,8 +66,24 @@ def ensemble_signal(
     )
 
     if score > STRONG_BUY_THRESHOLD:
+        # ML agreement gate: only applied to BUY signals, not SELL.
+        # Prevents bullish sentiment/macro from carrying a neutral ML signal over the
+        # buy threshold. SELL signals do not need this — both models producing low
+        # probabilities (both < 0.50) IS the sell signal; blocking it would prevent exits.
+        if xgb_prob < 0.50 or lstm_prob < 0.50:
+            logger.debug(
+                f"Ensemble: STRONG_BUY suppressed — ML disagreement "
+                f"(xgb={xgb_prob:.3f}, lstm={lstm_prob:.3f})"
+            )
+            return "HOLD", 0.00
         return "STRONG_BUY",  STRONG_BUY_FRACTION
     elif score > BUY_THRESHOLD:
+        if xgb_prob < 0.50 or lstm_prob < 0.50:
+            logger.debug(
+                f"Ensemble: BUY suppressed — ML disagreement "
+                f"(xgb={xgb_prob:.3f}, lstm={lstm_prob:.3f})"
+            )
+            return "HOLD", 0.00
         return "BUY",         BUY_FRACTION
     elif score < STRONG_SELL_THRESHOLD:
         return "STRONG_SELL", STRONG_SELL_FRACTION

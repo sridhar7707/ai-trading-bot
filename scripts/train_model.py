@@ -20,7 +20,7 @@ import pandas as pd
 from loguru import logger
 from bot.strategy.features import FEATURE_COLS, compute_features
 from bot.strategy.regime_classifier import RegimeClassifier, label_regime
-from bot.strategy.xgb_predictor import XGBPredictor
+from bot.strategy.xgb_predictor import XGBPredictor, FORWARD_PERIODS as XGB_FP
 from bot.strategy.lstm_predictor import LSTMPredictor
 from config import TRAINING_SYMBOLS, INITIAL_CAPITAL
 
@@ -85,6 +85,9 @@ def main():
         "date_range":       {"from": date_min, "to": date_max},
         "xgb_val_auc":      round(xgb.val_auc, 4),
         "lstm_val_loss":    round(lstm.val_loss, 4),
+        "feature_count":    len(FEATURE_COLS),
+        "feature_cols":     FEATURE_COLS,
+        "forward_periods":  XGB_FP,
     }
     with open("models/validation_report.json", "w") as fh:
         json.dump(report, fh, indent=2)
@@ -103,7 +106,24 @@ def main():
             json.dump(importances, fh, indent=2)
         logger.info("Feature importance → models/feature_importance.json")
 
-    logger.info("All models trained successfully.")
+    # ── Artifact verification ─────────────────────────────────────────────────
+    from pathlib import Path
+    required = {
+        "XGBoost model":    Path("models/saved/xgb_predictor.pkl"),
+        "LSTM model":       Path("models/saved/lstm_predictor.pt"),
+        "LSTM scaler":      Path("models/saved/lstm_scaler.pkl"),
+        "Regime model":     Path("models/saved/regime_classifier.pkl"),
+        "Validation report":Path("models/validation_report.json"),
+        "Feature importance":Path("models/feature_importance.json"),
+    }
+    missing = [name for name, path in required.items() if not path.exists()]
+    if missing:
+        logger.error(f"Training completed but artifacts are MISSING: {missing}")
+        sys.exit(1)
+    for name, path in required.items():
+        size_kb = path.stat().st_size / 1024
+        logger.info(f"  {name}: {path}  ({size_kb:.1f} KB)")
+    logger.info("All models trained and verified successfully.")
 
 
 if __name__ == "__main__":

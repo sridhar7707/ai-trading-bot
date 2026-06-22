@@ -448,6 +448,41 @@ def test_reconcile_handles_empty_alpaca_and_db(db):
     assert db.execute("SELECT COUNT(*) FROM position_state").fetchone()[0] == 0
 
 
+def test_reconcile_records_actual_pnl_when_client_available(db):
+    """SELL_RECONCILE should use current market price, not entry price."""
+    _upsert_position_state(db, "AAPL", 100.0, 100.0, 1.0)
+    log_trade(db, "AAPL", "BUY", 5.0, 100.0, 500.0, "TRENDING_UP", 10000.0, 0.0)
+
+    class FakeClient:
+        def get_latest_price(self, symbol):
+            return 110.0  # 10% gain
+
+    _reconcile_positions(db, alpaca_positions={}, client=FakeClient())
+    row = db.execute(
+        "SELECT price, pnl_pct FROM trades WHERE action='SELL_RECONCILE' AND symbol='AAPL'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == pytest.approx(110.0)           # sell price = current market price
+    assert row[1] == pytest.approx(0.10, abs=1e-4)  # pnl_pct = +10%
+
+
+def test_reconcile_falls_back_to_entry_price_on_client_error(db):
+    """If market price fetch fails, reconcile should fall back to entry price."""
+    _upsert_position_state(db, "MSFT", 200.0, 200.0, 2.0)
+    log_trade(db, "MSFT", "BUY", 2.0, 200.0, 400.0, "TRENDING_UP", 10000.0, 0.0)
+
+    class BadClient:
+        def get_latest_price(self, symbol):
+            raise RuntimeError("feed unavailable")
+
+    _reconcile_positions(db, alpaca_positions={}, client=BadClient())
+    row = db.execute(
+        "SELECT price FROM trades WHERE action='SELL_RECONCILE' AND symbol='MSFT'"
+    ).fetchone()
+    assert row is not None
+    assert row[0] == pytest.approx(200.0)  # fell back to entry price
+
+
 # --- _load_risk_state / _save_risk_state ---
 
 def test_load_risk_state_returns_nones_when_empty(db):
