@@ -76,6 +76,11 @@ def _import_screener_picks(con, payload: dict) -> None:
     except Exception as exc:
         logger.warning(f"screener_log import failed (non-fatal): {exc}")
 
+
+def _log_buy_skip(symbol: str, reason: str) -> None:
+    """Log a standardized reason why a candidate buy was skipped."""
+    logger.info(f"BUY {symbol} skipped — {reason}")
+
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
@@ -1528,22 +1533,23 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
             # Gate 0 — VIX emergency halt: no new positions when VIX >= 40
             if macro_halt:
+                _log_buy_skip(symbol, "VIX emergency halt")
                 continue
 
             # Gate 1 — Regime: only buy in trending or ranging markets
             if regime_name not in ENTRY_REGIMES:
-                logger.info(f"BUY {symbol} skipped — regime={regime_name} (allowed: {ENTRY_REGIMES})")
+                _log_buy_skip(symbol, f"regime={regime_name} (allowed: {ENTRY_REGIMES})")
                 continue
 
             # Gate 2 — Volume: confirm institutional participation
             if volume_ratio < 1.0:
-                logger.info(f"BUY {symbol} skipped — volume ratio {volume_ratio:.2f} < 1.0")
+                _log_buy_skip(symbol, f"volume ratio {volume_ratio:.2f} < 1.0")
                 continue
 
             # Gate 3 — 15-min RSI: multi-timeframe momentum must be bullish
             rsi_15m = float(latest.get("rsi_15m", 50) or 50)
             if rsi_15m < 50:
-                logger.info(f"BUY {symbol} skipped — 15min RSI {rsi_15m:.1f} < 50")
+                _log_buy_skip(symbol, f"15min RSI {rsi_15m:.1f} < 50")
                 continue
 
             # Gate 3.5 — Trend confirmation: EMA-20 must be above EMA-50 (golden-cross filter).
@@ -1552,9 +1558,9 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             ema20 = float(latest.get("ema20_pct", 0) or 0)
             ema50 = float(latest.get("ema50_pct", 0) or 0)
             if ema20 < ema50:
-                logger.info(
-                    f"BUY {symbol} skipped — downtrend: EMA20 below EMA50 "
-                    f"(ema20_pct={ema20:.4f} < ema50_pct={ema50:.4f})"
+                _log_buy_skip(
+                    symbol,
+                    f"downtrend: EMA20 below EMA50 (ema20_pct={ema20:.4f} < ema50_pct={ema50:.4f})"
                 )
                 continue
 
@@ -1562,18 +1568,20 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
             if spy_5bar_return is not None and symbol != "SPY":
                 stock_5bar = sig_bars["close"].pct_change(RS_LOOKBACK_BARS).iloc[-1]
                 if not math.isnan(stock_5bar) and float(stock_5bar) < spy_5bar_return:
-                    logger.info(
-                        f"BUY {symbol} skipped — RS weak ({stock_5bar:.2%} vs SPY {spy_5bar_return:.2%})"
+                    _log_buy_skip(
+                        symbol,
+                        f"RS weak ({stock_5bar:.2%} vs SPY {spy_5bar_return:.2%})"
                     )
                     continue
 
             # Gate 5 — Open order: no duplicate limit buy submissions
             if symbol in buy_order_syms:
-                logger.info(f"BUY {symbol} skipped — open buy order already pending")
+                _log_buy_skip(symbol, "open buy order already pending")
                 continue
 
             # Gate 6 — Earnings proximity (prefetched in parallel before loop)
             if earnings_map.get(symbol, False):
+                _log_buy_skip(symbol, "earnings proximity")
                 continue
 
             # Gate 7 — Correlation: avoid adding a position highly correlated with existing holdings
@@ -1582,11 +1590,12 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
             # Gate 7.5 — Wash-sale guard (IRS IRC §1091): block re-buy within 30 days of a loss sale
             if _is_wash_sale_risk(con, symbol):
+                _log_buy_skip(symbol, "wash-sale guard active")
                 continue
 
             # Gate 7.7 — Stop re-entry block: don't re-buy a symbol whose stop fired today
             if symbol in _stop_fired_today:
-                logger.info(f"BUY {symbol} skipped — stop-loss fired earlier today (re-entry blocked)")
+                _log_buy_skip(symbol, "stop-loss fired earlier today (re-entry blocked)")
                 continue
 
             # Gate 8 — Cash and risk approval
@@ -1609,17 +1618,15 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
 
             # Gate 8a — Minimum absolute profit target: not worth entering if upside < MIN_TP_PCT
             if tp_target_pct < MIN_TP_PCT:
-                logger.info(
-                    f"BUY {symbol} skipped — TP target {tp_target_pct:.1%} < min {MIN_TP_PCT:.1%}"
-                )
+                _log_buy_skip(symbol, f"TP target {tp_target_pct:.1%} < min {MIN_TP_PCT:.1%}")
                 continue
 
             # Gate 8b — Minimum risk/reward: require TP ≥ MIN_RR_RATIO × stop distance
             rr_ratio = tp_target_pct / stop_pct
             if rr_ratio < MIN_RR_RATIO:
-                logger.info(
-                    f"BUY {symbol} skipped — R:R {rr_ratio:.2f} < min {MIN_RR_RATIO} "
-                    f"(TP={tp_target_pct:.1%}, stop={stop_pct:.1%})"
+                _log_buy_skip(
+                    symbol,
+                    f"R:R {rr_ratio:.2f} < min {MIN_RR_RATIO} (TP={tp_target_pct:.1%}, stop={stop_pct:.1%})"
                 )
                 continue
 
@@ -1646,9 +1653,9 @@ def run(mode: str = "paper", _regime_clf=None, _xgb=None, _lstm=None):
                 )
                 _sector_pct = _sector_val / portfolio_value if portfolio_value > 0 else 0
                 if _sector_pct >= MAX_SECTOR_EXPOSURE_PCT:
-                    logger.info(
-                        f"BUY {symbol} skipped — {_sym_sector} sector at "
-                        f"{_sector_pct:.1%} of portfolio (max {MAX_SECTOR_EXPOSURE_PCT:.0%})"
+                    _log_buy_skip(
+                        symbol,
+                        f"{_sym_sector} sector at {_sector_pct:.1%} of portfolio (max {MAX_SECTOR_EXPOSURE_PCT:.0%})"
                     )
                     continue
 

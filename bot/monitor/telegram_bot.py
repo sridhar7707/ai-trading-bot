@@ -1,5 +1,6 @@
 import requests
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from loguru import logger
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
@@ -59,7 +60,7 @@ def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: 
               vs_spy: float, notional: float = 0.0,
               xgb_prob: float = 0.0, lstm_prob: float = 0.0,
               sentiment_score: float = 0.0, ensemble_score: float = 0.0,
-              drivers: list | None = None,
+              drivers: Optional[list] = None,
               sector: str = "", sector_pct_after: float = 0.0,
               cash_pct_after: float = 0.0):
     regime_label = regime.replace("_", " ").title()
@@ -145,8 +146,8 @@ def alert_daily_summary(
     day_return: float, vs_spy: float, positions: list, cash: float,
     trades: int, day_trades: int,
     portfolio_value: float = 0.0,
-    best_trade: tuple | None = None,
-    worst_trade: tuple | None = None,
+    best_trade: Optional[tuple] = None,
+    worst_trade: Optional[tuple] = None,
     cash_pct: float = 0.0,
     health_score: int = 0,
 ):

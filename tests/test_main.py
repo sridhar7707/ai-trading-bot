@@ -356,6 +356,20 @@ def test_passes_correlation_gate_insufficient_common_bars():
     assert _passes_correlation_gate("AAPL", {"MSFT": None}, bars) is True
 
 
+def test_log_buy_skip_helper_formats_reason():
+    import io
+    from loguru import logger
+    from bot.main import _log_buy_skip
+
+    stream = io.StringIO()
+    handler_id = logger.add(stream, level="INFO", format="{message}")
+    try:
+        _log_buy_skip("AAPL", "test reason")
+        assert "BUY AAPL skipped — test reason" in stream.getvalue()
+    finally:
+        logger.remove(handler_id)
+
+
 # --- _check_time_exit ---
 
 def test_check_time_exit_no_pos_state():
