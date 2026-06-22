@@ -1,8 +1,8 @@
 # TradeGenius — Living Requirements Document
 
 Auto-generated and auto-updated.
-Last updated: 2026-06-22 14:43:39
-Version: 1.2.7
+Last updated: 2026-06-22 14:51:48
+Version: 1.2.8
 
 ---
 
