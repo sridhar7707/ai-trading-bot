@@ -73,21 +73,23 @@ jobs:
         continue-on-error: true
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: |
           python -c "
           import os, shutil
           token = os.environ.get('HF_TOKEN', '')
-          repo = os.environ.get('HF_REPO_ID', '')
-          if not token or not repo:
-              print('HF secrets not set — keeping cached trades.db')
+          db_repo = 'ksri77/ai-trading-bot-db'
+          if not token:
+              print('HF_TOKEN not set — keeping cached trades.db')
           else:
               from huggingface_hub import hf_hub_download
-              cached = hf_hub_download(repo_id=repo, filename='trades.db', token=token, force_download=True)
-              shutil.copy(cached, 'trades.db')
-              import sqlite3
-              count = sqlite3.connect('trades.db').execute('SELECT COUNT(*) FROM trades').fetchone()[0]
-              print(f'trades.db synced from HuggingFace — {count} records')
+              try:
+                  cached = hf_hub_download(repo_id=db_repo, filename='trades.db', repo_type='dataset', token=token, force_download=True)
+                  shutil.copy(cached, 'trades.db')
+                  import sqlite3
+                  count = sqlite3.connect('trades.db').execute('SELECT COUNT(*) FROM trades').fetchone()[0]
+                  print(f'trades.db synced from {db_repo} — {count} records')
+              except Exception as e:
+                  print(f'trades.db not found in {db_repo} ({e}) — starting fresh')
           "
 
       - name: Cache HuggingFace models
