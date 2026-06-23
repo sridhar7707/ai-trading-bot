@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-06-22T19:45:13.803153+00:00",
+  "train_cutoff": "2026-01-01",
+  "training_symbols": 45,
+  "training_rows": 193275,
+  "date_range": {
+    "from": "2008-01-03",
+    "to": "2025-12-31"
+  },
+  "xgb_val_auc": 0.554,
+  "lstm_val_loss": 0.5932
+}

@@ -99,7 +99,7 @@ class LSTMPredictor:
 
         return np.array(X_all, dtype=np.float32), np.array(y_all, dtype=np.float32)
 
-    def train(self, df: pd.DataFrame, epochs: int = 50, batch_size: int = 64):
+    def train(self, df: pd.DataFrame, epochs: int = 50, batch_size: int = 64) -> None:
         symbol_col = df["symbol"] if "symbol" in df.columns else None
         df_feat    = df.drop(columns=["symbol", "regime"], errors="ignore")
 

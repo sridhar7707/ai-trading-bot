@@ -68,7 +68,7 @@ class RegimeClassifier:
         except FileNotFoundError:
             logger.warning("No regime classifier found — using rule-based fallback.")
 
-    def train(self, df: pd.DataFrame):
+    def train(self, df: pd.DataFrame) -> None:
         df = df.copy().reset_index(drop=True)
         df["regime"] = label_regime(df)
         mask = df[REGIME_FEATURES].notna().all(axis=1)

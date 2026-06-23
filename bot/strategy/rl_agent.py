@@ -32,13 +32,13 @@ class TradingEnv(gym.Env):
 
         self._reset_state()
 
-    def _reset_state(self):
+    def _reset_state(self) -> None:
         self.current_step = 0
         self.balance = self.initial_balance
         self.shares_held = 0.0
         self.returns_history = []
 
-    def reset(self, *, seed=None, options=None):
+    def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
         self._reset_state()
         return self._get_obs(), {}
@@ -51,7 +51,7 @@ class TradingEnv(gym.Env):
         regime = float(row.get("regime", 0))
         return np.concatenate([indicators, [balance_ratio, shares_norm, regime]]).astype(np.float32)
 
-    def step(self, action: int):
+    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict]:
         row = self.df.iloc[self.current_step]
         price = float(row["close"])
 
@@ -92,7 +92,7 @@ class RLAgent:
         except Exception as e:
             logger.warning(f"PPO model not loaded: {e}")
 
-    def train(self, df: pd.DataFrame, initial_balance: float = 1000.0):
+    def train(self, df: pd.DataFrame, initial_balance: float = 1000.0) -> None:
         env = TradingEnv(df, initial_balance)
         self.model = PPO(
             "MlpPolicy",

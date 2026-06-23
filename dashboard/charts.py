@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 import os
 import time
+from typing import Any
 
 import pandas as pd
 from loguru import logger
@@ -28,7 +29,7 @@ _FI_LABELS: dict = {
 }
 
 
-def render_equity_chart():
+def render_equity_chart() -> Any:
     try:
         import plotly.graph_objects as go
         df  = get_data()["trades_df"]
@@ -82,7 +83,7 @@ def render_equity_chart():
         return fig
 
 
-def render_allocation_chart():
+def render_allocation_chart() -> Any:
     try:
         import plotly.graph_objects as go
         d = get_data()
@@ -134,7 +135,7 @@ def render_allocation_chart():
         return fig
 
 
-def render_pnl_chart():
+def render_pnl_chart() -> Any:
     try:
         import plotly.graph_objects as go
         df    = get_data()["trades_df"]
@@ -274,7 +275,7 @@ def _sparkline(symbol: str) -> str:
     )
 
 
-def render_feature_importance_chart():
+def render_feature_importance_chart() -> Any:
     try:
         import json as _json
         import plotly.graph_objects as go

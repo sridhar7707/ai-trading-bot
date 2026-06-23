@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import time
 from contextlib import contextmanager
+from typing import Any, Generator
 
 import pandas as pd
 from loguru import logger
@@ -49,7 +50,7 @@ def _get_db_lock(path: str) -> threading.Lock:
 
 
 @contextmanager
-def get_db_conn(db_path=None, timeout: float = 5.0):
+def get_db_conn(db_path: str | None = None, timeout: float = 5.0) -> Generator[sqlite3.Connection, None, None]:
     """Thread-safe SQLite connection context manager.
 
     Creates a new connection per call (new-connection-per-call = thread-safe).
@@ -65,7 +66,7 @@ def get_db_conn(db_path=None, timeout: float = 5.0):
         conn.close()
 
 
-def safe_query(sql: str, params: tuple = (), db_path=None, default=None):
+def safe_query(sql: str, params: tuple = (), db_path: str | None = None, default: Any = None) -> Any:
     """Run a SELECT and return fetchall(), or `default` on any error."""
     try:
         with get_db_conn(db_path) as conn:
@@ -75,7 +76,7 @@ def safe_query(sql: str, params: tuple = (), db_path=None, default=None):
         return default
 
 
-def safe_execute(sql: str, params: tuple = (), db_path=None) -> bool:
+def safe_execute(sql: str, params: tuple = (), db_path: str | None = None) -> bool:
     """Run an INSERT/UPDATE/DELETE, commit, and return True on success."""
     path = db_path or DB_PATH
     lock = _get_db_lock(path)

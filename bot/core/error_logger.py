@@ -3,7 +3,7 @@ import functools
 import logging
 import time
 import traceback
-from typing import Optional
+from typing import Any, Callable, Optional
 
 _default_logger = logging.getLogger("tradegenie.core")
 
@@ -14,7 +14,7 @@ def setup_logger(name: str) -> logging.Logger:
 
 
 def log_exception(
-    logger_obj,
+    logger_obj: Any,
     fn_name: str,
     exc: Exception,
     ctx: Optional[dict] = None,
@@ -30,11 +30,11 @@ def log_exception(
         logger_obj.error(f"{msg}\n{tb}")
 
 
-def timed(logger_obj, warn_sec: float = 2.0, err_sec: float = 10.0):
+def timed(logger_obj: Any, warn_sec: float = 2.0, err_sec: float = 10.0) -> Callable:
     """Decorator that logs a WARNING if function exceeds warn_sec, ERROR if err_sec."""
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             t0 = time.perf_counter()
             result = func(*args, **kwargs)
             elapsed = time.perf_counter() - t0
@@ -51,7 +51,7 @@ def timed(logger_obj, warn_sec: float = 2.0, err_sec: float = 10.0):
     return decorator
 
 
-def safe_render(fallback_title: str = "Panel"):
+def safe_render(fallback_title: str = "Panel") -> Callable:
     """
     Decorator for render_* functions in dashboard/app.py.
 
@@ -60,11 +60,11 @@ def safe_render(fallback_title: str = "Panel"):
     - Returns a visible red error card so the user sees what failed
     - Never crashes the Gradio dashboard
     """
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         _fn_logger = setup_logger(f"dashboard.{func.__name__}")
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
             except Exception as exc:

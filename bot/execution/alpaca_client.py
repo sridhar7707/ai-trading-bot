@@ -1,5 +1,6 @@
 from __future__ import annotations
 import time
+from typing import Any
 import alpaca_trade_api as tradeapi
 import pandas as pd
 from loguru import logger
@@ -32,7 +33,7 @@ class AlpacaClient:
             f"url={ALPACA_BASE_URL}, key=...{ALPACA_KEY[-4:] if ALPACA_KEY else 'MISSING'}"
         )
 
-    def get_account(self):
+    def get_account(self) -> Any:
         return self.api.get_account()
 
     def get_account_summary(self) -> tuple[float, float]:

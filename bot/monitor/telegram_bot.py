@@ -52,7 +52,7 @@ _SELL_REASON_LABELS: dict[str, str] = {
 }
 
 
-def alert_bot_started(mode: str, portfolio: float):
+def alert_bot_started(mode: str, portfolio: float) -> None:
     _send(f"🟢 <b>Trading Day Started</b> — {mode.upper()}  · {_now_cdt()}\n   Portfolio: ${portfolio:,.2f}")
 
 
@@ -62,7 +62,7 @@ def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: 
               sentiment_score: float = 0.0, ensemble_score: float = 0.0,
               drivers: Optional[list] = None,
               sector: str = "", sector_pct_after: float = 0.0,
-              cash_pct_after: float = 0.0):
+              cash_pct_after: float = 0.0) -> None:
     regime_label = regime.replace("_", " ").title()
     sent_str     = f"+{sentiment_score:.2f}" if sentiment_score >= 0 else f"{sentiment_score:.2f}"
 
@@ -97,7 +97,7 @@ def alert_buy(symbol: str, shares: float, price: float, regime: str, portfolio: 
 
 def alert_sell(symbol: str, shares: float, price: float, pnl_pct: float,
                reason: str = "signal", notional: float = 0.0,
-               cash_freed_pct: float = 0.0):
+               cash_freed_pct: float = 0.0) -> None:
     emoji        = "🟢" if pnl_pct >= 0 else "🔴"
     pnl_dollars  = f" (${notional * pnl_pct:+,.2f})" if notional else ""
     reason_label = _SELL_REASON_LABELS.get(reason, reason.replace("-", " ").title())
@@ -113,32 +113,32 @@ def alert_sell(symbol: str, shares: float, price: float, pnl_pct: float,
     _send("\n".join(lines))
 
 
-def alert_hold(symbol: str, regime: str):
+def alert_hold(symbol: str, regime: str) -> None:
     _send(f"⚪ HOLD — {symbol} | Regime: {regime}")
 
 
-def alert_stop_loss(symbol: str, pnl_pct: float, notional: float = 0.0):
+def alert_stop_loss(symbol: str, pnl_pct: float, notional: float = 0.0) -> None:
     pnl_dollars = f" (${notional * pnl_pct:+,.2f})" if notional else ""
     _send(f"⚠️ <b>STOP-LOSS</b> triggered — {symbol}  · {_now_cdt()}  P&amp;L: {pnl_pct:+.2%}{pnl_dollars}")
 
 
-def alert_sell_failed(symbol: str, reason: str = "stop-loss"):
+def alert_sell_failed(symbol: str, reason: str = "stop-loss") -> None:
     _send(f"🚨 <b>SELL FAILED</b> — {symbol} | Reason: {reason} | Will retry next cycle")
 
 
-def alert_daily_loss_limit(portfolio: float, pnl_pct: float):
+def alert_daily_loss_limit(portfolio: float, pnl_pct: float) -> None:
     _send(f"🚨 <b>DAILY LOSS LIMIT HIT</b> — Bot halted\n   Portfolio: ${portfolio:,.2f}\n   Day P&amp;L: {pnl_pct:+.2%}")
 
 
-def alert_risk_warning(portfolio: float, pnl_pct: float):
+def alert_risk_warning(portfolio: float, pnl_pct: float) -> None:
     _send(f"⚠️ <b>RISK WARNING</b> — 50% of daily loss limit reached\n   Portfolio: ${portfolio:,.2f}\n   Day P&amp;L: {pnl_pct:+.2%}")
 
 
-def alert_weekly_loss_limit(portfolio: float, pnl_pct: float):
+def alert_weekly_loss_limit(portfolio: float, pnl_pct: float) -> None:
     _send(f"🚨 <b>WEEKLY LOSS LIMIT HIT</b> — No new buys until next week\n   Portfolio: ${portfolio:,.2f}\n   Week P&amp;L: {pnl_pct:+.2%}")
 
 
-def alert_vix_halt():
+def alert_vix_halt() -> None:
     _send("🔴 <b>VIX EMERGENCY HALT</b> — VIX ≥ 40\n   No new buys this cycle. Existing positions still managed.")
 
 
@@ -150,7 +150,7 @@ def alert_daily_summary(
     worst_trade: Optional[tuple] = None,
     cash_pct: float = 0.0,
     health_score: int = 0,
-):
+) -> None:
     now     = datetime.now(_CDT)
     today   = now.strftime(f"%B {now.day}, %Y")
     outperf = day_return - vs_spy
@@ -185,18 +185,18 @@ def alert_daily_summary(
     _send("\n".join(lines))
 
 
-def alert_bot_offline():
+def alert_bot_offline() -> None:
     _send("🔴 <b>BOT OFFLINE</b> — Health check missed 2 consecutive pings")
 
 
-def alert_confidence_passed():
+def alert_confidence_passed() -> None:
     _send("🚀 <b>CONFIDENCE CHECK PASSED</b> — Bot is ready for real money!")
 
 
 def alert_weekly_report(
     week_return: float, vs_spy: float, win_rate: float,
     sharpe: float, drawdown: float, extra: str = "",
-):
+) -> None:
     _send(
         f"📈 <b>Weekly Performance Report</b>\n"
         f"   Week Return:  {week_return:+.2%}\n"
@@ -208,6 +208,6 @@ def alert_weekly_report(
     )
 
 
-def send(text: str):
+def send(text: str) -> None:
     """Public alias for _send — use when other modules need to send ad-hoc messages."""
     _send(text)

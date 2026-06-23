@@ -27,7 +27,7 @@ class XGBPredictor:
         else:
             logger.warning("No XGBoost model found — will need training.")
 
-    def train(self, df: pd.DataFrame):
+    def train(self, df: pd.DataFrame) -> None:
         try:
             from xgboost import XGBClassifier
         except ImportError:

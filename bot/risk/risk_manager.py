@@ -50,7 +50,7 @@ class RiskManager:
         self.portfolio_high      = portfolio_high
         self.halted = False
 
-    def reset_daily(self, portfolio_value: float):
+    def reset_daily(self, portfolio_value: float) -> None:
         # Only record start-of-day value on the FIRST cycle of the day.
         # Subsequent cycles must NOT overwrite it — otherwise the daily loss
         # gate compares against "5 minutes ago" instead of true start-of-day.
@@ -106,7 +106,7 @@ class RiskManager:
         return True
 
     # ── All-time-high drawdown gate ───────────────────────────────────────────
-    def update_portfolio_high(self, current_value: float):
+    def update_portfolio_high(self, current_value: float) -> None:
         if self.portfolio_high is None or current_value > self.portfolio_high:
             self.portfolio_high = current_value
 
@@ -193,7 +193,7 @@ class RiskManager:
             return False
         return True
 
-    def record_day_trade(self):
+    def record_day_trade(self) -> None:
         self.day_trade_log.append(date.today())
 
     # ── Sector concentration check ────────────────────────────────────────────
