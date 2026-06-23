@@ -13,6 +13,7 @@ from dashboard.design_system import (
     _confidence_bar, _metric_row, _progress_bar, _divider, _empty_state,
     _action_row, _section, _wrap, _stat_card, TH, TD, TD0,
 )
+import pandas as pd
 from dashboard.data import get_data
 from dashboard.charts import _get_sym_hist, _sym_perf, _sparkline, _FI_LABELS
 from bot.core.error_logger import safe_render

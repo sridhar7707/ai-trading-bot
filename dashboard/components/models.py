@@ -13,6 +13,7 @@ from dashboard.design_system import (
     _metric_row, _divider, _empty_state, _section, _wrap,
     _sym, _badge, _num, _pnl, _stat_card, TH, TD, TD0,
 )
+import pandas as pd
 from dashboard.data import get_data, _to_ct
 from bot.core.error_logger import safe_render
 import os
