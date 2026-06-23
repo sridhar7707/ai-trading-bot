@@ -55,6 +55,22 @@ def push_db() -> bool:
             commit_message="bot: sync trades.db",
         )
         logger.info(f"push_db: uploaded {db_path} ({size_kb:.0f} KB) → {repo_id}")
+        # Push model validation artifacts if present so the dashboard can display them
+        _root = Path(__file__).parent.parent.parent
+        for artifact in ("models/validation_report.json", "models/feature_importance.json"):
+            artifact_path = _root / artifact
+            if artifact_path.exists():
+                try:
+                    api.upload_file(
+                        path_or_fileobj=str(artifact_path),
+                        path_in_repo=artifact_path.name,
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        commit_message=f"bot: sync {artifact_path.name}",
+                    )
+                    logger.debug(f"push_db: synced {artifact_path.name}")
+                except Exception as _ae:
+                    logger.debug(f"push_db: artifact sync skipped ({artifact_path.name}): {_ae}")
         return True
     except Exception as exc:
         logger.error(f"push_db: upload failed — {exc}\n{traceback.format_exc()}")
