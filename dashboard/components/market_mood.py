@@ -184,10 +184,11 @@ def render_market_mood() -> str:
     try:
         data = _fetch_mood_data()
         if not data or data.get("spy") is None:
+            _unavail = f'<span style="color:{TEXT3}">Market data unavailable</span>'
             return (
                 f'<div class="nt nt-wrap">'
                 f'{_section("🌡", "Market Mood", "unavailable")}'
-                f'{_card(f"<span style=\'color:{TEXT3}\'>Market data unavailable</span>")}'
+                f'{_card(_unavail)}'
                 f'</div>'
             )
 
