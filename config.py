@@ -136,9 +136,10 @@ RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5
 # Regimes that allow new long entries. HIGH_VOLATILITY is included because the
 # risk manager still caps position size and the stop-loss hard-overrides any exit.
 ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING,HIGH_VOLATILITY").split(","))
-# Minimum 5-min bar volume relative to its 20-bar rolling average. 0.7 handles
-# quiet Mondays where volume runs ~30-40% below a typical mid-week session.
-MIN_VOLUME_RATIO      = float(os.getenv("MIN_VOLUME_RATIO", 0.7))
+# Minimum partial-day volume relative to 20-day average daily volume. Bot uses
+# daily OHLCV bars from yfinance; at 10 AM ET only ~30-40% of daily volume has
+# traded, so 0.7 never cleared until early afternoon. 0.3 = ~9:45-10:15 AM ET.
+MIN_VOLUME_RATIO      = float(os.getenv("MIN_VOLUME_RATIO", 0.3))
 
 # --- PDT rule ---
 PDT_MAX_DAY_TRADES = 3
