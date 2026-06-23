@@ -4,6 +4,7 @@ import datetime
 from loguru import logger
 from dashboard.design_system import (
     BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
+    PRIMARY,
     ACTION_BUY, ACTION_SELL, ACTION_TRIM, ACTION_HOLD, ACTION_WATCH,
     GAIN, LOSS, NEURAL,
     FONT_HERO, FONT_SECTION, FONT_VALUE, FONT_LABEL,
@@ -11,7 +12,7 @@ from dashboard.design_system import (
     CARD_PADDING, SECTION_GAP,
     _card, _label, _section_title, _action_badge, _symbol, _confidence_bar,
     _metric_row, _divider, _empty_state, _action_row, _section, _wrap,
-    _stat_card, _badge, TH, TD, TD0,
+    _sym, _stat_card, _badge, TH, TD, TD0,
 )
 from dashboard.data import get_data, _now_ct, _to_ct
 from dashboard.charts import _FI_LABELS

@@ -4,6 +4,7 @@ import datetime
 from loguru import logger
 from dashboard.design_system import (
     BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
+    PRIMARY,
     ACTION_BUY, ACTION_SELL, ACTION_TRIM, ACTION_HOLD, ACTION_WATCH,
     GAIN, LOSS, NEURAL,
     FONT_HERO, FONT_SECTION, FONT_VALUE, FONT_LABEL,

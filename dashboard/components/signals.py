@@ -11,7 +11,7 @@ from dashboard.design_system import (
     CARD_PADDING, SECTION_GAP,
     _card, _label, _section_title, _action_badge, _symbol,
     _metric_row, _divider, _empty_state, _section, _wrap,
-    _sym, _badge, _num, _pnl, TH, TD, TD0,
+    _sym, _badge, _num, _pnl, _stat_card, TH, TD, TD0,
 )
 import pandas as pd
 from dashboard.data import get_data, _to_ct

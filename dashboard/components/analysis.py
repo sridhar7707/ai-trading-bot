@@ -11,7 +11,7 @@ from dashboard.design_system import (
     CARD_PADDING, SECTION_GAP,
     _card, _label, _section_title, _action_badge, _symbol,
     _metric_row, _divider, _empty_state, _section, _wrap,
-    _stat_card, TH, TD, TD0,
+    _sym, _stat_card, TH, TD, TD0,
 )
 from dashboard.data import get_data
 from bot.core.error_logger import safe_render
