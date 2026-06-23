@@ -106,14 +106,18 @@ def _mood_label(spy: float) -> tuple[str, str]:
 
 
 def _sector_note(spy: float, sectors: dict[str, float]) -> str:
-    """Return a short note when one or two sectors are clear outliers vs SPY."""
+    """Return a short note distinguishing sectors dragging down vs holding up."""
     if not sectors:
         return ""
     threshold = max(abs(spy) * 1.5, 1.5)
-    outliers = [name for name, v in sectors.items() if abs(v - spy) >= threshold]
-    if not outliers:
-        return ""
-    return "Led by: " + ", ".join(outliers[:2])
+    dragging = [n for n, v in sectors.items() if v - spy <= -threshold]
+    holding  = [n for n, v in sectors.items() if v - spy >= threshold]
+    parts = []
+    if dragging:
+        parts.append("Dragging: " + ", ".join(dragging[:2]))
+    if holding:
+        parts.append("Holding up: " + ", ".join(holding[:2]))
+    return " · ".join(parts)
 
 
 def _stock_outliers(
@@ -129,6 +133,96 @@ def _stock_outliers(
         key=lambda x: x[1], reverse=True,
     )[:4]
     return laggards, leaders
+
+
+def _generate_reasons(
+    spy: float,
+    qqq: Optional[float],
+    iwm: Optional[float],
+    vix: Optional[float],
+    sectors: dict[str, float],
+    stocks: dict[str, float],
+) -> list[tuple[str, str]]:
+    """Return list of (icon, text) reason strings derived from the data."""
+    reasons: list[tuple[str, str]] = []
+
+    # 1. QQQ vs SPY divergence — pinpoints tech-specific vs broad move
+    if qqq is not None:
+        gap = qqq - spy
+        if gap < -1.5:
+            reasons.append(("📉", f"Tech-specific selling — QQQ lagging SPY by {abs(gap):.1f}%. "
+                            "Large-cap tech is driving the weakness, not the broader market."))
+        elif gap > 1.5:
+            reasons.append(("📈", f"Tech-led rally — QQQ ahead of SPY by {gap:.1f}%. "
+                            "Growth stocks are pulling the market up."))
+
+    # 2. IWM vs SPY — signals whether move is macro or large-cap specific
+    if iwm is not None:
+        gap = iwm - spy
+        if gap > 1.0:
+            reasons.append(("🏦", f"Small caps ({iwm:+.1f}%) outperforming large caps ({spy:+.1f}%) — "
+                            "selloff is concentrated in mega-cap stocks, not economy-wide."))
+        elif gap < -1.0:
+            reasons.append(("⚠️", f"Small caps ({iwm:+.1f}%) lagging large caps ({spy:+.1f}%) — "
+                            "broader risk-off; smaller companies more exposed to rate/credit pressure."))
+
+    # 3. Sector rotation pattern
+    if sectors:
+        worst_name = min(sectors, key=sectors.get)
+        best_name  = max(sectors, key=sectors.get)
+        worst_v    = sectors[worst_name]
+        best_v     = sectors[best_name]
+        spread     = best_v - worst_v
+
+        all_neg = all(v < 0 for v in sectors.values())
+        all_pos = all(v > 0 for v in sectors.values())
+
+        if all_neg:
+            reasons.append(("🔻", "All 8 sectors negative — broad-based selling with no safe sector."))
+        elif all_pos:
+            reasons.append(("🟢", "All 8 sectors positive — broad participation in the rally."))
+        elif spread > 3.0:
+            neg_sectors = [n for n, v in sectors.items() if v < -0.5]
+            pos_sectors = [n for n, v in sectors.items() if v > 0.5]
+            if neg_sectors and pos_sectors:
+                reasons.append(("🔄", f"Sector rotation — capital moving out of "
+                                f"{', '.join(neg_sectors[:2])} "
+                                f"into {', '.join(pos_sectors[:2])}. "
+                                f"Spread between best ({best_name} {best_v:+.1f}%) "
+                                f"and worst ({worst_name} {worst_v:+.1f}%) is {spread:.1f}pp."))
+
+    # 4. VIX interpretation
+    if vix is not None and vix > 0:
+        if vix > 30:
+            reasons.append(("🚨", f"VIX {vix:.1f} — extreme fear. Institutions are buying protection at elevated cost. "
+                            "Historically precedes sharp reversals."))
+        elif vix > 22:
+            reasons.append(("⚠️", f"VIX {vix:.1f} — elevated fear. Market participants pricing in meaningful uncertainty. "
+                            "Bot macro cap remains 1.0× until VIX exceeds 28."))
+        elif vix > 16:
+            reasons.append(("📊", f"VIX {vix:.1f} — moderate concern (calm baseline is <15). "
+                            "Some uncertainty priced in but not alarming."))
+        else:
+            reasons.append(("✅", f"VIX {vix:.1f} — low volatility. Markets calm; complacency risk if sustained."))
+
+    # 5. Semiconductor / AI cluster (AMD, NVDA, AVGO, CRM)
+    semis = {s: v for s, v in stocks.items() if s in ("AMD", "NVDA", "AVGO")}
+    semis_down = [(s, v) for s, v in semis.items() if v < spy - 2.0]
+    if len(semis_down) >= 2:
+        names = ", ".join(f"{s} ({v:+.1f}%)" for s, v in semis_down)
+        reasons.append(("🖥️", f"Semiconductor weakness: {names}. AI/chip stocks often move together "
+                        "on macro repricing, earnings expectations, or export news."))
+
+    # 6. Defensive stocks leading (WMT, JNJ, PG, ABBV, COST)
+    defensives = {s: v for s, v in stocks.items() if s in ("WMT", "JNJ", "PG", "ABBV", "COST")}
+    def_up = [(s, v) for s, v in defensives.items() if v > spy + 1.5]
+    if len(def_up) >= 2:
+        names = ", ".join(f"{s} ({v:+.1f}%)" for s, v in sorted(def_up, key=lambda x: -x[1])[:3])
+        reasons.append(("🛡️", f"Defensive stocks leading: {names}. "
+                        "Investors rotating into lower-risk, dividend-paying names — "
+                        "classic 'risk-off within equities' signal."))
+
+    return reasons[:5]  # cap at 5 reasons for readability
 
 
 # ── HTML builders ─────────────────────────────────────────────────────────────
@@ -202,6 +296,7 @@ def render_market_mood() -> str:
         label, mood_color = _mood_label(spy)
         sector_note       = _sector_note(spy, sectors)
         laggards, leaders = _stock_outliers(spy, stocks)
+        reasons           = _generate_reasons(spy, qqq, iwm, vix, sectors, stocks)
 
         # ── Mood badge ──────────────────────────────────────────────
         badge = (
@@ -269,7 +364,27 @@ def render_market_mood() -> str:
             f'</div>'
         ) if outlier_chips else ""
 
-        content = header_row + indices_row + sector_block + outlier_block
+        # ── Why section ─────────────────────────────────────────────
+        if reasons:
+            reason_rows = "".join(
+                f'<div style="display:flex;gap:10px;padding:5px 0;'
+                f'border-bottom:1px solid {BORDER}22;align-items:flex-start;">'
+                f'<span style="font-size:14px;flex-shrink:0;">{icon}</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};line-height:1.5;">{text}</span>'
+                f'</div>'
+                for icon, text in reasons
+            )
+            why_block = (
+                f'<div style="margin-top:12px;padding-top:10px;border-top:1px solid {BORDER};">'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT3};text-transform:uppercase;'
+                f'letter-spacing:1px;margin-bottom:8px;">Why</div>'
+                f'{reason_rows}'
+                f'</div>'
+            )
+        else:
+            why_block = ""
+
+        content = header_row + indices_row + sector_block + outlier_block + why_block
 
         _now = datetime.datetime.now()
         now_str = _now.strftime("%I:%M %p").lstrip("0")
