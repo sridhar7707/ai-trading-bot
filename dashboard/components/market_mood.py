@@ -187,7 +187,7 @@ def render_market_mood() -> str:
             return (
                 f'<div class="nt nt-wrap">'
                 f'{_section("🌡", "Market Mood", "unavailable")}'
-                f'{_card(f"<span style=color:{TEXT3}>Market data unavailable</span>")}'
+                f'{_card(f"<span style=\'color:{TEXT3}\'>Market data unavailable</span>")}'
                 f'</div>'
             )
 
@@ -270,7 +270,8 @@ def render_market_mood() -> str:
 
         content = header_row + indices_row + sector_block + outlier_block
 
-        now_str = datetime.datetime.now().strftime("%-I:%M %p")
+        _now = datetime.datetime.now()
+        now_str = _now.strftime("%I:%M %p").lstrip("0")
         return (
             f'<div class="nt nt-wrap">'
             f'{_section("🌡", "Market Mood", f"Today · {now_str} CDT · refreshes 5 min")}'
@@ -283,6 +284,6 @@ def render_market_mood() -> str:
         return (
             f'<div class="nt nt-wrap">'
             f'{_section("🌡", "Market Mood", "error")}'
-            f'{_card(f"<span style=color:{TEXT3}>Unable to load market mood</span>")}'
+            f'<p style="color:{TEXT3};padding:12px;">Unable to load market mood</p>'
             f'</div>'
         )
