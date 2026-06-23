@@ -80,7 +80,9 @@ from bot._main_runner import (
 )
 
 os.makedirs("logs", exist_ok=True)
-logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
+if not os.getenv("_BOT_LOG_HANDLER_ADDED"):
+    logger.add("logs/trading.log", rotation="1 week", retention="4 weeks", level="INFO")
+    os.environ["_BOT_LOG_HANDLER_ADDED"] = "1"
 
 _HALT_FILE        = "data/HALT_TRADING"
 _last_hf_sync: float = 0.0
