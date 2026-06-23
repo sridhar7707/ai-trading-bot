@@ -39,6 +39,8 @@ def push_db() -> bool:
     size_kb = Path(db_path).stat().st_size / 1024
     try:
         from huggingface_hub import HfApi
+        from huggingface_hub.utils import disable_progress_bars
+        disable_progress_bars()  # tqdm flushes sys.stderr which fails on Windows non-TTY
         api = HfApi(token=token)
         try:
             api.repo_info(repo_id=repo_id, repo_type="dataset")
