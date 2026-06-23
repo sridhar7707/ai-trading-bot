@@ -107,12 +107,14 @@ _init_db()
 
 
 def _sync_db() -> None:
-    if not HF_TOKEN or not HF_REPO_ID:
+    if not HF_REPO_ID:
         return
     try:
         from huggingface_hub import hf_hub_download
         cached = hf_hub_download(repo_id=HF_REPO_ID, filename="trades.db",
-                                  repo_type="dataset", token=HF_TOKEN, force_download=True)
+                                  repo_type="dataset",
+                                  token=HF_TOKEN or None,  # None = public repos work without token
+                                  force_download=True)
         shutil.copy(cached, DB_PATH)
     except Exception as e:
         msg = str(e).lower()
@@ -129,7 +131,7 @@ def _sync_db() -> None:
         try:
             from huggingface_hub import hf_hub_download
             cached = hf_hub_download(repo_id=HF_REPO_ID, filename=filename,
-                                      repo_type="dataset", token=HF_TOKEN, force_download=True)
+                                      repo_type="dataset", token=HF_TOKEN or None, force_download=True)
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             shutil.copy(cached, dest)
         except Exception as exc:
