@@ -18,7 +18,7 @@ def test_xgb_predictor_predict_returns_float_without_model():
     from bot.strategy.xgb_predictor import XGBPredictor
     predictor = XGBPredictor()
     predictor.model = None
-    result = predictor.predict(pd.Series({col: 0.0 for col in ["rsi", "macd_diff_pct"]}))
+    result = predictor.predict_proba(pd.Series({col: 0.0 for col in ["rsi", "macd_diff_pct"]}))
     assert isinstance(result, float)
 
 
@@ -28,7 +28,7 @@ def test_xgb_predictor_predict_returns_probability_range(feature_df):
     if predictor.model is None:
         pytest.skip("No XGBoost model on disk")
     row = feature_df.iloc[-1]
-    prob = predictor.predict(row)
+    prob = predictor.predict_proba(row)
     assert 0.0 <= prob <= 1.0
 
 

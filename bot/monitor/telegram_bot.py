@@ -9,7 +9,8 @@ _CDT = timezone(timedelta(hours=-5))
 
 def _now_cdt() -> str:
     """Current time as 'HH:MM AM/PM CDT' for Telegram messages."""
-    return datetime.now(_CDT).strftime("%-I:%M %p CDT")
+    t = datetime.now(_CDT)
+    return t.strftime("%I:%M %p CDT").lstrip("0")
 
 
 def _send(text: str):
