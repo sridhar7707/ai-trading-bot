@@ -112,9 +112,9 @@ class AnalyticsService:
             "start_date":       start,
         }
 
-        # Only cache when we got real data — a 0.0 SPY return is almost certainly
-        # a yfinance failure, not a flat market. Skip caching so next request retries.
-        if spy_ret != 0.0 or qqq_ret != 0.0:
+        # Only cache when BOTH fetches succeeded. Using 'or' would cache SPY=0.0
+        # whenever QQQ succeeds, locking in the wrong value for an hour.
+        if spy_ret != 0.0 and qqq_ret != 0.0:
             _benchmark_cache[period] = {k: v for k, v in result.items()
                                         if k not in ("portfolio_return", "vs_spy", "vs_qqq")}
             _benchmark_cache_ts = now
