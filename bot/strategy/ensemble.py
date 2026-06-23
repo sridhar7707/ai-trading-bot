@@ -62,7 +62,7 @@ def ensemble_signal(
     logger.debug(
         f"Ensemble score={score:.3f} "
         f"(xgb={xgb_prob:.2f}, lstm={lstm_prob:.2f}, "
-        f"sentiment={sentiment_score:.2f}, regime={regime}[gate-only], macro={macro_score:.2f})"
+        f"sentiment={sentiment_score:.2f}, regime={regime}, macro={macro_score:.2f})"
     )
 
     if score > STRONG_BUY_THRESHOLD:
