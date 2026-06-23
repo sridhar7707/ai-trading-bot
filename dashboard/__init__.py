@@ -4,6 +4,7 @@ from dashboard.components.overview import (
     render_dashboard_hero,
     render_portfolio_health_hero,
 )
+from dashboard.components.market_mood import render_market_mood
 from dashboard.components.ai_panel import (
     render_ai_recommendation,
     render_ai_committee,

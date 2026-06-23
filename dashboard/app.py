@@ -63,6 +63,7 @@ from dashboard.components.overview import (
     render_metrics, render_dashboard_hero, render_portfolio_health_hero,
     render_benchmark_comparison,
 )
+from dashboard.components.market_mood import render_market_mood
 from dashboard.components.ai_panel import (
     render_ai_recommendation, render_ai_committee, _WHY_MAP,
 )
@@ -164,6 +165,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         with gr.TabItem("📊 Dashboard"):
             # Exactly 5 panels — open dashboard and within 3s: health, actions, risk
             hero_out           = gr.HTML(value=render_portfolio_health_hero)
+            market_mood_out    = gr.HTML(value=render_market_mood)
             todays_actions_out = gr.HTML(value=render_todays_actions)
             ai_rec_out         = gr.HTML(value=render_ai_recommendation)
             risk_panel_out     = gr.HTML(value=render_risk_panel)
@@ -250,6 +252,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer = gr.Timer(value=60)
     # Dashboard (5 panels)
     timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
+    timer.tick(fn=render_market_mood,           outputs=market_mood_out)
     timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
     timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
