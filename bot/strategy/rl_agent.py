@@ -1,11 +1,19 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-import gymnasium as gym
-from gymnasium import spaces
-from stable_baselines3 import PPO
 from loguru import logger
 from config import MODEL_SAVE_PATH
+
+try:
+    import gymnasium as gym
+    from gymnasium import spaces
+    from stable_baselines3 import PPO
+    _GYM_AVAILABLE = True
+except ImportError:
+    gym = None  # type: ignore[assignment]
+    spaces = None  # type: ignore[assignment]
+    PPO = None  # type: ignore[assignment]
+    _GYM_AVAILABLE = False
 
 # RL hyperparameters — kept local since this agent is not in the active training pipeline
 _RL_TIMESTEPS    = 1_000_000
@@ -16,10 +24,15 @@ _RL_N_EPOCHS     = 10
 from bot.strategy.features import FEATURE_COLS
 
 
-class TradingEnv(gym.Env):
+_GymBase = gym.Env if _GYM_AVAILABLE else object
+
+
+class TradingEnv(_GymBase):
     """Custom Gym environment for single-symbol paper trading."""
 
     def __init__(self, df: pd.DataFrame, initial_balance: float = 1000.0):
+        if not _GYM_AVAILABLE:
+            raise ImportError("gymnasium and stable_baselines3 are required for TradingEnv")
         super().__init__()
         self.df = df.reset_index(drop=True)
         self.initial_balance = initial_balance

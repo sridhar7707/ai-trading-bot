@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+pytest.importorskip("gymnasium", reason="gymnasium not installed — RL tests skipped")
 from tests.conftest import make_ohlcv
 from bot.strategy.features import compute_features, FEATURE_COLS
 
