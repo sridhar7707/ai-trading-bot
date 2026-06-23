@@ -382,6 +382,21 @@ def run(
             _log_signal(con, symbol, xgb_prob, lstm_prob, sentiment,
                         macro_score, regime_name, action_str)
 
+            # Record per-symbol recommendation for every cycle so Rec History widget
+            # shows what the bot was thinking even when no trade fires.
+            try:
+                from database.services.analytics_service import analytics_service as _as
+                _ens_conf = (
+                    WEIGHTS["xgb"]       * xgb_prob +
+                    WEIGHTS["lstm"]      * lstm_prob +
+                    WEIGHTS["sentiment"] * ((sentiment + 1.0) / 2.0) +
+                    WEIGHTS["macro"]     * macro_score
+                )
+                _as.save_recommendation(symbol, action_str, float(_ens_conf),
+                                        price=current_price)
+            except Exception as _re:
+                logger.debug(f"save_recommendation({symbol}): {_re}")
+
             if _handle_exits(con, client, risk, symbol, positions, sell_order_syms,
                              current_price, current_atr, regime_name, portfolio_value,
                              action, pdt_exempt, _stop_fired_today):

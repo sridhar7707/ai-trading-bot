@@ -369,19 +369,6 @@ def _handle_entry(
                             portfolio_value, positions):
         return available_cash
 
-    try:
-        from database.services.analytics_service import analytics_service as _as
-        _buy_conf = (
-            WEIGHTS["xgb"]       * xgb_prob +
-            WEIGHTS["lstm"]      * lstm_prob +
-            WEIGHTS["sentiment"] * ((sentiment + 1.0) / 2.0) +
-            WEIGHTS["macro"]     * macro_score
-        )
-        _as.save_recommendation(symbol, "BUY", float(_buy_conf),
-                                price=current_price)
-    except Exception as _ae:
-        logger.debug(f"analytics save_recommendation skipped: {_ae}")
-
     result = client.buy(symbol, notional, limit_price=current_price)
     if result:
         filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
