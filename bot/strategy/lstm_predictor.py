@@ -44,11 +44,19 @@ class _LSTMModel(nn.Module):
         return self.fc(lstm_out[:, -1, :])
 
 
+# Val-loss above this threshold means the LSTM has converged to outputting logit≈0
+# (sigmoid(0)=0.5) and is providing no directional signal.
+LSTM_DEGRADED_VAL_LOSS = 0.58
+
+_VALIDATION_REPORT_PATH = Path("models/validation_report.json")
+
+
 class LSTMPredictor:
     def __init__(self):
         self.model:  _LSTMModel | None   = None
         self.scaler: StandardScaler | None = None
         self.val_loss: float = 1.0  # populated by train(); read by train_model.py for report
+        self.is_degraded: bool = False  # True when loaded model val_loss > LSTM_DEGRADED_VAL_LOSS
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._load()
 
@@ -74,6 +82,28 @@ class LSTMPredictor:
             except Exception as e:
                 logger.warning(f"Failed to load LSTM scaler: {e}")
                 self.scaler = None
+
+        self._check_degradation()
+
+    def _check_degradation(self) -> None:
+        """Read validation_report.json and flag the model as degraded if val_loss is near-random."""
+        if not _VALIDATION_REPORT_PATH.exists():
+            return
+        try:
+            import json
+            report = json.loads(_VALIDATION_REPORT_PATH.read_text())
+            saved_val_loss = float(report.get("lstm_val_loss", 0.0))
+            if saved_val_loss > LSTM_DEGRADED_VAL_LOSS:
+                self.is_degraded = True
+                self.val_loss = saved_val_loss
+                logger.warning(
+                    f"⚠ LSTM model is DEGRADED — val_loss={saved_val_loss:.4f} "
+                    f"(threshold={LSTM_DEGRADED_VAL_LOSS}). "
+                    f"Model outputs will be treated as indeterminate. "
+                    f"Run: python scripts/train_model.py"
+                )
+        except Exception as exc:
+            logger.debug(f"LSTM degradation check skipped: {exc}")
 
     def _make_sequences(
         self, df: pd.DataFrame, symbol_col: pd.Series | None = None

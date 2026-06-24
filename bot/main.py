@@ -143,6 +143,16 @@ def run(
     xgb        = _xgb        if _xgb        is not None else XGBPredictor()
     lstm       = _lstm       if _lstm       is not None else LSTMPredictor()
 
+    if lstm.is_degraded:
+        _tg_key = f"lstm_degraded_{today_str}"
+        if not os.path.exists(f"data/.{_tg_key}"):
+            tg._send(
+                f"⚠️ <b>LSTM model degraded</b> — val_loss={lstm.val_loss:.4f} (near-random).\n"
+                f"LSTM weight transferred to XGB for today's cycle.\n"
+                f"Run <code>python scripts/train_model.py</code> or trigger the weekly retrain workflow."
+            )
+            Path(f"data/.{_tg_key}").touch()
+
     real_portfolio_value, real_available_cash = client.get_account_summary()
     if real_portfolio_value <= 0:
         logger.error(
