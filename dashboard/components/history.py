@@ -195,13 +195,30 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
         with get_db_conn() as con:
             today  = datetime.date.today()
 
-            # Current (latest) portfolio value
-            cur_row = con.execute(
-                "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
+            # Live portfolio value = last known cash + open positions at current market price.
+            # This reflects intraday P&L rather than the stale value recorded at last trade time.
+            snap_row = con.execute(
+                "SELECT available_cash FROM portfolio_snapshots ORDER BY timestamp DESC LIMIT 1"
             ).fetchone()
-            if not cur_row:
-                return {k: None for k, _ in _PERF_PERIODS}
-            cur_val = float(cur_row[0])
+            d = get_data()
+            if snap_row and d["open_pos"] and d["prices"]:
+                cash = float(snap_row[0])
+                mkt_val = sum(
+                    d["open_pos"][s]["shares"] * d["prices"].get(s, 0)
+                    for s in d["open_pos"] if d["prices"].get(s, 0) > 0
+                )
+                cur_val = cash + mkt_val if mkt_val > 0 else None
+            else:
+                cur_val = None
+
+            # Fall back to last recorded trade portfolio_value if live calc unavailable
+            if not cur_val:
+                cur_row = con.execute(
+                    "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if not cur_row:
+                    return {k: None for k, _ in _PERF_PERIODS}
+                cur_val = float(cur_row[0])
 
             # First ever portfolio value
             first_row = con.execute(
@@ -275,36 +292,6 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
 
     s = stats.get(key)
 
-    # ── Strip: all period mini-badges (decorative, Radio handles selection) ────
-    strip_items = ""
-    for pk, _ in _PERF_PERIODS:
-        ps = stats.get(pk)
-        if ps and ps[0] > 0:
-            pct = (ps[1] - ps[0]) / ps[0] * 100
-            c   = GAIN if pct >= 0 else LOSS
-            strip_items += (
-                f'<div style="text-align:center;padding:8px 12px;background:{SURFACE};'
-                f'border:1px solid {"" + PRIMARY if pk == key else BORDER};'
-                f'border-radius:6px;min-width:60px;">'
-                f'<div style="font-size:{FONT_LABEL};color:{"" + PRIMARY if pk == key else TEXT2};'
-                f'font-weight:700;margin-bottom:4px;">{pk}</div>'
-                f'<div style="font-size:{FONT_LABEL};color:{c};font-weight:700;">{pct:+.1f}%</div>'
-                f'</div>'
-            )
-        else:
-            strip_items += (
-                f'<div style="text-align:center;padding:8px 12px;background:{BG};'
-                f'border:1px solid {BORDER};border-radius:6px;min-width:60px;opacity:0.4;">'
-                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};font-weight:700;margin-bottom:4px;">{pk}</div>'
-                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">—</div>'
-                f'</div>'
-            )
-
-    strip = (
-        f'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">'
-        f'{strip_items}</div>'
-    )
-
     # ── Detail card for selected period ───────────────────────────────────────
     if not s:
         detail = (
@@ -343,7 +330,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
             f'</div>'
         )
 
-    return f'<div class="nt nt-wrap">{strip}{detail}</div>'
+    return f'<div class="nt nt-wrap">{detail}</div>'
 
 
 # ── Render: recommendation history ───────────────────────────────────────────────
