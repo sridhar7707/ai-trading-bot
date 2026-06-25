@@ -17,6 +17,7 @@ from dashboard.design_system import (
 from dashboard.data import get_data, _now_ct, _to_ct
 from dashboard.charts import _FI_LABELS
 from dashboard.builders import build_committees_vm
+from dashboard.components.risk import _risk_level
 from bot.core.error_logger import safe_render, timed
 from bot.core.recommendation_engine import (
     get_portfolio_action, get_position_sizing,

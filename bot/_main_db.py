@@ -148,6 +148,21 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
             outcome_ts    TEXT
         )
     """)
+    # Per-symbol daily recommendation — synced to HF via trades.db so the
+    # dashboard Rec History widget actually has data (DuckDB is never pushed).
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS recommendations (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol                  TEXT NOT NULL,
+            prediction_date         TEXT NOT NULL,
+            recommendation          TEXT,
+            confidence              REAL,
+            prev_recommendation     TEXT,
+            price_at_recommendation REAL,
+            created_at              TEXT,
+            UNIQUE(symbol, prediction_date)
+        )
+    """)
     con.commit()
     return con
 
@@ -196,6 +211,42 @@ def _log_signal(
          round(macro_score, 4), round(ensemble_score, 4), ensemble_action, regime),
     )
     # Caller is responsible for committing — batch all 25 signal rows in one fsync
+
+
+def _log_recommendation(
+    con: sqlite3.Connection,
+    symbol: str,
+    recommendation: str,
+    confidence: float,
+    price: float | None = None,
+) -> None:
+    """Upsert today's recommendation for symbol into trades.db.
+
+    Writes to SQLite (not DuckDB) so push_db() picks it up and the dashboard
+    Rec History widget has data on HuggingFace Spaces.
+    """
+    today = date.today().isoformat()
+    now   = datetime.now(timezone.utc).isoformat()
+    prev_row = con.execute(
+        "SELECT recommendation FROM recommendations "
+        "WHERE symbol = ? ORDER BY prediction_date DESC LIMIT 1",
+        (symbol,),
+    ).fetchone()
+    prev = prev_row[0] if prev_row else None
+    con.execute(
+        """INSERT INTO recommendations
+               (symbol, prediction_date, recommendation, confidence,
+                prev_recommendation, price_at_recommendation, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(symbol, prediction_date) DO UPDATE SET
+               recommendation          = excluded.recommendation,
+               confidence              = excluded.confidence,
+               prev_recommendation     = excluded.prev_recommendation,
+               price_at_recommendation = excluded.price_at_recommendation,
+               created_at              = excluded.created_at""",
+        (symbol, today, recommendation, round(confidence, 4), prev, price, now),
+    )
+    # Caller commits after batching all symbols
 
 
 

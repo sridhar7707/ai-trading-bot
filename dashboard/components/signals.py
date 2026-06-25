@@ -14,7 +14,7 @@ from dashboard.design_system import (
     _sym, _badge, _num, _pnl, _stat_card, TH, TD, TD0,
 )
 import pandas as pd
-from dashboard.data import get_data, _to_ct
+from dashboard.data import get_data, safe_query, _to_ct
 from dashboard.charts import _FI_LABELS
 from bot.core.error_logger import safe_render
 _logger = logger
@@ -341,9 +341,69 @@ def render_timeline() -> str:
     d  = get_data()
     df = d["trades_df"]
     if df.empty:
-        empty = (f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:{FONT_VALUE};">'
-                 f'No decisions yet. The AI trades Mon–Fri 9:30am–4pm ET.</div>')
-        return f'<div class="nt nt-wrap">{_section("🕐","AI Decision Feed","live")}{_wrap(empty)}</div>'
+        # Fall back to signal_log BUY evaluations so the timeline is never blank
+        sig_rows = safe_query("""
+            SELECT timestamp, symbol, ensemble_score, xgb_prob, lstm_prob, regime
+            FROM signal_log
+            WHERE ensemble_action IN ('BUY', 'STRONG_BUY')
+            ORDER BY timestamp DESC
+            LIMIT 20
+        """, default=[])
+        if not sig_rows:
+            empty = (
+                f'<div style="color:{TEXT2};text-align:center;padding:40px;font-size:{FONT_VALUE};">'
+                f'Bot is live and scanning. Trade signals will appear here during market hours.</div>'
+            )
+            return f'<div class="nt nt-wrap">{_section("🕐","AI Decision Feed","live")}{_wrap(empty)}</div>'
+
+        items = ""
+        for i, (ts, sym, ens, xgb, lstm, regime) in enumerate(sig_rows):
+            ens   = float(ens or 0)
+            xgb   = float(xgb or 0)
+            lstm  = float(lstm or 0)
+            regime_lbl = str(regime or "").replace("_", " ").title()
+            ts_full  = _to_ct(ts)
+            time_lbl = ts_full[11:16] if len(ts_full) >= 16 else ts_full[:5]
+            tz_lbl   = ts_full[17:20] if len(ts_full) >= 20 else ""
+            date_lbl = ts_full[:10]
+            is_last  = (i == len(sig_rows) - 1)
+            c_c      = GAIN if ens >= 0.75 else (NEURAL if ens >= 0.60 else TEXT2)
+            line     = f'border-bottom:1px solid {BORDER};' if not is_last else ''
+            connector = (
+                f'<div style="width:1px;flex:1;background:{BORDER};min-height:14px;"></div>'
+                if not is_last else ''
+            )
+            detail = f"Confidence {ens*100:.0f}% · XGB {xgb*100:.0f}% · LSTM {lstm*100:.0f}%"
+            if regime_lbl:
+                detail += f" · {regime_lbl}"
+            items += (
+                f'<div style="display:flex;gap:14px;padding:10px 0;{line}">'
+                f'<div style="flex-shrink:0;width:58px;text-align:right;">'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT1};font-family:monospace;font-weight:600;">{time_lbl}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{tz_lbl}</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{date_lbl}</div>'
+                f'</div>'
+                f'<div style="display:flex;flex-direction:column;align-items:center;padding-top:4px;">'
+                f'<div style="width:10px;height:10px;border-radius:50%;background:{GAIN};flex-shrink:0;'
+                f'box-shadow:0 0 6px {GAIN}44;"></div>'
+                f'{connector}'
+                f'</div>'
+                f'<div style="flex:1;min-width:0;">'
+                f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">'
+                f'<span style="background:#0d3320;border:1px solid {GAIN};color:{GAIN};'
+                f'font-size:{FONT_LABEL};font-weight:700;padding:2px 7px;border-radius:4px;">MODEL SIGNAL</span>'
+                f'<span style="font-family:Courier New,monospace;font-weight:700;color:#00c853;">{sym}</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{c_c};font-weight:700;">{ens*100:.0f}%</span>'
+                f'</div>'
+                f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{detail}</div>'
+                f'</div></div>'
+            )
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("🕐","AI Decision Feed",f"last {len(sig_rows)} model signals · no trades executed yet")}'
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:0 16px;">'
+            f'{items}</div></div>'
+        )
 
     recent = df.tail(30).iloc[::-1]
     items  = ""

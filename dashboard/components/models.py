@@ -16,7 +16,10 @@ from dashboard.design_system import (
 )
 import pandas as pd
 from dashboard.data import get_data, _to_ct
+from dashboard.charts import _FI_LABELS
+from dashboard.components.ai_panel import _WHY_MAP
 from bot.core.error_logger import safe_render
+from bot.monitor._dashboard_html import _SELL_REASON
 import os
 _logger = logger
 
@@ -176,14 +179,65 @@ def render_institutional_metrics() -> str:
 
 # ── Render: AI decision feed (trade timeline) ────────────────────────────────
 # ── Render: investor view (plain-language Models tab) ────────────────────────
+def _model_quality_fallback() -> str:
+    """Return a model-quality card when no closed trades exist yet."""
+    import json as _json
+    vr_path = "models/validation_report.json"
+    if not os.path.exists(vr_path):
+        return (
+            f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:{FONT_VALUE};">'
+            f'Bot is live and scanning markets.<br>'
+            f'<span style="font-size:{FONT_LABEL};">Win Rate and P&L will appear after the first completed trade.</span>'
+            f'</div>'
+        )
+    try:
+        with open(vr_path) as fh:
+            r = _json.load(fh)
+    except Exception:
+        return (
+            f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:{FONT_VALUE};">'
+            f'Bot is live. Awaiting first trade to show performance metrics.</div>'
+        )
+    auc      = r.get("xgb_val_auc",  0.0)
+    val_loss = r.get("lstm_val_loss", 1.0)
+    auc_c    = GAIN if auc >= 0.60 else (NEURAL if auc >= 0.55 else LOSS)
+    loss_c   = GAIN if val_loss < 0.65 else (NEURAL if val_loss < 0.70 else LOSS)
+    generated = r.get("generated_at", "")[:10]
+
+    cards = (
+        f'<div class="nt-cards">'
+        + _stat_card("Win Rate",          "—",
+                TEXT2, TEXT2, "appears after first closed trade", 0.0)
+        + _stat_card("Avg Winning Trade", "—",
+                TEXT2, TEXT2, "appears after first closed trade", 0.06)
+        + _stat_card("XGB Model AUC",     f"{auc:.3f}",
+                TEXT2, auc_c, "≥0.60 = good · 0.50 = random", 0.12)
+        + _stat_card("LSTM Val Loss",     f"{val_loss:.4f}",
+                TEXT2, loss_c, "≤0.65 = well-trained · 0.69 = random", 0.18)
+        + f'</div>'
+    )
+    explain = (
+        f'<div style="background:{BG};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;margin-top:8px;">'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
+        f'<strong style="color:{TEXT1};">Models trained · awaiting first trade</strong><br>'
+        f'Models last trained <b>{generated}</b>. The AI is actively scanning all symbols each cycle. '
+        f'Win Rate and P&L metrics appear automatically after the first position closes.'
+        f'</div></div>'
+    )
+    return cards + explain
+
+
 @safe_render("Investor View")
 def render_investor_view() -> str:
     d  = get_data()
     df = d["trades_df"]
     if df.empty:
-        msg = (f'<div style="color:{TEXT2};text-align:center;padding:32px;font-size:{FONT_VALUE};">'
-               f'No trade history yet.</div>')
-        return f'<div class="nt nt-wrap">{_section("🤖","AI Performance","investor summary")}{_wrap(msg)}</div>'
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("🤖","AI Performance","investor summary")}'
+            f'{_model_quality_fallback()}'
+            f'</div>'
+        )
 
     sells  = df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")]
     n_s    = len(sells)

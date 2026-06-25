@@ -197,12 +197,18 @@ def build_actions_vm() -> list[ActionRow]:
     for sym in open_pos:
         rec   = get_portfolio_action(sym, d)
         sz    = get_position_sizing(sym, d)
+        action      = rec.get("action", "HOLD")
+        dol_display = sz.get("dollar_display", "—")
+        # Only show delta for actionable signals; HOLD/WATCH with a negative
+        # delta reads as a loss to users — suppress it.
+        if action in ("HOLD", "WATCH") and str(dol_display).startswith("-"):
+            dol_display = "—"
         recs.append({
             "symbol":       sym,
-            "action":       rec.get("action", "HOLD"),
+            "action":       action,
             "confidence":   rec.get("confidence", 0),
             "reason":       rec.get("reason", "—"),
-            "detail":       sz.get("dollar_display", "—"),
+            "detail":       dol_display,
             "urgency":      rec.get("urgency", "low"),
         })
     recs.sort(key=lambda r: (_ACTION_ORDER.get(r["action"], 9), -r["confidence"]))

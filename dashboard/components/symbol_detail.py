@@ -15,8 +15,9 @@ from dashboard.design_system import (
     _action_row, _section, _wrap, _sym, _badge, _stat_card, TH, TD, TD0,
 )
 import pandas as pd
-from dashboard.data import get_data
+from dashboard.data import get_data, _to_ct
 from dashboard.charts import _get_sym_hist, _sym_perf, _sparkline, _FI_LABELS
+from dashboard.components.ai_panel import _WHY_MAP
 from bot.core.error_logger import safe_render
 from bot.core.recommendation_engine import (
     get_portfolio_action, get_position_sizing, get_sell_analysis,

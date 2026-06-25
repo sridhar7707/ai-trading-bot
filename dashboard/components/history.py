@@ -13,7 +13,7 @@ from dashboard.design_system import (
     _confidence_bar, _metric_row, _divider, _empty_state, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
-from dashboard.data import get_data, get_db_conn, DB_PATH
+from dashboard.data import get_data, get_db_conn, safe_query, DB_PATH
 from bot.core.error_logger import safe_render, timed
 import os
 _logger = logger
@@ -336,32 +336,37 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
 # ── Render: recommendation history ───────────────────────────────────────────────
 @safe_render("Recommendation History")
 def render_recommendation_history() -> str:
-    from database.repositories.analytics_repository import AnalyticsRepository
-    repo = AnalyticsRepository()
-    df = repo.load_recommendation_history(days=14, changes_only=False)
+    # Read from trades.db (SQLite) — pushed to HF by push_db().
+    # DuckDB analytics.duckdb is never pushed so AnalyticsRepository always shows empty.
+    recs = safe_query("""
+        SELECT symbol, prediction_date, recommendation, confidence, prev_recommendation
+        FROM recommendations
+        WHERE prediction_date >= date('now', '-14 days')
+        ORDER BY prediction_date DESC, symbol ASC
+        LIMIT 200
+    """, default=[])
 
-    if df.empty:
+    if not recs:
         return (
             f'<div class="nt nt-wrap">'
             f'{_section("📋", "Rec History", "")}'
-            f'{_card(_empty_state("📋", "No history yet", "Recommendations are recorded daily. Check back after market hours."))}'
+            f'{_card(_empty_state("📋", "No history yet", "Recommendations are recorded every cycle. Check back after the next bot run."))}'
             f'</div>'
         )
 
-    n        = len(df)
-    n_changes = int(df[
-        df["prev_recommendation"].notna() &
-        (df["prev_recommendation"] != df["recommendation"])
-    ].shape[0])
+    n         = len(recs)
+    n_changes = sum(
+        1 for r in recs
+        if r[4] and r[4] != r[2]  # prev_recommendation exists and differs
+    )
     note = f"{n} records · {n_changes} changes" if n_changes else f"{n} records"
 
     rows = ""
-    for i, row in df.iterrows():
-        is_last = (i == df.index[-1])
+    for i, (symbol, pred_date, rec, conf, prev) in enumerate(recs):
+        is_last = (i == n - 1)
         td      = TD0 if is_last else TD
-        rec     = str(row["recommendation"] or "—")
-        prev    = row.get("prev_recommendation")
-        conf    = float(row["confidence"] or 0)
+        rec     = str(rec or "—")
+        conf    = float(conf or 0)
         changed = bool(prev and prev != rec)
 
         change_html = ""
@@ -371,24 +376,14 @@ def render_recommendation_history() -> str:
                 f'was {prev}</span>'
             )
 
-        ret = row.get("actual_return")
-        if ret is not None and not (isinstance(ret, float) and ret != ret):
-            ret_color = ACTION_BUY if float(ret) >= 0 else ACTION_SELL
-            ret_html  = (
-                f'<span style="color:{ret_color};font-weight:{WEIGHT_BOLD};">'
-                f'{float(ret):+.1f}%</span>'
-            )
-        else:
-            ret_html = "—"
-
-        date_str = str(row["prediction_date"])[:10]
+        date_str = str(pred_date)[:10]
         rows += (
             f'<tr>'
-            f'<td {td}>{_symbol(str(row["symbol"]))}</td>'
+            f'<td {td}>{_symbol(str(symbol))}</td>'
             f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{date_str}</span></td>'
             f'<td {td}>{_action_badge(rec)}{change_html}</td>'
             f'<td {td}>{_confidence_bar(conf, show_label=False)}</td>'
-            f'<td {td}>{ret_html}</td>'
+            f'<td {td}>—</td>'
             f'</tr>'
         )
 

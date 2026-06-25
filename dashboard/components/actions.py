@@ -57,7 +57,7 @@ def render_todays_actions() -> str:
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th><th {TH}>Action</th>'
-        f'<th {TH}>Conf.</th><th {TH}>Reason</th><th {TH}>Sizing</th>'
+        f'<th {TH}>Conf.</th><th {TH}>Reason</th><th {TH}>Adjust</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
     return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions",note)}{table}</div>'

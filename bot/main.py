@@ -47,7 +47,7 @@ import bot.monitor.telegram_bot as tg
 from bot._main_signals import record_signal, update_signal_outcomes
 from bot._main_db import (
     _anchor_daily_start, _enable_wal_mode,
-    _get_macro_from_db, _load_risk_state, _log_signal, _record_snapshot,
+    _get_macro_from_db, _load_risk_state, _log_recommendation, _log_signal, _record_snapshot,
     _save_risk_state, _week_key, log_trade,
     init_db as _init_db_core,
 )
@@ -296,8 +296,8 @@ def run(
                 _sym_df = _sym_df[["open", "high", "low", "close", "volume"]].dropna()
                 if not _sym_df.empty:
                     _yf_batch[_sym] = _sym_df
-            except Exception:
-                pass
+            except Exception as _yfe:
+                logger.debug(f"yfinance batch skip {_sym}: {_yfe}")
         loaded, total = len(_yf_batch), len(_batch_syms)
         logger.info(f"yfinance batch: {loaded}/{total} symbols loaded")
         if "SPY" not in _yf_batch:
@@ -415,6 +415,8 @@ def run(
                 )
                 _as.save_recommendation(symbol, action_str, float(_ens_conf),
                                         price=current_price)
+                _log_recommendation(con, symbol, action_str, float(_ens_conf),
+                                    price=current_price)
             except Exception as _re:
                 logger.debug(f"save_recommendation({symbol}): {_re}")
 
