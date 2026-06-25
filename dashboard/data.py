@@ -263,6 +263,21 @@ def _refresh_cache() -> dict:
             today_buys = buys_df.tail(10)
         result["today_buy_signals"] = today_buys.iloc[::-1].to_dict("records")
 
+    # If sentiment is still 0.0 (trades had no news data), pull from signal_log
+    # so the Market Intelligence card shows current-cycle FinBERT scores.
+    if result["sentiment_avg"] == 0.0:
+        try:
+            with get_db_conn() as _con:
+                sl_rows = _con.execute(
+                    "SELECT sentiment_score FROM signal_log "
+                    "WHERE sentiment_score != 0 "
+                    "ORDER BY id DESC LIMIT 50"
+                ).fetchall()
+            if sl_rows:
+                result["sentiment_avg"] = float(sum(r[0] for r in sl_rows) / len(sl_rows))
+        except Exception:
+            pass
+
     return result
 
 

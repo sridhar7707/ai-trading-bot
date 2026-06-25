@@ -69,10 +69,10 @@ def render_market_intelligence() -> str:
 
     conf_color = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
 
-    if sent == 0: sent_label, sent_color = "No data", TEXT2
-    elif sent > 0.05: sent_label, sent_color = "Positive", GAIN
+    if sent > 0.05:    sent_label, sent_color = "Positive", GAIN
     elif sent < -0.05: sent_label, sent_color = "Negative", LOSS
-    else: sent_label, sent_color = "Neutral", NEURAL
+    elif sent != 0.0:  sent_label, sent_color = "Neutral",  NEURAL
+    else:              sent_label, sent_color = "No data",   TEXT2
 
     cards = (
         f'<div class="nt-cards">'
