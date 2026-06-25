@@ -73,6 +73,34 @@ div.tabs > div.tab-nav > button.selected,
   padding: 16px 0 0 0 !important;
 }}
 
+/* ── Symbol selector dropdown — restore visibility stripped by .wrap override  */
+.sym-selector .wrap,
+.sym-selector > .wrap,
+.sym-selector .block {{
+  background: {SURFACE} !important;
+  border: 1px solid {BORDER} !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}}
+.sym-selector .wrap:focus-within,
+.sym-selector > .wrap:focus-within {{
+  border-color: {PRIMARY} !important;
+}}
+.sym-selector label {{
+  color: {TEXT2} !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.8px !important;
+  margin-bottom: 4px !important;
+}}
+.sym-selector input, .sym-selector .selected-item {{
+  color: {TEXT1} !important;
+  font-family: "Courier New", monospace !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+}}
+
 /* ── Portfolio performance period tabs ────────────────────────────────────── */
 .perf-tabs > .wrap {{ flex-wrap:wrap !important; gap:6px !important; }}
 .perf-tabs label {{

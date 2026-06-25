@@ -177,8 +177,9 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             _initial_sym     = _initial_choices[0] if _initial_choices else None
             symbol_selector = gr.Dropdown(
                 choices=_initial_choices,
-                label="🔍 Symbol Detail — select a ticker to drill down",
+                label="🔍 Symbol Detail",
                 value=_initial_sym, container=True,
+                elem_classes=["sym-selector"],
             )
             symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
 
