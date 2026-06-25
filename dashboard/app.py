@@ -202,6 +202,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                 label="", container=False,
                 elem_classes=["perf-tabs"],
             )
+            perf_key_state = gr.State(value="1M")   # tracks period key independent of label
             perf_out    = gr.HTML(value=render_portfolio_performance)
             with gr.Row():
                 with gr.Column(scale=65):
@@ -241,11 +242,14 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         outputs=[investor_out, dev_col],
     )
 
-    # Portfolio performance period selection
+    # Portfolio performance period selection — also store the bare key in state
+    def _on_perf_change(period_label):
+        key = (period_label or "1M").split()[0]
+        return render_portfolio_performance(period_label), key
     perf_tabs.change(
-        fn=render_portfolio_performance,
+        fn=_on_perf_change,
         inputs=[perf_tabs],
-        outputs=[perf_out],
+        outputs=[perf_out, perf_key_state],
     )
 
     # Symbol drilldown
@@ -278,13 +282,16 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_watchlist,             outputs=watchlist_out)
     # Signal History tab
     timer.tick(fn=render_signal_history, outputs=signal_history_out)
-    # Portfolio tab — sync perf_tabs choices AND value together to avoid stale selection
-    def _refresh_perf_tabs(current_period):
+    # Portfolio tab — use key state (not Radio value) to avoid stale-label validation errors
+    def _refresh_perf_tabs(current_key):
         choices = _perf_choices()
-        val = current_period if current_period in choices else (choices[2] if len(choices) > 2 else choices[0] if choices else None)
-        return gr.update(choices=choices, value=val)
-    timer.tick(fn=_refresh_perf_tabs, inputs=[perf_tabs], outputs=perf_tabs)
-    timer.tick(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=perf_out)
+        matched = next((c for c in choices if c.split()[0] == current_key), None)
+        val     = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
+        new_key = val.split()[0] if val else current_key
+        html    = render_portfolio_performance(val or "1M  —")
+        return gr.update(choices=choices, value=val), new_key, html
+    timer.tick(fn=_refresh_perf_tabs, inputs=[perf_key_state],
+               outputs=[perf_tabs, perf_key_state, perf_out])
     timer.tick(fn=render_equity_chart,          outputs=eq_plot)
     timer.tick(fn=render_allocation_chart,      outputs=alloc_plot)
     timer.tick(fn=render_pnl_chart,             outputs=pnl_plot)
