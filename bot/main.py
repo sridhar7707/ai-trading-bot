@@ -39,10 +39,12 @@ from bot.strategy.sentiment import batch_sentiment_scores
 from bot.strategy.macro import _get_cached as _get_macro_cached
 from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from bot.strategy.ensemble import ensemble_signal, action_to_int, BUY_FRACTION, WEIGHTS
+from bot.strategy.signal_gate import check_signal_gate
 from bot.risk.risk_manager import RiskManager, _business_days_between
 import bot.monitor.telegram_bot as tg
 
 # Sub-module imports (helpers extracted to keep this file under 500 lines)
+from bot._main_signals import record_signal, update_signal_outcomes
 from bot._main_db import (
     _anchor_daily_start, _enable_wal_mode,
     _get_macro_from_db, _load_risk_state, _log_signal, _record_snapshot,
@@ -416,6 +418,26 @@ def run(
             except Exception as _re:
                 logger.debug(f"save_recommendation({symbol}): {_re}")
 
+            # ── High-confidence signal gate (user-facing signals) ─────────────
+            # Fires independently of the bot's position/cash gates so users get
+            # the signal even when the bot itself can't trade (e.g. no cash).
+            if action == 1 and not macro_halt and regime_name in ENTRY_REGIMES:
+                _sg_passed, _sg_meta = check_signal_gate(
+                    symbol, xgb_prob, lstm_prob, macro_score,
+                    bars_daily, volume_ratio, vs_spy_today,
+                )
+                if _sg_passed:
+                    _ens_score = (
+                        WEIGHTS["xgb"]       * xgb_prob +
+                        WEIGHTS["lstm"]      * lstm_prob +
+                        WEIGHTS["sentiment"] * ((sentiment + 1.0) / 2.0) +
+                        WEIGHTS["macro"]     * macro_score
+                    )
+                    record_signal(
+                        con, symbol, _sg_meta,
+                        xgb_prob, lstm_prob, _ens_score, macro_score,
+                    )
+
             if _handle_exits(con, client, risk, symbol, positions, sell_order_syms,
                              current_price, current_atr, regime_name, portfolio_value,
                              action, pdt_exempt, _stop_fired_today):
@@ -439,6 +461,15 @@ def run(
             logger.error(f"Error processing {symbol}: {e}")
 
     con.commit()  # flush all batched signal_log inserts in one fsync (was 25 individual commits)
+
+    # Resolve pending signals against latest prices (target/stop hit checks)
+    try:
+        _live_prices = {sym: float(bars_map[sym][0].iloc[-1]["close"])
+                        for sym in active_symbols
+                        if sym in bars_map and not bars_map[sym][0].empty}
+        update_signal_outcomes(con, _live_prices)
+    except Exception as _se:
+        logger.debug(f"update_signal_outcomes: {_se}")
 
     # End-of-cycle DB summary — makes "why is the dashboard empty?" obvious from the logs
     try:

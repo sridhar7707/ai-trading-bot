@@ -128,6 +128,26 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
             sector TEXT
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS signal_history (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp     TEXT NOT NULL,
+            symbol        TEXT NOT NULL,
+            entry_price   REAL,
+            stop_price    REAL,
+            target_price  REAL,
+            rr_ratio      REAL,
+            setup_type    TEXT,
+            xgb_prob      REAL,
+            lstm_prob     REAL,
+            ensemble_score REAL,
+            macro_score   REAL,
+            outcome       TEXT DEFAULT 'pending',
+            outcome_price REAL,
+            outcome_pct   REAL,
+            outcome_ts    TEXT
+        )
+    """)
     con.commit()
     return con
 

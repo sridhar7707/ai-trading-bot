@@ -84,6 +84,7 @@ from dashboard.components.history import (
     render_whats_changed, render_portfolio_performance, _perf_choices,
     render_recommendation_history,
 )
+from dashboard.components.signal_history import render_signal_history
 from dashboard.components.actions import (
     render_todays_actions, render_portfolio_actions,
 )
@@ -188,6 +189,9 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                 with gr.Column(scale=45):
                     watchlist_out = gr.HTML(value=render_watchlist)
 
+        with gr.TabItem("🎯 Signal History"):
+            signal_history_out = gr.HTML(value=render_signal_history)
+
         with gr.TabItem("💼 Portfolio"):
             perf_tabs   = gr.Radio(
                 choices=_perf_choices(),
@@ -264,6 +268,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_signals_tab,           outputs=signals_out)
     timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
     timer.tick(fn=render_watchlist,             outputs=watchlist_out)
+    # Signal History tab
+    timer.tick(fn=render_signal_history, outputs=signal_history_out)
     # Portfolio tab
     timer.tick(fn=lambda: gr.update(choices=_perf_choices()), outputs=perf_tabs)
     timer.tick(fn=render_portfolio_performance, outputs=perf_out)
