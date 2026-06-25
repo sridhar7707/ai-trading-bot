@@ -1,6 +1,15 @@
 from unittest.mock import MagicMock, patch
 import pytest
+import bot.strategy.sentiment as _sentiment_mod
 from bot.strategy.sentiment import get_news_headlines, batch_sentiment_scores
+
+
+@pytest.fixture(autouse=True)
+def _clear_news_cache():
+    """Clear the per-day NewsAPI cache before each test so tests don't bleed into each other."""
+    _sentiment_mod._NEWS_DAY_CACHE.clear()
+    yield
+    _sentiment_mod._NEWS_DAY_CACHE.clear()
 
 
 def _mock_resp(status_code: int, payload=None):
