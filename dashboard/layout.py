@@ -73,32 +73,80 @@ div.tabs > div.tab-nav > button.selected,
   padding: 16px 0 0 0 !important;
 }}
 
-/* ── Symbol selector dropdown — restore visibility stripped by .wrap override  */
-.sym-selector .wrap,
-.sym-selector > .wrap,
-.sym-selector .block {{
-  background: {SURFACE} !important;
-  border: 1px solid {BORDER} !important;
-  border-radius: 6px !important;
-  box-shadow: none !important;
-}}
-.sym-selector .wrap:focus-within,
-.sym-selector > .wrap:focus-within {{
-  border-color: {PRIMARY} !important;
-}}
-.sym-selector label {{
+/* ── Symbol selector dropdown ─────────────────────────────────────────────── */
+/* Outer container label */
+.sym-selector > label,
+.sym-selector span.label-wrap,
+.sym-selector .label-wrap span {{
   color: {TEXT2} !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.8px !important;
-  margin-bottom: 4px !important;
 }}
-.sym-selector input, .sym-selector .selected-item {{
+/* The visible input box */
+.sym-selector .wrap,
+.sym-selector > .wrap {{
+  background: {SURFACE2} !important;
+  border: 1px solid {BORDER} !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}}
+.sym-selector .wrap:focus-within,
+.sym-selector > .wrap:focus-within {{
+  border-color: {PRIMARY} !important;
+  outline: none !important;
+}}
+/* Text inside the input */
+.sym-selector input,
+.sym-selector input[type="text"],
+.sym-selector .wrap input {{
+  background: transparent !important;
   color: {TEXT1} !important;
   font-family: "Courier New", monospace !important;
   font-weight: 700 !important;
   font-size: 14px !important;
+  caret-color: {PRIMARY} !important;
+  padding: 10px 12px !important;
+}}
+/* The currently-selected token chip shown when value is set */
+.sym-selector .token,
+.sym-selector .token span,
+.sym-selector .secondary-wrap .token {{
+  background: {SURFACE2} !important;
+  color: {TEXT1} !important;
+  font-family: "Courier New", monospace !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  border: none !important;
+}}
+/* Dropdown list popup */
+.sym-selector ul.options,
+.sym-selector .options {{
+  background: {SURFACE2} !important;
+  border: 1px solid {BORDER} !important;
+  border-radius: 6px !important;
+  margin-top: 4px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+}}
+/* Each list item */
+.sym-selector ul.options li,
+.sym-selector .options li {{
+  color: {TEXT1} !important;
+  font-family: "Courier New", monospace !important;
+  font-weight: 600 !important;
+  font-size: 13px !important;
+  padding: 9px 14px !important;
+  background: transparent !important;
+  cursor: pointer !important;
+}}
+.sym-selector ul.options li:hover,
+.sym-selector .options li:hover,
+.sym-selector ul.options li.selected,
+.sym-selector .options li.selected {{
+  background: {BORDER} !important;
+  color: {PRIMARY} !important;
 }}
 
 /* ── Portfolio performance period tabs ────────────────────────────────────── */
