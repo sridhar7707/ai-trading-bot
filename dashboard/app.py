@@ -173,12 +173,14 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             benchmark_out      = gr.HTML(value=render_benchmark_comparison)
             whats_changed_out  = gr.HTML(value=render_whats_changed)
             # ── Symbol drilldown ──────────────────────────────────────────────
+            _initial_choices = _get_symbol_choices()
+            _initial_sym     = _initial_choices[0] if _initial_choices else None
             symbol_selector = gr.Dropdown(
-                choices=_get_symbol_choices(),
+                choices=_initial_choices,
                 label="🔍 Symbol Detail — select a ticker to drill down",
-                value=None, container=True,
+                value=_initial_sym, container=True,
             )
-            symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(None))
+            symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
 
         with gr.TabItem("⚡ Signals"):
             timeline_out  = gr.HTML(value=render_timeline)
@@ -262,7 +264,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
     timer.tick(fn=render_benchmark_comparison,  outputs=benchmark_out)
     timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
-    timer.tick(fn=lambda: gr.update(choices=_get_symbol_choices()), outputs=symbol_selector)
+    def _refresh_symbol_choices(current_sel):
+        choices = _get_symbol_choices()
+        val = current_sel if current_sel in choices else (choices[0] if choices else None)
+        return gr.update(choices=choices, value=val)
+    timer.tick(fn=_refresh_symbol_choices, inputs=[symbol_selector], outputs=symbol_selector)
     timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
     # Signals tab
     timer.tick(fn=render_timeline,              outputs=timeline_out)
