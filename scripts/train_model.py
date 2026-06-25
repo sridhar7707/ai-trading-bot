@@ -99,6 +99,21 @@ def main():
         f"(xgb_auc={report['xgb_val_auc']}, lstm_loss={report['lstm_val_loss']})"
     )
 
+    # ── Runtime version snapshot ──────────────────────────────────────────────
+    # Saved alongside model weights so the bot can detect training/inference
+    # library mismatches at startup before they silently corrupt predictions.
+    import sklearn as _sk
+    import torch as _torch
+    import xgboost as _xgb_mod
+    runtime_versions = {
+        "scikit-learn": _sk.__version__,
+        "torch":        _torch.__version__,
+        "xgboost":      _xgb_mod.__version__,
+    }
+    with open("models/runtime_versions.json", "w") as fh:
+        json.dump(runtime_versions, fh, indent=2)
+    logger.info(f"Runtime versions → models/runtime_versions.json: {runtime_versions}")
+
     # ── Feature importance ────────────────────────────────────────────────────
     # XGBClassifier.feature_importances_ = normalised gain — same scale across runs.
     # Saved separately so the dashboard can render the explainability chart without
@@ -112,12 +127,13 @@ def main():
     # ── Artifact verification ─────────────────────────────────────────────────
     from pathlib import Path
     required = {
-        "XGBoost model":    Path("models/saved/xgb_predictor.pkl"),
-        "LSTM model":       Path("models/saved/lstm_predictor.pt"),
-        "LSTM scaler":      Path("models/saved/lstm_scaler.pkl"),
-        "Regime model":     Path("models/saved/regime_classifier.pkl"),
-        "Validation report":Path("models/validation_report.json"),
-        "Feature importance":Path("models/feature_importance.json"),
+        "XGBoost model":      Path("models/saved/xgb_predictor.pkl"),
+        "LSTM model":         Path("models/saved/lstm_predictor.pt"),
+        "LSTM scaler":        Path("models/saved/lstm_scaler.pkl"),
+        "Regime model":       Path("models/saved/regime_classifier.pkl"),
+        "Validation report":  Path("models/validation_report.json"),
+        "Feature importance": Path("models/feature_importance.json"),
+        "Runtime versions":   Path("models/runtime_versions.json"),
     }
     missing = [name for name, path in required.items() if not path.exists()]
     if missing:

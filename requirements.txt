@@ -1,8 +1,12 @@
 alpaca-trade-api>=3.0.0
 aiohttp>=3.9.0,<3.10.0
-torch>=2.0.0
+# ML library pins — must match the training environment.
+# After changing any of these, trigger retrain.yml to rebuild models.
+# Versions verified against ubuntu-latest GitHub Actions runner 2026-06-25.
+torch>=2.12.0,<3.0
+scikit-learn>=1.9.0,<2.0
+xgboost>=3.0.0,<4.0
 ta>=0.11.0
-scikit-learn>=1.3.0
 huggingface-hub>=0.20.0
 gradio>=4.0.0
 python-telegram-bot>=20.0
@@ -18,9 +22,6 @@ requests>=2.31.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 joblib>=1.3.0
-
-# Phase 6 — XGBoost predictor
-xgboost>=2.0.0
 
 # Phase 7 — FinBERT sentiment
 transformers>=4.35.0

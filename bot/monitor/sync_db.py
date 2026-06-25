@@ -57,7 +57,8 @@ def push_db() -> bool:
         logger.info(f"push_db: uploaded {db_path} ({size_kb:.0f} KB) → {repo_id}")
         # Push model validation artifacts if present so the dashboard can display them
         _root = Path(__file__).parent.parent.parent
-        for artifact in ("models/validation_report.json", "models/feature_importance.json"):
+        for artifact in ("models/validation_report.json", "models/feature_importance.json",
+                         "models/runtime_versions.json"):
             artifact_path = _root / artifact
             if artifact_path.exists():
                 try:

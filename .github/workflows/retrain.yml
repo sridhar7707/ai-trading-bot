@@ -41,6 +41,49 @@ jobs:
         continue-on-error: true   # informational during paper trading — don't block model push
         run: python scripts/backtest_gate.py
 
+      - name: Model quality alert
+        if: always()
+        continue-on-error: true
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python -c "
+          import json, os, sys
+          from pathlib import Path
+          report = Path('models/validation_report.json')
+          if not report.exists():
+              print('No validation report found — skipping quality alert.')
+              sys.exit(0)
+          r = json.loads(report.read_text())
+          xgb_auc   = r.get('xgb_val_auc', 0)
+          lstm_loss  = r.get('lstm_val_loss', 1)
+          cutoff     = r.get('train_cutoff', '?')
+          issues = []
+          if lstm_loss  > 0.58: issues.append(f'LSTM val_loss={lstm_loss:.4f} (indeterminate — >0.58)')
+          if xgb_auc    < 0.52: issues.append(f'XGB  val_auc={xgb_auc:.4f}  (near coin-flip — <0.52)')
+          tok  = os.environ.get('TELEGRAM_TOKEN', '')
+          chat = os.environ.get('TELEGRAM_CHAT_ID', '')
+          if not tok or not chat:
+              print('Telegram not configured — printing quality report to log only.')
+              if issues:
+                  print('MODEL QUALITY ISSUES: ' + ', '.join(issues))
+              else:
+                  print(f'Models OK — xgb_auc={xgb_auc:.4f} lstm_loss={lstm_loss:.4f} cutoff={cutoff}')
+              sys.exit(0)
+          import urllib.request, urllib.parse
+          if issues:
+              body = '⚠️ <b>Retrain complete — model quality issues</b>\n' + '\n'.join(f'• {i}' for i in issues)
+              body += f'\nTrain cutoff: {cutoff}\nLSTM weight will be bypassed until fixed.'
+          else:
+              body = (f'✅ <b>Weekly retrain complete</b>\n'
+                      f'XGB AUC: {xgb_auc:.4f}  LSTM loss: {lstm_loss:.4f}\n'
+                      f'Train cutoff: {cutoff}')
+          data = urllib.parse.urlencode({'chat_id': chat, 'parse_mode': 'HTML', 'text': body}).encode()
+          urllib.request.urlopen(f'https://api.telegram.org/bot{tok}/sendMessage', data)
+          print('Quality alert sent.')
+          "
+
       - name: Push model to HuggingFace
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}

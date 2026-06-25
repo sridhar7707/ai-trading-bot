@@ -11,25 +11,36 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Dispatch trade.yml (weekdays only)
+      - name: Dispatch trade.yml (weekdays + market hours only)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Check if it's a weekday (1=Mon … 5=Fri in UTC)
           DAY=$(date -u +%u)
-          if [ "$DAY" -ge 1 ] && [ "$DAY" -le 5 ]; then
-            echo "Weekday — dispatching trade.yml"
-            curl -s -X POST \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/trade.yml/dispatches" \
-              -d '{"ref":"main"}' \
-              && echo "trade.yml dispatch triggered." \
-              || echo "Dispatch failed — trade.yml will rely on its own cron."
-          else
+          if [ "$DAY" -lt 1 ] || [ "$DAY" -gt 5 ]; then
             echo "Weekend — skipping trade dispatch."
+            exit 0
           fi
+          # Only dispatch when within NYSE trading hours (9:30–15:45 ET).
+          # Outside this window the bot exits immediately and the workflow's
+          # always() EOD summary step fires a misleading 0-trade report.
+          HOUR_ET=$(TZ=America/New_York date +%-H)
+          MIN_ET=$(TZ=America/New_York date +%-M)
+          MINS_ET=$((HOUR_ET * 60 + MIN_ET))
+          MARKET_OPEN=570    # 9:30 AM ET
+          MARKET_CLOSE=945   # 3:45 PM ET
+          if [ "$MINS_ET" -lt "$MARKET_OPEN" ] || [ "$MINS_ET" -ge "$MARKET_CLOSE" ]; then
+            echo "Outside market hours ($(TZ=America/New_York date '+%H:%M ET')) — skipping trade dispatch."
+            exit 0
+          fi
+          echo "Within market hours ($(TZ=America/New_York date '+%H:%M ET')) — dispatching trade.yml"
+          curl -s -X POST \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/trade.yml/dispatches" \
+            -d '{"ref":"main"}' \
+            && echo "trade.yml dispatch triggered." \
+            || echo "Dispatch failed — trade.yml will rely on its own cron."
 
       - name: Ping HuggingFace Space
         env:

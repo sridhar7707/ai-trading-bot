@@ -22,11 +22,77 @@ from bot._main_db import (
 from bot._main_market import _is_market_hours
 
 
+def _check_ml_versions() -> None:
+    """Compare runtime ML library versions against what trained the models.
+
+    Called once at run_loop startup. Sends a Telegram alert if versions differ
+    so the operator knows predictions may be unreliable before trading begins.
+    """
+    _vfile = Path("models/runtime_versions.json")
+    if not _vfile.exists():
+        return
+    try:
+        import json as _j
+        _trained = _j.loads(_vfile.read_text())
+        _mismatches: list[str] = []
+        try:
+            import sklearn as _sk
+            t = _trained.get("scikit-learn", "")
+            if t and t != _sk.__version__:
+                _mismatches.append(f"sklearn  trained={t}  runtime={_sk.__version__}")
+        except ImportError:
+            pass
+        try:
+            import torch as _torch
+            t = _trained.get("torch", "")
+            if t and t != _torch.__version__:
+                _mismatches.append(f"torch    trained={t}  runtime={_torch.__version__}")
+        except ImportError:
+            pass
+        try:
+            import xgboost as _xgb_v
+            t = _trained.get("xgboost", "")
+            if t and t != _xgb_v.__version__:
+                _mismatches.append(f"xgboost  trained={t}  runtime={_xgb_v.__version__}")
+        except ImportError:
+            pass
+        if _mismatches:
+            _msg = "\n".join(_mismatches)
+            logger.error(f"ML version mismatch — model predictions may be wrong:\n{_msg}\n"
+                         f"Trigger retrain.yml to rebuild with current libraries.")
+            tg._send(
+                f"⚠️ <b>ML version mismatch detected</b>\n"
+                f"<code>{_msg}</code>\n"
+                f"Regime/XGB/LSTM predictions may be silently wrong. "
+                f"Trigger the weekly retrain workflow immediately."
+            )
+        else:
+            logger.info(
+                f"ML versions OK — sklearn={_trained.get('scikit-learn')} "
+                f"torch={_trained.get('torch')} xgb={_trained.get('xgboost')}"
+            )
+    except Exception as _ve:
+        logger.debug(f"ML version check skipped: {_ve}")
+
+
 def end_of_day_summary() -> None:
+    today_str = date.today().isoformat()
+    _eod_sentinel     = Path(f"data/.eod_sent_{today_str}")
+    _started_sentinel = Path(f"data/.trading_started_{today_str}")
+
+    if _eod_sentinel.exists():
+        logger.info("EOD summary already sent today — skipping duplicate (run_loop already called it).")
+        return
+    if not _started_sentinel.exists():
+        logger.info("Trading loop never entered the market window today — suppressing false EOD summary.")
+        return
+
+    _eod_sentinel.touch()
+
     import zoneinfo
     con    = init_db()
     client = AlpacaClient()
-    today  = date.today().isoformat()
+    today  = today_str
 
     trades_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (today + "%",)
@@ -174,6 +240,7 @@ def run_loop(mode: str = "paper") -> None:
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()
     lstm       = LSTMPredictor()
+    _check_ml_versions()
     _missing_models = [m for m, p in [("XGBoost", xgb), ("LSTM", lstm)] if p.model is None]
     if _missing_models:
         tg.send(
@@ -217,6 +284,13 @@ def run_loop(mode: str = "paper") -> None:
             logger.warning(f"Analytics service degraded at startup: {_health}")
     except Exception as _ahe:
         log_exception(logger, "run_loop.analytics_health", _ahe)
+
+    # Mark that trading actually entered the market window today.
+    # end_of_day_summary() checks for this sentinel so it can suppress
+    # false EOD messages sent when the bot fires outside market hours.
+    _started_sentinel = Path(f"data/.trading_started_{date.today().isoformat()}")
+    _started_sentinel.parent.mkdir(parents=True, exist_ok=True)
+    _started_sentinel.touch()
 
     cycle = 0
     consecutive_failures = 0
