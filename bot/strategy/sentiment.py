@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import time
 import requests
 from datetime import date, timedelta
 from loguru import logger
@@ -8,6 +9,10 @@ NEWSAPI_KEY    = os.getenv("NEWSAPI_KEY", "")
 # SEC EDGAR requires a valid User-Agent with contact info per https://www.sec.gov/os/webmaster-faq
 # Set SEC_USER_AGENT env var (e.g. "ai-trading-bot your@email.com") — do not hardcode in source.
 SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "ai-trading-bot contact@example.com")
+
+# Per-day in-process cache for NewsAPI — prevents burning the 100 req/day free-tier
+# quota on re-runs or fallback cycles. Keyed by "TICKER:YYYY-MM-DD".
+_NEWS_DAY_CACHE: dict[str, list[str]] = {}
 
 _finbert_pipeline = None
 
@@ -54,6 +59,10 @@ def _finbert_score(texts: list[str]) -> float:
 def get_news_headlines(ticker: str) -> list[str]:
     if not NEWSAPI_KEY:
         return []
+    _cache_key = f"{ticker}:{date.today().isoformat()}"
+    if _cache_key in _NEWS_DAY_CACHE:
+        logger.debug(f"NewsAPI cache hit — {ticker} (quota preserved)")
+        return _NEWS_DAY_CACHE[_cache_key]
     try:
         resp = requests.get(
             "https://newsapi.org/v2/everything",
@@ -67,22 +76,33 @@ def get_news_headlines(ticker: str) -> list[str]:
             timeout=5,
         )
         if resp.status_code == 426:
-            logger.error("NewsAPI daily quota exhausted (HTTP 426) — upgrade plan or reduce symbols")
+            logger.error(
+                "[API RATE LIMIT] NewsAPI daily quota exhausted (HTTP 426) — "
+                "all remaining symbols will use neutral sentiment. Upgrade plan or reduce universe."
+            )
             return []
         if resp.status_code == 429:
-            logger.warning("NewsAPI rate-limited (HTTP 429) — backing off")
+            logger.warning(
+                f"[API RATE LIMIT] NewsAPI rate-limited (HTTP 429) for {ticker} — "
+                "returning empty headlines"
+            )
             return []
         resp.raise_for_status()
-        return [a["title"] for a in resp.json().get("articles", []) if a.get("title")]
+        headlines = [a["title"] for a in resp.json().get("articles", []) if a.get("title")]
+        _NEWS_DAY_CACHE[_cache_key] = headlines
+        return headlines
     except Exception as e:
         logger.warning(f"NewsAPI failed for {ticker}: {e}")
         return []
 
 
 def get_sec_headlines(ticker: str) -> list[str]:
-    """Pull recent SEC filing descriptions from EDGAR full-text search (no key needed)."""
+    """Pull recent SEC filing descriptions from EDGAR full-text search (no key needed).
+
+    Throttled to ~8 req/s via a 0.13s sleep — SEC enforces a hard 10 req/s limit
+    and will return HTTP 403 on violation.
+    """
     try:
-        # Rolling 90-day window — hardcoded year would stop returning results as time passes
         startdt = (date.today() - timedelta(days=90)).isoformat()
         resp = requests.get(
             "https://efts.sec.gov/LATEST/search-index",
@@ -90,6 +110,12 @@ def get_sec_headlines(ticker: str) -> list[str]:
             headers={"User-Agent": SEC_USER_AGENT},
             timeout=5,
         )
+        if resp.status_code in (429, 403):
+            logger.warning(
+                f"[API RATE LIMIT] SEC EDGAR rate-limited (HTTP {resp.status_code}) for {ticker} — "
+                "returning empty headlines"
+            )
+            return []
         hits = resp.json().get("hits", {}).get("hits", [])
         return [
             h["_source"].get("period_of_report", "") + " " + ", ".join(h["_source"].get("display_names", []))
@@ -98,6 +124,8 @@ def get_sec_headlines(ticker: str) -> list[str]:
     except Exception as e:
         logger.warning(f"SEC EDGAR failed for {ticker}: {e}")
         return []
+    finally:
+        time.sleep(0.13)  # throttle to ~7 req/s — SEC hard limit is 10 req/s
 
 
 def get_sentiment_score(ticker: str) -> float:

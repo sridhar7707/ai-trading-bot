@@ -96,6 +96,7 @@ def run(
     _regime_clf: RegimeClassifier | None = None,
     _xgb: XGBPredictor | None = None,
     _lstm: LSTMPredictor | None = None,
+    _client: AlpacaClient | None = None,
 ) -> None:
     logger.info(f"=== Trading cycle start | mode={mode} ===")
 
@@ -110,7 +111,7 @@ def run(
     if _stop_fired_date != today_str:
         _stop_fired_today = set()
         _stop_fired_date = today_str
-    client = AlpacaClient()
+    client = _client if _client is not None else AlpacaClient()
     if not _is_market_hours(client.api):
         logger.info("Market is closed — cycle skipped (no trades, no DB write). "
                     "Dashboard will keep showing the last synced values.")
@@ -153,7 +154,16 @@ def run(
             )
             Path(f"data/.{_tg_key}").touch()
 
-    real_portfolio_value, real_available_cash = client.get_account_summary()
+    # Single get_account() call — serves both portfolio-value check and compliance block below.
+    try:
+        acct = client.get_account()
+    except Exception as _ae:
+        logger.error(f"Alpaca get_account() failed — aborting cycle: {_ae}")
+        tg._send("🚨 Alpaca get_account() failed — check API credentials. Bot cycle aborted.")
+        con.close()
+        return
+    real_portfolio_value = float(acct.portfolio_value)
+    real_available_cash  = float(acct.cash)
     if real_portfolio_value <= 0:
         logger.error(
             f"Alpaca returned portfolio_value=${real_portfolio_value:.2f} — likely an auth/connection "
@@ -175,7 +185,6 @@ def run(
 
     # Brokerage compliance: validate account standing before placing any orders
     try:
-        acct = client.get_account()
         # ① Account status gate — Alpaca can suspend accounts for policy violations
         acct_status     = getattr(acct, "status",          "ACTIVE")
         trading_blocked = getattr(acct, "trading_blocked", False)
@@ -307,7 +316,7 @@ def run(
         )
 
     # _fetch_symbol now lives in bot._main_cycle; pass client and _yf_batch explicitly
-    with ThreadPoolExecutor(max_workers=len(active_symbols)) as pool:
+    with ThreadPoolExecutor(max_workers=min(len(active_symbols), 8)) as pool:
         futures = [pool.submit(_fetch_symbol, sym, client, _yf_batch) for sym in active_symbols]
         fetched = [f.result() for f in futures]
 

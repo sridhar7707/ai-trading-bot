@@ -70,7 +70,11 @@ def _get_cached() -> dict:
             raw = _fetch_macro_raw()
             _MACRO_CACHE = _compute_from_raw(raw)
         except Exception as e:
-            logger.warning(f"FRED macro fetch failed: {e}")
+            _emsg = str(e).lower()
+            if any(p in _emsg for p in ("rate limit", "too many", "429", "quota")):
+                logger.warning(f"[API RATE LIMIT] FRED API rate-limited — using cached macro data: {e}")
+            else:
+                logger.warning(f"FRED macro fetch failed: {e}")
             if not _MACRO_CACHE:
                 _MACRO_CACHE = {"score": 0.5, "cap": 1.0, "halt": False}
         _MACRO_TS = now

@@ -87,6 +87,7 @@ def end_of_day_summary() -> None:
         logger.info("Trading loop never entered the market window today — suppressing false EOD summary.")
         return
 
+    _eod_sentinel.parent.mkdir(parents=True, exist_ok=True)
     _eod_sentinel.touch()
 
     import zoneinfo
@@ -298,7 +299,7 @@ def run_loop(mode: str = "paper") -> None:
         cycle += 1
         logger.info(f"\n=== Loop cycle {cycle} ===")
         try:
-            run(mode=mode, _regime_clf=regime_clf, _xgb=xgb, _lstm=lstm)
+            run(mode=mode, _regime_clf=regime_clf, _xgb=xgb, _lstm=lstm, _client=client)
             consecutive_failures = 0
         except Exception as e:
             consecutive_failures += 1

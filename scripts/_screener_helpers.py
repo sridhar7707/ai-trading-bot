@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -154,12 +155,27 @@ def _corr_dedup(
     return selected
 
 
+# ETFs never have earnings dates — skip yfinance calendar calls for them entirely.
+_ETF_SYMBOLS: frozenset[str] = frozenset({
+    "SPY", "QQQ", "VTI", "IWM", "VOO", "DIA",
+    "XLF", "XLV", "XLE", "XLK", "XLI", "XLY", "XLP", "XLC", "XLB", "XLU", "XLRE",
+    "GLD", "TLT", "ARKK", "SQQQ", "TQQQ",
+})
+
+
 def _earnings_blackout_set(symbols: list[str], window_days: int = 2) -> set[str]:
-    """Return symbols whose next earnings date is within ±window_days of today."""
+    """Return symbols whose next earnings date is within ±window_days of today.
+
+    Throttled to ~6 req/s — Yahoo Finance rejects rapid serial bursts from the
+    130+ candidate universe with connection errors after ~20 unthrottled requests.
+    ETFs are skipped entirely — they never report earnings.
+    """
     from datetime import date
     today = date.today()
     blocked: set[str] = set()
     for sym in symbols:
+        if sym in _ETF_SYMBOLS:
+            continue
         try:
             cal = yf.Ticker(sym).calendar
             if cal is None or cal.empty:
@@ -181,6 +197,7 @@ def _earnings_blackout_set(symbols: list[str], window_days: int = 2) -> set[str]
                     break
         except Exception:
             pass
+        time.sleep(0.17)  # ~6 req/s — stay well under Yahoo Finance's burst threshold
     return blocked
 
 

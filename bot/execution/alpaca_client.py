@@ -1,10 +1,13 @@
 from __future__ import annotations
 import time
-from typing import Any
+from typing import Any, Callable, TypeVar
 import alpaca_trade_api as tradeapi
 import pandas as pd
 from loguru import logger
 from config import ALPACA_KEY, ALPACA_SECRET, ALPACA_BASE_URL, MAX_POSITION_PCT
+from bot.core.api_guard import call_with_retry
+
+_T = TypeVar("_T")
 
 MIN_NOTIONAL = 1.0   # Alpaca minimum notional for fractional orders
 LIMIT_BUF    = 0.001  # 0.1% aggressive-limit buffer — fills in normal liquid conditions
@@ -33,8 +36,20 @@ class AlpacaClient:
             f"url={ALPACA_BASE_URL}, key=...{ALPACA_KEY[-4:] if ALPACA_KEY else 'MISSING'}"
         )
 
+    def _r(self, fn: Callable[..., _T], *args: Any,
+           _label: str = "", _rate_limit_only: bool = False, **kwargs: Any) -> _T:
+        """Retry wrapper for all Alpaca REST calls — exponential back-off on 429/503."""
+        return call_with_retry(
+            fn, *args,
+            _label=f"Alpaca/{_label or getattr(fn, '__name__', '')}",
+            _max_retries=3,
+            _base_delay=1.0,
+            _rate_limit_only=_rate_limit_only,
+            **kwargs,
+        )
+
     def get_account(self) -> Any:
-        return self.api.get_account()
+        return self._r(self.api.get_account, _label="get_account")
 
     def get_account_summary(self) -> tuple[float, float]:
         """Single API call returning (portfolio_value, available_cash)."""
@@ -48,18 +63,19 @@ class AlpacaClient:
         return float(self.get_account().cash)
 
     def get_positions(self) -> dict:
-        positions = self.api.list_positions()
+        positions = self._r(self.api.list_positions, _label="list_positions")
         return {p.symbol: p for p in positions}
 
     def get_latest_price(self, symbol: str) -> float:
-        bar = self.api.get_latest_bar(symbol)
+        bar = self._r(self.api.get_latest_bar, symbol, _label=f"get_latest_bar/{symbol}")
         if bar is None:
             logger.debug(f"No bar data returned for {symbol}")
             raise ValueError("Price data unavailable")
         return bar.c
 
     def get_bars(self, symbol: str, timeframe: str = "5Min", limit: int = 100) -> pd.DataFrame:
-        bars = self.api.get_bars(symbol, timeframe, limit=limit).df
+        bars = self._r(self.api.get_bars, symbol, timeframe,
+                       _label=f"get_bars/{symbol}", limit=limit).df
         bars.index = pd.to_datetime(bars.index, utc=True)
         return bars
 
@@ -77,22 +93,19 @@ class AlpacaClient:
             if limit_price is not None and limit_price > 0:
                 effective_limit = round(limit_price * (1 + LIMIT_BUF), 2)
                 qty = round(notional / effective_limit, 6)
-                order = self.api.submit_order(
-                    symbol=symbol,
-                    qty=qty,
-                    side="buy",
-                    type="limit",
-                    time_in_force="day",
-                    limit_price=effective_limit,
+                order = self._r(
+                    self.api.submit_order,
+                    _label=f"buy_limit/{symbol}", _rate_limit_only=True,
+                    symbol=symbol, qty=qty, side="buy",
+                    type="limit", time_in_force="day", limit_price=effective_limit,
                 )
                 logger.info(f"BUY {symbol} qty={qty:.4f} limit=${effective_limit:.2f} order_id={order.id}")
             else:
-                order = self.api.submit_order(
-                    symbol=symbol,
-                    notional=round(notional, 2),
-                    side="buy",
-                    type="market",
-                    time_in_force="day",
+                order = self._r(
+                    self.api.submit_order,
+                    _label=f"buy_market/{symbol}", _rate_limit_only=True,
+                    symbol=symbol, notional=round(notional, 2),
+                    side="buy", type="market", time_in_force="day",
                 )
                 logger.info(f"BUY {symbol} notional=${notional:.2f} (market) order_id={order.id}")
             return {"order_id": order.id, "symbol": symbol, "side": "buy", "notional": notional}
@@ -124,22 +137,19 @@ class AlpacaClient:
 
             if limit_price is not None and limit_price > 0:
                 effective_limit = round(limit_price * (1 - LIMIT_BUF), 2)
-                order = self.api.submit_order(
-                    symbol=symbol,
-                    qty=qty,
-                    side="sell",
-                    type="limit",
-                    time_in_force="day",
-                    limit_price=effective_limit,
+                order = self._r(
+                    self.api.submit_order,
+                    _label=f"sell_limit/{symbol}", _rate_limit_only=True,
+                    symbol=symbol, qty=qty, side="sell",
+                    type="limit", time_in_force="day", limit_price=effective_limit,
                 )
                 logger.info(f"SELL {symbol} qty={qty:.4f} limit=${effective_limit:.2f} order_id={order.id}")
             else:
-                order = self.api.submit_order(
-                    symbol=symbol,
-                    qty=qty,
-                    side="sell",
-                    type="market",
-                    time_in_force="day",
+                order = self._r(
+                    self.api.submit_order,
+                    _label=f"sell_market/{symbol}", _rate_limit_only=True,
+                    symbol=symbol, qty=qty, side="sell",
+                    type="market", time_in_force="day",
                 )
                 logger.info(f"SELL {symbol} qty={qty:.4f} (market) order_id={order.id}")
             return {"order_id": order.id, "symbol": symbol, "side": "sell", "qty": qty}
@@ -175,7 +185,9 @@ class AlpacaClient:
     def sell_market(self, symbol: str, qty: float) -> dict | None:
         """Market sell — used as stop-loss escalation when a limit sell times out."""
         try:
-            order = self.api.submit_order(
+            order = self._r(
+                self.api.submit_order,
+                _label=f"sell_market_escalation/{symbol}", _rate_limit_only=True,
                 symbol=symbol, qty=float(qty), side="sell",
                 type="market", time_in_force="day",
             )
@@ -192,7 +204,7 @@ class AlpacaClient:
         that already has a pending sell order could create an unintended short position.
         """
         try:
-            orders = self.api.list_orders(status="open")
+            orders = self._r(self.api.list_orders, _label="list_open_orders", status="open")
             buy_syms  = {o.symbol for o in orders if o.side == "buy"}
             sell_syms = {o.symbol for o in orders if o.side == "sell"}
             return buy_syms, sell_syms
@@ -206,7 +218,7 @@ class AlpacaClient:
         Returns None if the order hasn't filled or the field is absent — caller falls back to estimate.
         """
         try:
-            order = self.api.get_order(order_id)
+            order = self._r(self.api.get_order, order_id, _label="get_fill_price")
             filled_avg = getattr(order, "filled_avg_price", None)
             if filled_avg:
                 return float(filled_avg)

@@ -1,6 +1,12 @@
 import os
 from loguru import logger
 
+# Catch PRAW's rate-limit exception without requiring praw to be installed at import time
+try:
+    from praw.exceptions import RateLimitExceeded as _RedditRateLimit
+except ImportError:
+    _RedditRateLimit = None  # type: ignore[assignment,misc]
+
 REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID", "")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
 REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT", "ai-trading-bot/1.0")
@@ -9,10 +15,15 @@ REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT", "ai-trading-bot/1.0")
 # Creating a new praw.Reddit per call issues a fresh OAuth token every time
 # (up to 1,950 requests/day in production), which can trigger Reddit rate limiting.
 _reddit = None
+# Set True on first 401 to disable all subsequent Reddit calls for the session.
+# Prevents 432+ wasted HTTP round-trips/day when credentials are missing or invalid.
+_reddit_auth_failed = False
 
 
 def _get_reddit():
-    global _reddit
+    global _reddit, _reddit_auth_failed
+    if _reddit_auth_failed:
+        return None
     if _reddit is None and REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET:
         try:
             import praw
@@ -47,5 +58,21 @@ def get_wsb_sentiment(ticker: str) -> dict:
         return {"mentions": len(titles), "sentiment": sentiment}
 
     except Exception as e:
-        logger.warning(f"Reddit sentiment failed for {ticker}: {e}")
+        global _reddit_auth_failed
+        _emsg = str(e).lower()
+        if _RedditRateLimit and isinstance(e, _RedditRateLimit):
+            logger.warning(
+                f"[API RATE LIMIT] Reddit rate-limited for {ticker} — "
+                f"returning neutral sentiment (will recover next cycle): {e}"
+            )
+        elif "401" in _emsg or "unauthorized" in _emsg or "received 401" in _emsg:
+            _reddit = None
+            _reddit_auth_failed = True
+            logger.warning(
+                "[API RATE LIMIT] Reddit credentials invalid (HTTP 401) — "
+                "disabling Reddit sentiment for this session. "
+                "Set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET as repository secrets."
+            )
+        else:
+            logger.warning(f"Reddit sentiment failed for {ticker}: {e}")
         return {"mentions": 0, "sentiment": 0.0}
