@@ -65,7 +65,75 @@ def render_whats_changed() -> str:
         return _empty("Could not load comparison data.")
 
     if not yest_rows:
-        return _empty("First session — no comparison available yet.")
+        # No prior-day trade data — show today's intraday progress instead
+        try:
+            with get_db_conn() as con:
+                first_snap = con.execute(
+                    "SELECT portfolio_value FROM portfolio_snapshots "
+                    "WHERE date(timestamp) = ? ORDER BY timestamp ASC LIMIT 1",
+                    (today,),
+                ).fetchone()
+                last_snap = con.execute(
+                    "SELECT portfolio_value FROM portfolio_snapshots "
+                    "ORDER BY timestamp DESC LIMIT 1",
+                ).fetchone()
+        except Exception:
+            return _empty("First session — no comparison available yet.")
+
+        if not first_snap or not last_snap:
+            return _empty("First session — no comparison available yet.")
+
+        start_v = float(first_snap[0] or 0)
+        cur_v   = float(last_snap[0] or 0)
+        if start_v <= 0:
+            return _empty("First session — no comparison available yet.")
+
+        delta = cur_v - start_v
+        pct   = delta / start_v * 100
+        d_c   = GAIN if delta >= 0 else LOSS
+        icon  = "📈" if delta >= 0 else "📉"
+        word  = "up" if delta >= 0 else "down"
+
+        d_data   = get_data()
+        open_pos = d_data["open_pos"]
+        prices   = d_data["prices"]
+
+        pos_rows = ""
+        for sym, pos in open_pos.items():
+            cur      = prices.get(sym, 0.0)
+            invested = pos["invested"]
+            cur_val  = pos["shares"] * cur if cur > 0 else invested
+            p_pct    = (cur_val - invested) / invested * 100 if invested > 0 else 0.0
+            p_c      = GAIN if p_pct >= 0 else LOSS
+            pos_rows += (
+                f'<div style="display:grid;grid-template-columns:90px 1fr 70px;'
+                f'align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid {BORDER};">'
+                f'<span style="font-family:Courier New,monospace;font-weight:700;'
+                f'color:{PRIMARY};font-size:{FONT_VALUE};">{sym}</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Open position</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{p_c};font-weight:700;'
+                f'text-align:right;">{p_pct:+.1f}%</span>'
+                f'</div>'
+            )
+        if not pos_rows:
+            pos_rows = (f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">'
+                        f'No open positions yet.</div>')
+
+        pv_html = (
+            f'<div style="background:{BG};border:1px solid {d_c}33;border-radius:6px;'
+            f'padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">'
+            f'<span style="font-size:{FONT_VALUE};">{icon}</span>'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT1};">Portfolio '
+            f'<strong style="color:{d_c};">{word} ${abs(delta):,.2f} ({pct:+.2f}%)</strong>'
+            f' today</span></div>'
+        )
+        _today_title = "Today's Progress"
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("📅", _today_title, date_label)}'
+            f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
+            f'{pv_html}{pos_rows}</div></div>'
+        )
 
     yest_map  = {r[0]: {"score": float(r[1] or 0), "regime": r[2] or "",
                          "sent": float(r[3] or 0)} for r in yest_rows}
