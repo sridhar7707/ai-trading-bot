@@ -27,19 +27,37 @@ _logger = logger
 
 # Plain-English reason map for AI recommendation card (feature → (title, detail))
 _WHY_MAP: dict[str, tuple[str, str]] = {
-    "rsi":           ("RSI momentum building",   "Short-term price strength confirmed by RSI"),
-    "rsi_15m":       ("15-min RSI aligned",      "Shorter-term momentum reinforces the entry"),
-    "macd_diff_pct": ("MACD bullish crossover",  "Trend indicator crossed into positive territory"),
-    "volume_ratio":  ("Unusual buying volume",   "Volume above recent average — signals conviction"),
-    "mfi":           ("Money Flow positive",     "Capital flowing into the stock"),
-    "bb_width":      ("Volatility expanding",    "Bollinger Band breakout pattern forming"),
-    "atr_pct":       ("Volatility confirmed",    "Position size validated against current ATR"),
-    "norm_close":    ("Closing near day's high", "Price strength at close — bullish structure"),
-    "ema20_pct":     ("Above 20-period EMA",     "Short-term trend is pointing up"),
-    "ema50_pct":     ("Above 50-period EMA",     "Medium-term trend supports the trade"),
-    "vwap_dev":      ("Trading above VWAP",      "Price above today's volume-weighted average"),
-    "hl_ratio":      ("Strong intraday range",   "Wide intraday range signals trader conviction"),
-    "stoch_k":       ("Stochastic momentum",     "Oscillator confirming continued upward momentum"),
+    # Momentum oscillators
+    "rsi":            ("RSI momentum building",    "Short-term price strength confirmed by RSI"),
+    "rsi_15m":        ("15-min RSI aligned",       "Shorter-term momentum reinforces the entry"),
+    "macd_diff_pct":  ("MACD bullish crossover",   "Trend indicator crossed into positive territory"),
+    "mfi":            ("Money Flow positive",      "Capital flowing into the stock"),
+    "stoch_k":        ("Stochastic momentum",      "Oscillator confirming continued upward momentum"),
+    # Volume
+    "volume_ratio":   ("Unusual buying volume",    "Volume above recent average — signals conviction"),
+    "obv_chg_pct":    ("OBV flow positive",        "On-Balance Volume rising — buyers in control"),
+    "vol_ratio_trend":("Volume accelerating",      "Short-term volume trend outpacing the baseline"),
+    # Volatility / range
+    "atr_pct":        ("Volatility confirmed",     "Position size validated against current ATR"),
+    "bb_width":       ("Volatility expanding",     "Bollinger Band breakout pattern forming"),
+    "bb_position":    ("Price in upper BB zone",   "Price in the upper half of the Bollinger Bands"),
+    "hl_ratio":       ("Strong intraday range",    "Wide intraday range signals trader conviction"),
+    # Price vs moving averages
+    "norm_close":     ("Closing near day's high",  "Price strength at close — bullish structure"),
+    "ema20_pct":      ("Above 20-period EMA",      "Short-term trend is pointing up"),
+    "ema50_pct":      ("Above 50-period EMA",      "Medium-term trend supports the trade"),
+    "sma20_pct":      ("Above 20-period SMA",      "Price holding above 20-day simple average"),
+    "ema_spread":     ("EMA trend spread positive","Fast EMA above slow EMA — uptrend confirmed"),
+    "vwap_dev":       ("Trading above VWAP",       "Price above today's volume-weighted average"),
+    # Multi-period momentum (Jegadeesh-Titman / AQR)
+    "ret_5d":         ("1-week price gain",        "Stock outperformed over the past week"),
+    "ret_21d":        ("1-month momentum",         "Positive 1-month return — intermediate trend intact"),
+    "ret_63d":        ("3-month momentum",         "3-month return positive — medium-term trend up"),
+    "ret_126d":       ("6-month momentum",         "6-month return positive — strong sustained trend"),
+    "mom_12_1":       ("12-1 month momentum",      "AQR-style factor: 12-month return minus reversal month"),
+    "high_52w_pct":   ("Near 52-week high",        "Price close to its annual peak — breakout candidate"),
+    # Raw return
+    "returns":        ("Recent return positive",   "Latest bar closed higher than the previous"),
 }
 
 

@@ -21,11 +21,37 @@ from dashboard.data import (
 
 # ── Feature-name display labels (XGB feature_importances_ key → readable text) ─
 _FI_LABELS: dict = {
-    "rsi": "RSI", "rsi_15m": "RSI 15m", "stoch_k": "Stoch %K",
-    "macd_diff_pct": "MACD Cross", "volume_ratio": "Volume Ratio",
-    "mfi": "Money Flow", "bb_width": "BB Width", "atr_pct": "Volatility",
-    "norm_close": "Price Pos", "ema20_pct": "EMA20 Dev",
-    "ema50_pct": "EMA50 Dev", "vwap_dev": "VWAP Dev", "hl_ratio": "H/L Range",
+    # Momentum oscillators
+    "rsi":            "RSI",
+    "rsi_15m":        "RSI 15m",
+    "stoch_k":        "Stoch %K",
+    "macd_diff_pct":  "MACD Cross",
+    "mfi":            "Money Flow",
+    # Volume
+    "volume_ratio":   "Volume Ratio",
+    "obv_chg_pct":    "OBV Flow",
+    "vol_ratio_trend":"Volume Trend",
+    # Volatility / range
+    "atr_pct":        "Volatility",
+    "bb_width":       "BB Width",
+    "bb_position":    "BB Position",
+    "hl_ratio":       "H/L Range",
+    # Price vs moving averages
+    "norm_close":     "Price Position",
+    "ema20_pct":      "EMA20 Dev",
+    "ema50_pct":      "EMA50 Dev",
+    "sma20_pct":      "SMA20 Dev",
+    "ema_spread":     "EMA Trend Spread",
+    "vwap_dev":       "VWAP Dev",
+    # Multi-period momentum (Jegadeesh-Titman / AQR)
+    "ret_5d":         "1-Week Return",
+    "ret_21d":        "1-Month Return",
+    "ret_63d":        "3-Month Return",
+    "ret_126d":       "6-Month Return",
+    "mom_12_1":       "12-1 Month Momentum",
+    "high_52w_pct":   "vs 52-Week High",
+    # Other
+    "returns":        "1-Bar Return",
 }
 
 
