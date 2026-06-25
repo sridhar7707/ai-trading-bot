@@ -277,9 +277,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_watchlist,             outputs=watchlist_out)
     # Signal History tab
     timer.tick(fn=render_signal_history, outputs=signal_history_out)
-    # Portfolio tab
-    timer.tick(fn=lambda: gr.update(choices=_perf_choices()), outputs=perf_tabs)
-    timer.tick(fn=render_portfolio_performance, outputs=perf_out)
+    # Portfolio tab — sync perf_tabs choices AND value together to avoid stale selection
+    def _refresh_perf_tabs(current_period):
+        choices = _perf_choices()
+        val = current_period if current_period in choices else (choices[2] if len(choices) > 2 else choices[0] if choices else None)
+        return gr.update(choices=choices, value=val)
+    timer.tick(fn=_refresh_perf_tabs, inputs=[perf_tabs], outputs=perf_tabs)
+    timer.tick(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=perf_out)
     timer.tick(fn=render_equity_chart,          outputs=eq_plot)
     timer.tick(fn=render_allocation_chart,      outputs=alloc_plot)
     timer.tick(fn=render_pnl_chart,             outputs=pnl_plot)

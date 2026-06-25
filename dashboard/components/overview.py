@@ -394,8 +394,8 @@ def render_portfolio_health_hero() -> str:
 @safe_render("Benchmark")
 def render_benchmark_comparison() -> str:
     from database.services.analytics_service import analytics_service
-    from database.repositories.analytics_repository import AnalyticsRepository
-    from dashboard.data import get_data
+    from dashboard.data import get_data, get_db_conn, DB_PATH
+    import os
 
     d = get_data()
     pv = 0.0
@@ -408,13 +408,18 @@ def render_benchmark_comparison() -> str:
 
     port_return = 0.0
     if pv > 0:
+        # Compute portfolio return from SQLite portfolio_snapshots (always available)
         try:
-            repo = AnalyticsRepository()
-            snapshots = repo.load_snapshots(days=365)
-            if not snapshots.empty:
-                first_val = float(snapshots["portfolio_value"].iloc[0])
-                if first_val > 0:
-                    port_return = (pv - first_val) / first_val * 100
+            if os.path.exists(DB_PATH):
+                with get_db_conn() as _con:
+                    first_row = _con.execute(
+                        "SELECT portfolio_value FROM portfolio_snapshots "
+                        "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1"
+                    ).fetchone()
+                if first_row:
+                    first_val = float(first_row[0])
+                    if first_val > 0:
+                        port_return = (pv - first_val) / first_val * 100
         except Exception as exc:
             log_exception(_logger, "render_benchmark.calc_return", exc)
 

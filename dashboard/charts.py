@@ -32,20 +32,46 @@ _FI_LABELS: dict = {
 def render_equity_chart() -> Any:
     try:
         import plotly.graph_objects as go
+        from dashboard.data import get_db_conn
+        import os, sqlite3 as _sq3
         df  = get_data()["trades_df"]
         fig = go.Figure()
 
         has_data = (not df.empty and "portfolio_value" in df.columns
-                    and df["portfolio_value"].notna().any())
+                    and df["portfolio_value"].notna().any()
+                    and (df["portfolio_value"].fillna(0) > 0).any())
+
+        # Fallback: use portfolio_snapshots if trades.portfolio_value is all-null/zero
+        _snap_daily = None
+        if not has_data:
+            try:
+                from dashboard.data import DB_PATH
+                if os.path.exists(DB_PATH):
+                    with get_db_conn() as _con:
+                        _rows = _con.execute(
+                            "SELECT date(timestamp) AS d, AVG(portfolio_value) AS v "
+                            "FROM portfolio_snapshots WHERE portfolio_value > 0 "
+                            "GROUP BY d ORDER BY d"
+                        ).fetchall()
+                    if _rows:
+                        _snap_daily = pd.DataFrame(_rows, columns=["date", "value"])
+                        _snap_daily["date"] = pd.to_datetime(_snap_daily["date"])
+                        has_data = True
+            except Exception:
+                pass
+
         if not has_data:
             fig.add_annotation(
                 text="Building history — bot trades 9:30am–4pm ET, Mon–Fri. Chart appears after the first trading day.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
                 showarrow=False, font=dict(color=TEXT2, size=12))
         else:
-            daily = df.groupby("date")["portfolio_value"].last().reset_index()
-            daily.columns = ["date", "value"]
-            daily["date"] = pd.to_datetime(daily["date"])
+            if _snap_daily is not None:
+                daily = _snap_daily
+            else:
+                daily = df.groupby("date")["portfolio_value"].last().reset_index()
+                daily.columns = ["date", "value"]
+                daily["date"] = pd.to_datetime(daily["date"])
 
             fig.add_trace(go.Scatter(
                 x=daily["date"], y=daily["value"],
