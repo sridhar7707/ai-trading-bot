@@ -257,12 +257,28 @@ def build_decision_vm() -> list[DecisionRow]:
         pa = get_portfolio_action(sym, d)
         sa = get_sell_analysis(sym, d)
         sz = get_position_sizing(sym, d)
-        action    = pa.get("action", "HOLD")
-        score     = sa.get("sell_score", 0)
-        cur_w     = sz.get("current_weight", 0.0)
-        tgt_w     = sz.get("target_weight", 0.0)
-        delta_w   = sz.get("delta_weight", 0.0)
-        delta_c   = GAIN if delta_w > 1 else (LOSS if delta_w < -1 else TEXT2)
+        action  = pa.get("action", "HOLD")
+        score   = sa.get("sell_score", 0)
+        cur_w   = sz.get("current_weight", 0.0)
+        tgt_w   = sz.get("target_weight", 0.0)
+        delta_w = sz.get("delta_weight", 0.0)
+        dol     = sz.get("dollar_display", "—")
+
+        # Reconcile target weight with portfolio action.
+        # get_position_sizing() uses the stored-at-buy ensemble score which
+        # can map to 0% target (exit) even when the bot's action is HOLD
+        # (actual sell threshold is 40%, not 55%). Ensure the Decision Center
+        # reflects what the bot is actually doing.
+        if action == "HOLD":
+            tgt_w   = cur_w   # no change — bot is holding the position
+            delta_w = 0.0
+            dol     = "—"
+        elif action == "WATCH" and tgt_w < cur_w * 0.5:
+            # WATCH means keep an eye on it, not exit. Cap reduction at 50%.
+            tgt_w   = round(cur_w * 0.5, 1)
+            delta_w = round(tgt_w - cur_w, 1)
+
+        delta_c = GAIN if delta_w > 1 else (LOSS if delta_w < -1 else TEXT2)
         rows.append(DecisionRow(
             symbol=sym,
             action=action,
@@ -272,7 +288,7 @@ def build_decision_vm() -> list[DecisionRow]:
             tgt_weight=tgt_w,
             delta_weight=delta_w,
             delta_color=delta_c,
-            dollar_display=sz.get("dollar_display", "—"),
+            dollar_display=dol,
             reasons_sell=sa.get("reasons_to_sell", []),
             reasons_hold=sa.get("reasons_to_hold", []),
             pa_reason=pa.get("reason", ""),

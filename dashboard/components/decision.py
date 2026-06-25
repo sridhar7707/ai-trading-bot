@@ -52,16 +52,30 @@ def render_decision_center() -> str:
         )
 
         reason_parts = []
-        if r.reasons_sell:
-            reason_parts.append(
-                f'<span style="color:{ACTION_SELL};">✗</span>'
-                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_sell[0]}</span>'
-            )
-        if r.reasons_hold:
-            reason_parts.append(
-                f'<span style="color:{ACTION_BUY};">✓</span>'
-                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_hold[0]}</span>'
-            )
+        if r.action == "HOLD":
+            # HOLD: show what's good first, then any soft concerns
+            if r.reasons_hold:
+                reason_parts.append(
+                    f'<span style="color:{ACTION_BUY};">✓</span>'
+                    f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_hold[0]}</span>'
+                )
+            if r.reasons_sell:
+                reason_parts.append(
+                    f'<span style="color:{TEXT3};">○</span>'
+                    f'<span style="font-size:{FONT_LABEL};color:{TEXT3};"> {r.reasons_sell[0]}</span>'
+                )
+        else:
+            # WATCH / TRIM / SELL / EXIT: lead with concerns
+            if r.reasons_sell:
+                reason_parts.append(
+                    f'<span style="color:{ACTION_SELL};">✗</span>'
+                    f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_sell[0]}</span>'
+                )
+            if r.reasons_hold:
+                reason_parts.append(
+                    f'<span style="color:{ACTION_BUY};">✓</span>'
+                    f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_hold[0]}</span>'
+                )
         if not reason_parts and r.pa_reason:
             reason_parts.append(f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{r.pa_reason}</span>')
         reasons_html = '<br>'.join(reason_parts) if reason_parts else (
