@@ -449,7 +449,7 @@ def render_recommendation_history() -> str:
         1 for r in recs
         if r[4] and r[4] != r[2]  # prev_recommendation exists and differs
     )
-    note = f"{n} records · {n_changes} changes" if n_changes else f"{n} records"
+    note = f"{n} signals · {n_changes} changes" if n_changes else f"{n} signals"
 
     rows = ""
     for i, (symbol, pred_date, rec, conf, prev) in enumerate(recs):
@@ -473,19 +473,26 @@ def render_recommendation_history() -> str:
             f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{date_str}</span></td>'
             f'<td {td}>{_action_badge(rec)}{change_html}</td>'
             f'<td {td}>{_confidence_bar(conf, show_label=False)}</td>'
-            f'<td {td}>—</td>'
             f'</tr>'
         )
 
+    disclaimer = (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};padding:8px 4px 12px;">'
+        f'AI signals only — not all BUY signals result in a trade. '
+        f'The risk manager may skip execution due to position limits, cash constraints, '
+        f'or daily loss guards. See the Trades tab for actual fills.'
+        f'</div>'
+    )
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th><th {TH}>Date</th>'
-        f'<th {TH}>Action</th><th {TH}>Confidence</th><th {TH}>Outcome</th>'
+        f'<th {TH}>AI Signal</th><th {TH}>Confidence</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )
     return (
         f'<div class="nt nt-wrap">'
-        f'{_section("📋", "Rec History", note)}'
+        f'{_section("📋", "Signal History", note)}'
+        f'{disclaimer}'
         f'{table}'
         f'</div>'
     )
