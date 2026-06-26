@@ -25,6 +25,31 @@ from bot.core.recommendation_engine import (
 )
 _logger = logger
 
+# Common ticker → full company name (used in AI Recommendation card header)
+_COMPANY_NAMES: dict[str, str] = {
+    "AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Alphabet", "GOOG": "Alphabet",
+    "AMZN": "Amazon", "META": "Meta", "NVDA": "NVIDIA", "TSLA": "Tesla",
+    "NFLX": "Netflix", "BKNG": "Booking Holdings", "ABNB": "Airbnb",
+    "UBER": "Uber", "LYFT": "Lyft", "AMD": "AMD", "INTC": "Intel",
+    "CRM": "Salesforce", "ADBE": "Adobe", "ORCL": "Oracle", "IBM": "IBM",
+    "PYPL": "PayPal", "SQ": "Block", "SHOP": "Shopify", "SNAP": "Snap",
+    "TWTR": "Twitter", "SPOT": "Spotify", "ZM": "Zoom", "DOCU": "DocuSign",
+    "NOW": "ServiceNow", "SNOW": "Snowflake", "PLTR": "Palantir",
+    "JPM": "JPMorgan", "BAC": "Bank of America", "GS": "Goldman Sachs",
+    "MS": "Morgan Stanley", "WFC": "Wells Fargo", "V": "Visa", "MA": "Mastercard",
+    "AMEX": "Amex", "AXP": "Amex", "BRK.B": "Berkshire", "BRK.A": "Berkshire",
+    "JNJ": "J&J", "PFE": "Pfizer", "MRK": "Merck", "ABBV": "AbbVie",
+    "UNH": "UnitedHealth", "CVS": "CVS Health",
+    "XOM": "ExxonMobil", "CVX": "Chevron", "COP": "ConocoPhillips",
+    "WMT": "Walmart", "TGT": "Target", "COST": "Costco", "AMZN": "Amazon",
+    "HD": "Home Depot", "LOW": "Lowe's", "NKE": "Nike", "SBUX": "Starbucks",
+    "MCD": "McDonald's", "DIS": "Disney", "CMCSA": "Comcast",
+    "NFLX": "Netflix", "T": "AT&T", "VZ": "Verizon",
+    "BA": "Boeing", "LMT": "Lockheed", "RTX": "Raytheon",
+    "CAT": "Caterpillar", "DE": "John Deere", "GE": "GE",
+    "SPY": "S&P 500 ETF", "QQQ": "Nasdaq ETF", "IWM": "Russell ETF",
+}
+
 # Plain-English reason map for AI recommendation card (feature → (title, detail))
 _WHY_MAP: dict[str, tuple[str, str]] = {
     # Momentum oscillators
@@ -233,10 +258,15 @@ def render_ai_recommendation() -> str:
         f'<div class="nt-ai-split">'
         # Left: identity + confidence
         f'<div>'
-        f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">'
+        f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px;">'
         f'{_badge("BUY")}'
+        f'<div style="display:flex;flex-direction:column;gap:1px;">'
         f'<span style="font-family:Courier New,monospace;font-size:{FONT_HERO};font-weight:700;'
         f'color:{PRIMARY};letter-spacing:-2px;line-height:1;">{sym}</span>'
+        + (f'<span style="font-size:{FONT_LABEL};color:{TEXT2};letter-spacing:.3px;">'
+           f'{_COMPANY_NAMES[sym]}</span>'
+           if sym in _COMPANY_NAMES else '')
+        + f'</div>'
         f'{risk_badge}'
         f'</div>'
         f'<div style="font-size:{FONT_VALUE};color:{TEXT2};margin-bottom:10px;">'

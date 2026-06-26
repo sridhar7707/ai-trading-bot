@@ -54,11 +54,11 @@ def render_decision_center() -> str:
         reason_parts = []
         if r.action == "HOLD":
             # HOLD: show what's good first, then any soft concerns
-            if r.reasons_hold:
-                reason_parts.append(
-                    f'<span style="color:{ACTION_BUY};">✓</span>'
-                    f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {r.reasons_hold[0]}</span>'
-                )
+            hold_reason = r.reasons_hold[0] if r.reasons_hold else (r.pa_reason or "Below exit threshold — bot is holding")
+            reason_parts.append(
+                f'<span style="color:{ACTION_BUY};">✓</span>'
+                f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {hold_reason}</span>'
+            )
             if r.reasons_sell:
                 reason_parts.append(
                     f'<span style="color:{TEXT3};">○</span>'
