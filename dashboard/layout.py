@@ -163,31 +163,49 @@ div.tabs > div.tab-nav > button.selected,
   background:{BG} !important;
 }}
 
-/* ── Mobile: 390px support ───────────────────────────────────────────────── */
+/* ── All tables: scrollable, not clipped ─────────────────────────────────── */
+.nt-wrap table {{ width: 100%; }}
+.nt-wrap td {{ overflow: hidden; text-overflow: ellipsis; max-width: 200px; }}
+
+/* ── Mobile 768px ────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {{
+  .perf-tabs label {{
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }}
+}}
+
+/* ── Mobile 480px ────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {{
   .nt-wrap {{ padding: 8px !important; }}
-  .nt-cards {{ grid-template-columns: 1fr 1fr !important; }}
+  .nt-cards {{ grid-template-columns: repeat(2, 1fr) !important; }}
   .nt-ai-split {{ flex-direction: column !important; gap: 16px !important; }}
   table {{ font-size: 13px !important; }}
-  table td, table th {{ padding: 8px !important; }}
-}}
+  table td, table th {{ padding: 8px 10px !important; }}
 
-/* ── All tables: prevent overflow ────────────────────────────────────────── */
-.nt-wrap table {{ width: 100%; table-layout: fixed; }}
+  /* Tab nav: scroll horizontally — all tabs always reachable */
+  .tabs > .tab-nav,
+  div.tabs > div.tab-nav,
+  .gradio-container .tabs > .tab-nav {{
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none !important;
+    padding-bottom: 3px !important;
+  }}
+  .tabs > .tab-nav::-webkit-scrollbar,
+  div.tabs > div.tab-nav::-webkit-scrollbar {{ display: none !important; }}
+  .tabs > .tab-nav > button,
+  div.tabs > div.tab-nav > button {{
+    padding: 10px 14px !important;
+    font-size: 12px !important;
+    min-height: 44px !important;
+    flex-shrink: 0 !important;
+  }}
 
-/* ── Long text: truncate not overflow ────────────────────────────────────── */
-.nt-wrap td {{
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 120px;
-}}
-
-/* ── Cards: full width on small screens ──────────────────────────────────── */
-.nt-cards {{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  .nt-header {{ padding: 12px 14px !important; gap: 10px !important; }}
 }}
 """
 
@@ -208,6 +226,7 @@ STYLES = f"""<style>
 }}
 .nt-status {{
   display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:6px 12px;
   padding:7px 14px;margin:10px 0 8px;
   background:{SURFACE};border:1px solid {BORDER};border-radius:6px;font-size:11px;
 }}
@@ -221,7 +240,7 @@ STYLES = f"""<style>
   font-size:15px;font-weight:600;margin-top:6px;
 }}
 .nt-cards {{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;
 }}
 .nt-card {{
   background:{SURFACE};border-radius:8px;padding:14px 16px;
@@ -251,16 +270,19 @@ STYLES = f"""<style>
 .nt-ai-split {{ display:grid;grid-template-columns:1fr 1fr;gap:20px; }}
 .nt-ai-right {{ border-left:1px solid {BORDER};padding-left:20px; }}
 @media(max-width:768px){{
-  .nt-cards {{ grid-template-columns:repeat(2,1fr)!important; }}
-  .nt-tbl   {{ display:block;overflow-x:auto;white-space:nowrap; }}
+  .nt-tbl   {{ display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap; }}
   .nt-ai-split {{ grid-template-columns:1fr!important; }}
   .nt-ai-right {{ border-left:none!important;padding-left:0!important;
     border-top:1px solid {BORDER};padding-top:14px;margin-top:14px; }}
 }}
 @media(max-width:480px){{
-  .nt-cards     {{ grid-template-columns:1fr!important; }}
   .nt-hero-val  {{ font-size:32px!important; }}
   .nt-wrap      {{ padding:8px 10px 0!important; }}
+  /* Bump 11px labels to 12px floor on small screens */
+  .nt-tbl th    {{ font-size:11px!important; }}
+  .nt-tbl td    {{ font-size:13px!important;padding:10px 12px!important; }}
+  .nt-sec       {{ font-size:10px!important; }}
+  .nt-card      {{ padding:12px!important; }}
 }}
 </style>"""
 

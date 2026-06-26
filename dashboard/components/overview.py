@@ -90,11 +90,11 @@ def render_metrics() -> str:
     )
 
     legend = (
-        f'<div style="display:flex;gap:18px;padding:4px 2px 8px;font-size:{FONT_LABEL};color:{TEXT2};">'
-        f'<span><span style="color:{GAIN};">●</span> Gain / Bull regime</span>'
-        f'<span><span style="color:{LOSS};">●</span> Loss / Bear regime</span>'
-        f'<span><span style="color:{NEURAL};">●</span> Neutral / Ranging</span>'
-        f'<span style="margin-left:auto;font-style:italic;">Paper money — no real funds at risk</span>'
+        f'<div style="display:flex;flex-wrap:wrap;gap:8px 18px;padding:4px 2px 8px;font-size:{FONT_LABEL};color:{TEXT2};">'
+        f'<span><span style="color:{GAIN};">●</span> Gain / Bull</span>'
+        f'<span><span style="color:{LOSS};">●</span> Loss / Bear</span>'
+        f'<span><span style="color:{NEURAL};">●</span> Neutral</span>'
+        f'<span style="font-style:italic;">Paper money only</span>'
         f'</div>'
     )
 

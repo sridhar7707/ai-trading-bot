@@ -313,7 +313,7 @@ def _section(icon: str, title: str, note: str = "") -> str:
 
 def _wrap(inner: str) -> str:
     return (f'<div style="background:{SURFACE};border:1px solid {BORDER};'
-            f'border-radius:8px;overflow:hidden;">{inner}</div>')
+            f'border-radius:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;">{inner}</div>')
 
 def _stat_card(label: str, value: str, accent: str = None,
                color: str = TEXT1, sub: str = "", delay: float = 0) -> str:
