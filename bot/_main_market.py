@@ -14,7 +14,9 @@ from bot.strategy.reddit_sentiment import get_wsb_sentiment
 from config import EARNINGS_WINDOW_DAYS, MARKET_OPEN_BUFFER_MINS, MARKET_CLOSE_BUFFER_MINS, SYMBOLS
 
 _UNIVERSE_PATH   = "data/universe_today.json"
-_ETF_SYMBOLS     = {"VOO", "QQQ", "SPY", "VTI", "ARKK"}
+# All ETF-like instruments in the universe — no earnings dates, skip earnings prefetch.
+# Keep in sync with config.SYMBOLS whenever new ETFs are added.
+_ETF_SYMBOLS     = {"VOO", "QQQ", "SPY", "VTI", "ARKK", "IWM", "GLD", "XLE", "XLF", "XLV"}
 _EARNINGS_DB_TTL = 12 * 3600
 
 _wsb_cache: dict[str, tuple[float, dict]] = {}

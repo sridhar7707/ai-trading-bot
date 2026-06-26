@@ -1,9 +1,16 @@
 """End-of-day summary, run_loop, and CLI helpers extracted from bot/main.py."""
 from __future__ import annotations
 
+import socket
+import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+
+# Module-level singleton socket — holds the port for the lifetime of this process.
+# Declared at module scope so it is never garbage-collected.
+_singleton_socket: socket.socket | None = None
+_SINGLETON_PORT = 47219  # arbitrary unprivileged port, unique to this bot
 
 import pandas as pd
 import yfinance as yf
@@ -229,6 +236,29 @@ def end_of_day_summary() -> None:
     con.close()
 
 
+def _acquire_singleton() -> None:
+    """Bind a local TCP port to guarantee only one bot process runs at a time.
+
+    A second invocation (e.g. overlapping cron) cannot bind the same port and
+    exits immediately with CRITICAL log + non-zero exit code. The OS reclaims
+    the port automatically when the first process terminates — no cleanup file
+    needed, survives crashes and kill signals.
+    """
+    global _singleton_socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+    try:
+        sock.bind(("127.0.0.1", _SINGLETON_PORT))
+        _singleton_socket = sock  # keep alive for process lifetime
+    except OSError:
+        sock.close()
+        logger.critical(
+            f"Bot already running (port {_SINGLETON_PORT} in use) — "
+            "this instance will exit to prevent duplicate trades and log noise."
+        )
+        sys.exit(1)
+
+
 def run_loop(mode: str = "paper") -> None:
     """Load models once, cycle every 5 minutes until market close.
 
@@ -237,6 +267,7 @@ def run_loop(mode: str = "paper") -> None:
     """
     from bot.main import run  # lazy import — avoids circular at module level
 
+    _acquire_singleton()
     logger.info("Long-running mode — loading models once for full session.")
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()

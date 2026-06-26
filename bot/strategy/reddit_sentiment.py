@@ -1,4 +1,5 @@
 import os
+import threading
 from loguru import logger
 
 # Catch PRAW's rate-limit exception without requiring praw to be installed at import time
@@ -12,35 +13,36 @@ REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
 REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT", "ai-trading-bot/1.0")
 
 # Module-level singleton — one OAuth session per process lifetime, not per call.
-# Creating a new praw.Reddit per call issues a fresh OAuth token every time
-# (up to 1,950 requests/day in production), which can trigger Reddit rate limiting.
 _reddit = None
-# Set True on first 401 to disable all subsequent Reddit calls for the session.
-# Prevents 432+ wasted HTTP round-trips/day when credentials are missing or invalid.
+# Circuit breaker: set True on first 401 to disable all subsequent calls this session.
+# Lock ensures the flag is read/written atomically across parallel sentiment threads.
 _reddit_auth_failed = False
+_reddit_lock = threading.Lock()
 
 
 def _get_reddit():
-    global _reddit, _reddit_auth_failed
-    if _reddit_auth_failed:
-        return None
-    if _reddit is None and REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET:
-        try:
-            import praw
-            _reddit = praw.Reddit(
-                client_id=REDDIT_CLIENT_ID,
-                client_secret=REDDIT_CLIENT_SECRET,
-                user_agent=REDDIT_USER_AGENT,
-            )
-        except Exception as e:
-            logger.warning(f"PRAW initialization failed: {e}")
-    return _reddit
+    with _reddit_lock:
+        global _reddit, _reddit_auth_failed
+        if _reddit_auth_failed:
+            return None
+        if _reddit is None and REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET:
+            try:
+                import praw
+                _reddit = praw.Reddit(
+                    client_id=REDDIT_CLIENT_ID,
+                    client_secret=REDDIT_CLIENT_SECRET,
+                    user_agent=REDDIT_USER_AGENT,
+                )
+            except Exception as e:
+                logger.warning(f"PRAW initialization failed: {e}")
+        return _reddit
 
 
 def get_wsb_sentiment(ticker: str) -> dict:
     """
     Returns WSB + investing subreddit mention count and FinBERT sentiment score.
-    Returns {"mentions": 0, "sentiment": 0.0} if Reddit credentials are not configured.
+    Returns {"mentions": 0, "sentiment": 0.0} if Reddit credentials are not configured
+    or if credentials are invalid (401 circuit breaker is open).
     """
     reddit = _get_reddit()
     if reddit is None:
@@ -49,16 +51,12 @@ def get_wsb_sentiment(ticker: str) -> dict:
     try:
         from bot.strategy.sentiment import _finbert_score
         subreddit = reddit.subreddit("wallstreetbets+investing+stocks")
-        titles = []
-        for post in subreddit.search(ticker, limit=50, time_filter="day"):
-            titles.append(post.title)
-
+        titles = [post.title for post in subreddit.search(ticker, limit=50, time_filter="day")]
         sentiment = _finbert_score(titles) if titles else 0.0
         logger.info(f"Reddit {ticker}: mentions={len(titles)}, sentiment={sentiment:.2f}")
         return {"mentions": len(titles), "sentiment": sentiment}
 
     except Exception as e:
-        global _reddit_auth_failed
         _emsg = str(e).lower()
         if _RedditRateLimit and isinstance(e, _RedditRateLimit):
             logger.warning(
@@ -66,13 +64,16 @@ def get_wsb_sentiment(ticker: str) -> dict:
                 f"returning neutral sentiment (will recover next cycle): {e}"
             )
         elif "401" in _emsg or "unauthorized" in _emsg or "received 401" in _emsg:
-            _reddit = None
-            _reddit_auth_failed = True
-            logger.warning(
-                "[API RATE LIMIT] Reddit credentials invalid (HTTP 401) — "
-                "disabling Reddit sentiment for this session. "
-                "Set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET as repository secrets."
-            )
+            with _reddit_lock:
+                global _reddit, _reddit_auth_failed
+                if not _reddit_auth_failed:  # log exactly once, even under parallel calls
+                    _reddit = None
+                    _reddit_auth_failed = True
+                    logger.warning(
+                        "[API RATE LIMIT] Reddit credentials invalid (HTTP 401) — "
+                        "disabling Reddit sentiment for this session. "
+                        "Set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET as repository secrets."
+                    )
         else:
             logger.warning(f"Reddit sentiment failed for {ticker}: {e}")
         return {"mentions": 0, "sentiment": 0.0}
