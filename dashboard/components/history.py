@@ -263,24 +263,16 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
         with get_db_conn() as con:
             today  = datetime.date.today()
 
-            # Live portfolio value = last known cash + open positions at current market price.
-            # This reflects intraday P&L rather than the stale value recorded at last trade time.
+            # Current portfolio value: use the most recent bot snapshot (written after every
+            # trading cycle) as the authoritative source. The snapshot records actual cash +
+            # position values at that moment and avoids errors from replaying the trades table.
             snap_row = con.execute(
-                "SELECT available_cash FROM portfolio_snapshots ORDER BY timestamp DESC LIMIT 1"
+                "SELECT portfolio_value FROM portfolio_snapshots WHERE portfolio_value > 0 "
+                "ORDER BY timestamp DESC LIMIT 1"
             ).fetchone()
-            d = get_data()
-            if snap_row and d["open_pos"] and d["prices"]:
-                cash = float(snap_row[0])
-                mkt_val = sum(
-                    d["open_pos"][s]["shares"] * d["prices"].get(s, 0)
-                    for s in d["open_pos"] if d["prices"].get(s, 0) > 0
-                )
-                cur_val = cash + mkt_val if mkt_val > 0 else None
+            if snap_row:
+                cur_val = float(snap_row[0])
             else:
-                cur_val = None
-
-            # Fall back to last recorded trade portfolio_value if live calc unavailable
-            if not cur_val:
                 cur_row = con.execute(
                     "SELECT portfolio_value FROM trades WHERE portfolio_value > 0 ORDER BY id DESC LIMIT 1"
                 ).fetchone()
@@ -305,12 +297,39 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
                         result[key] = None
                     continue
 
+                if key == "1D":
+                    # "Today's change" = yesterday's market close -> now.
+                    # Use the LAST portfolio_snapshots entry from yesterday (true end-of-day).
+                    # Fallback to last trades record from yesterday if no snapshot exists.
+                    yesterday_str = (today - datetime.timedelta(days=1)).isoformat()
+                    row = con.execute(
+                        "SELECT portfolio_value, timestamp FROM portfolio_snapshots "
+                        "WHERE portfolio_value > 0 AND date(timestamp) = ? "
+                        "ORDER BY timestamp DESC LIMIT 1",
+                        (yesterday_str,),
+                    ).fetchone()
+                    if not row:
+                        row = con.execute(
+                            "SELECT portfolio_value, timestamp FROM trades "
+                            "WHERE portfolio_value > 0 AND date(timestamp) = ? "
+                            "ORDER BY id DESC LIMIT 1",
+                            (yesterday_str,),
+                        ).fetchone()
+                    if row:
+                        result[key] = (float(row[0]), cur_val, row[1][:10])
+                    else:
+                        result[key] = None
+                    continue
+
                 if key == "YTD":
                     cutoff = datetime.date(today.year, 1, 1).isoformat()
                 else:
                     cutoff = (today - datetime.timedelta(days=days)).isoformat()
 
-                # First DB record on or after the cutoff date (start-of-period proxy)
+                # First DB record on or after the cutoff date (start-of-period proxy).
+                # If the effective start date equals the bot's first-ever trade date, the bot
+                # hasn't been running long enough for this period — show "—" to avoid displaying
+                # the same cumulative loss as All Time under a misleading label like "1M".
                 row = con.execute(
                     "SELECT portfolio_value, timestamp FROM trades "
                     "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
@@ -319,7 +338,10 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
                 if row:
                     start_val  = float(row[0])
                     start_date = row[1][:10]
-                    result[key] = (start_val, cur_val, start_date)
+                    if first_ts and start_date == first_ts:
+                        result[key] = None
+                    else:
+                        result[key] = (start_val, cur_val, start_date)
                 else:
                     result[key] = None
 
