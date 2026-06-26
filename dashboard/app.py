@@ -82,7 +82,7 @@ from dashboard.components.signals import (
 )
 from dashboard.components.history import (
     render_whats_changed, render_portfolio_performance, _perf_choices,
-    render_recommendation_history,
+    render_recommendation_history, render_news_feed,
 )
 from dashboard.components.signal_history import render_signal_history
 from dashboard.components.actions import (
@@ -183,6 +183,9 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             )
             symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
 
+        with gr.TabItem("📰 News"):
+            news_out = gr.HTML(value=render_news_feed)
+
         with gr.TabItem("⚡ Signals"):
             timeline_out  = gr.HTML(value=render_timeline)
             signals_out   = gr.HTML(value=render_signals_tab)
@@ -275,6 +278,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         return gr.update(choices=choices, value=val)
     timer.tick(fn=_refresh_symbol_choices, inputs=[symbol_selector], outputs=symbol_selector)
     timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
+    # News tab (30-min internal cache — refreshes on every timer tick but skips API if cached)
+    timer.tick(fn=render_news_feed, outputs=news_out)
     # Signals tab
     timer.tick(fn=render_timeline,              outputs=timeline_out)
     timer.tick(fn=render_signals_tab,           outputs=signals_out)
