@@ -164,7 +164,7 @@ div.tabs > div.tab-nav > button.selected,
 }}
 
 /* ── All tables: scrollable, not clipped ─────────────────────────────────── */
-.nt-wrap table {{ width: 100%; }}
+.nt-wrap table {{ width: 100%; table-layout: fixed; }}
 .nt-wrap td {{ overflow: hidden; text-overflow: ellipsis; max-width: 200px; }}
 
 /* ── Mobile 768px ────────────────────────────────────────────────────────── */

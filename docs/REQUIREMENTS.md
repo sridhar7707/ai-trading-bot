@@ -1,8 +1,8 @@
 # TradeGenius — Living Requirements Document
 
 Auto-generated and auto-updated.
-Last updated: 2026-06-26 23:35:21
-Version: 1.2.52
+Last updated: 2026-06-26 23:58:05
+Version: 1.3.2
 
 ---
 
@@ -31,7 +31,7 @@ Purpose: Long-term and swing investment guidance with AI recommendations,
 | Sparkline Charts | ✅ Complete | SPEC 6C | 2026-06-13 | 80×32 SVG 30-day trend column in positions table |
 | UI/UX Test Suite | ✅ Complete | SPEC 7 | 2026-06-13 | 14 test files in tests/ including test_dashboard_render.py |
 | UI Change Log | ✅ Complete | SPEC 8 | 2026-06-13 | tests/ui_changelog.py; 20 render_* components tracked |
-| Living Requirements Tracker | 🔄 In Progress | SPEC 9 | 2026-06-13 | tests/requirements_tracker.py — this file |
+| Living Requirements Tracker | ✅ Complete | SPEC 9 | 2026-06-26 | tests/requirements_tracker.py — scan, --status, --bug, --fix, --complete, --dry-run. SPEC 38/39 added. |
 | Portfolio Actions Panel | ✅ Complete | SPEC 27 | 2026-06-13 | render_portfolio_actions(): HOLD/WATCH/TRIM/EXIT per open position from ensemble score + sell score; Dashboard tab above market intelligence row |
 | Position Sizing Recommendation | ✅ Complete | SPEC 28 | 2026-06-13 | render_position_sizing(): conviction-based target allocation (3-12%) from ensemble score; Portfolio tab above positions table |
 | Today's Actions Summary | ✅ Complete | SPEC 29 | 2026-06-13 | render_todays_actions(): today BUY/SELL timeline with time, price, P&L, reason; Dashboard tab between hero and whats_changed |
@@ -57,8 +57,8 @@ Purpose: Long-term and swing investment guidance with AI recommendations,
 | Dashboard View Model Pattern | ✅ Complete | SPEC 53 | 2026-06-14 | Separate business logic from rendering. Created viewmodels.py (pure Python dataclasses, no HTML), builders.py (8 builder functions), refactored 6 component files (portfolio, overview, actions, decision, rebalance, ai_panel). design_system.py split: CSS/HTML extracted to layout.py (338 lines, under 500). 20 viewmodel tests pass. Zero UI changes. |
 | Critical Function Test Coverage | ✅ Complete | SPEC 55 | 2026-06-14 | Comprehensive tests for the three critical recommendation engine functions (get_portfolio_action, get_sell_analysis, get_portfolio_health). Created tests/fixtures.py with 10 portfolio scenarios (healthy, oversized, all_cash, all_invested, high_vix, single_stock, large_gain, large_loss, high_concentration, tiny). 77 tests: structural, signal, cross-consistency, and parametrized crash-safety. Fixed 4 bugs found by tests: get_sell_analysis underscored extreme concentration (now 60pts for >50% position), catastrophic losses (now 45pts for <-40%), large profits (now 30pts for >100% gain); _max_sector_conc now uses pv as denominator so cash dilutes concentration; latest_buy_signal used as fallback when trades_df is None; get_portfolio_health momentum uses latest_buy_signal fallback. Also fixed log_exception call signature bug (was 2-arg, now correct 3-arg) in 5 places. |
 | Analytics Exception Hardening | ✅ Complete | SPEC 54 | 2026-06-14 | Fixed all swallowed exceptions in analytics_service.py and analytics_repository.py. save_daily_snapshot() now logs at WARNING when health_score=0, INFO on success, and uses log_exception() on any failure. Added try/except+log_exception to get_sharpe_ratio() and get_max_drawdown(). Added check_health() method. Upgraded all 5 CLASS B handlers in analytics_repository.py to log_exception(). Wired check_health() into run_loop() startup and upgraded end_of_day call site in bot/main.py. Added test_analytics_service_check_health to test_duckdb_integration.py and test_analytics_check_health to ui_tester.py GROUP 8. |
-| Rebalance Suggestions | ⏳ Planned | SPEC 38 | 2026-06-13 | P1: render_rebalance_suggestions() — full rebalance summary card: reduce/exit/add rows, net cash change, positions before/after, sector risk delta. Portfolio tab below position sizing. |
-| Paper Trading Scorecard | ⏳ Planned | SPEC 39 | 2026-06-13 | P1: render_paper_trading_scorecard() — return vs SPY/QQQ (yfinance), Sharpe, max DD, win rate, AI-follow rate. Models tab under Performance Tracking. |
+| Rebalance Suggestions | ✅ Complete | SPEC 38 | 2026-06-26 | P1: render_rebalance_suggestions() — full rebalance summary card: reduce/exit/add rows, net cash change, positions before/after, sector risk delta. Portfolio tab below position sizing. |
+| Paper Trading Scorecard | ✅ Complete | SPEC 39 | 2026-06-26 | P1: render_paper_trading_scorecard() — return vs SPY/QQQ (yfinance), Sharpe, max DD, win rate, AI-follow rate. Models tab under Performance Tracking. |
 
 ### BACKEND FEATURES
 | Feature | Status | Spec | Last Updated | Notes |
@@ -161,6 +161,21 @@ Chronological list of all improvements:
 - SPEC 37: render_position_sizing_panel() — current→target weight flow with cash check
 - P1: SPEC 38 rebalance suggestions, SPEC 39 paper trading scorecard
 
+### [2026-06-26] Rebalance Suggestions (SPEC 38)
+- render_rebalance_suggestions(): groups positions into reduce/add buckets
+- Shows net cash freed vs deployed, dominant sector gaining/losing weight
+- Portfolio tab below render_rebalance()
+
+### [2026-06-26] Paper Trading Scorecard (SPEC 39)
+- render_paper_trading_scorecard(): bot return vs SPY and QQQ since first trade (1-hour benchmark cache)
+- Win rate, Sharpe, max drawdown, AI follow rate (BUY signals executed in last 30 days)
+- Always-visible panel at top of Models tab
+
+### [2026-06-26] Living Requirements Tracker complete (SPEC 9)
+- Added SPEC 38/39 to _FEATURES and _SPEC_DEFS in requirements_tracker.py
+- req_state.json patched; REQUIREMENTS.md regenerated
+- All 53 specs now tracked; 53/53 complete
+
 
 ---
 
@@ -211,6 +226,4 @@ Bot runs on scheduled GH Actions workflows. Dashboard auto-deploys from main bra
 ## NEXT PRIORITIES
 Auto-updated based on planned specs and open bugs:
 
-1. SPEC 9 — Living Requirements Tracker (in progress)
-2. SPEC 38 — Rebalance Suggestions
-3. SPEC 39 — Paper Trading Scorecard
+All planned features complete. 🎉

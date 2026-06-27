@@ -1,10 +1,10 @@
 {
   "version": [
     1,
-    2,
-    52
+    3,
+    2
   ],
-  "last_updated": "2026-06-26 23:35:21",
+  "last_updated": "2026-06-26 23:58:05",
   "features": [
     {
       "name": "Dashboard Hero & Health Cards",
@@ -85,10 +85,10 @@
     },
     {
       "name": "Living Requirements Tracker",
-      "status": "in_progress",
+      "status": "complete",
       "spec": "SPEC 9",
-      "last_updated": "2026-06-13",
-      "notes": "tests/requirements_tracker.py \u2014 this file"
+      "last_updated": "2026-06-26",
+      "notes": "tests/requirements_tracker.py \u2014 scan, --status, --bug, --fix, --complete, --dry-run. SPEC 38/39 added."
     },
     {
       "name": "Portfolio Actions Panel",
@@ -267,16 +267,16 @@
     },
     {
       "name": "Rebalance Suggestions",
-      "status": "planned",
+      "status": "complete",
       "spec": "SPEC 38",
-      "last_updated": "2026-06-13",
+      "last_updated": "2026-06-26",
       "notes": "P1: render_rebalance_suggestions() \u2014 full rebalance summary card: reduce/exit/add rows, net cash change, positions before/after, sector risk delta. Portfolio tab below position sizing."
     },
     {
       "name": "Paper Trading Scorecard",
-      "status": "planned",
+      "status": "complete",
       "spec": "SPEC 39",
-      "last_updated": "2026-06-13",
+      "last_updated": "2026-06-26",
       "notes": "P1: render_paper_trading_scorecard() \u2014 return vs SPY/QQQ (yfinance), Sharpe, max DD, win rate, AI-follow rate. Models tab under Performance Tracking."
     },
     {
@@ -561,6 +561,33 @@
         "SPEC 36: render_why_panel() \u2014 bullish/bearish split + model breakdown per symbol",
         "SPEC 37: render_position_sizing_panel() \u2014 current\u2192target weight flow with cash check",
         "P1: SPEC 38 rebalance suggestions, SPEC 39 paper trading scorecard"
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "title": "Rebalance Suggestions (SPEC 38)",
+      "lines": [
+        "render_rebalance_suggestions(): groups positions into reduce/add buckets",
+        "Shows net cash freed vs deployed, dominant sector gaining/losing weight",
+        "Portfolio tab below render_rebalance()"
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "title": "Paper Trading Scorecard (SPEC 39)",
+      "lines": [
+        "render_paper_trading_scorecard(): bot return vs SPY and QQQ since first trade (1-hour benchmark cache)",
+        "Win rate, Sharpe, max drawdown, AI follow rate (BUY signals executed in last 30 days)",
+        "Always-visible panel at top of Models tab"
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "title": "Living Requirements Tracker complete (SPEC 9)",
+      "lines": [
+        "Added SPEC 38/39 to _FEATURES and _SPEC_DEFS in requirements_tracker.py",
+        "req_state.json patched; REQUIREMENTS.md regenerated",
+        "All 53 specs now tracked; 53/53 complete"
       ]
     }
   ],

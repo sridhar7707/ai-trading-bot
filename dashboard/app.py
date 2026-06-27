@@ -76,6 +76,7 @@ from dashboard.components.portfolio import (
 )
 from dashboard.components.models import (
     render_validation_report, render_institutional_metrics, render_investor_view,
+    render_paper_trading_scorecard,
 )
 from dashboard.components.signals import (
     render_watchlist, render_signals_tab, render_timeline,
@@ -92,7 +93,7 @@ from dashboard.components.analysis import (
     render_sell_analysis, render_position_sizing_panel, render_position_sizing,
 )
 from dashboard.components.decision import render_decision_center
-from dashboard.components.rebalance import render_rebalance
+from dashboard.components.rebalance import render_rebalance, render_rebalance_suggestions
 from dashboard.components.symbol_detail import (
     render_symbol_detail, _get_symbol_choices,
 )
@@ -215,11 +216,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             pnl_plot          = gr.Plot(value=render_pnl_chart, label="")
             committee_out     = gr.HTML(value=render_ai_committee)
             decision_center_out = gr.HTML(value=render_decision_center)
-            rebalance_out     = gr.HTML(value=render_rebalance)
+            rebalance_out          = gr.HTML(value=render_rebalance)
+            rebalance_suggest_out  = gr.HTML(value=render_rebalance_suggestions)
             pos_out           = gr.HTML(value=render_positions)
             trades_out        = gr.HTML(value=render_trades)
 
         with gr.TabItem("🔬 Models"):
+            scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View",
@@ -303,9 +306,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_ai_committee,          outputs=committee_out)
     timer.tick(fn=render_decision_center,       outputs=decision_center_out)
     timer.tick(fn=render_rebalance,             outputs=rebalance_out)
+    timer.tick(fn=render_rebalance_suggestions, outputs=rebalance_suggest_out)
     timer.tick(fn=render_positions,             outputs=pos_out)
     timer.tick(fn=render_trades,                outputs=trades_out)
     # Models tab
+    timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
     timer.tick(fn=render_recommendation_history,   outputs=rec_history_out)
     timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)

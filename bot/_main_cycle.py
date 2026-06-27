@@ -157,8 +157,10 @@ def _handle_exits(
             return True
 
     # ② ATR stop-loss
-    if risk.check_stop_loss(symbol, current_price, entry_price,
-                            atr=current_atr, pnl_pct=pnl_pct):
+    _stop_triggered = risk.check_stop_loss(symbol, current_price, entry_price,
+                                           atr=current_atr, pnl_pct=pnl_pct)
+    logger.debug(f"Stop-loss check {symbol}: pnl={pnl_pct:.1%} triggered={_stop_triggered}")
+    if _stop_triggered:
         success = _signal_sell(
             con, client, symbol, pos_qty, current_price,
             regime_name, portfolio_value,

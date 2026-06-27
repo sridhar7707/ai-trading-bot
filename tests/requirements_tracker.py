@@ -52,7 +52,9 @@ _FEATURES = [
     {"name": "Sparkline Charts",                   "status": "complete",    "spec": "SPEC 6C", "last_updated": "2026-06-13", "notes": "80×32 SVG 30-day trend column in positions table"},
     {"name": "UI/UX Test Suite",                   "status": "complete",    "spec": "SPEC 7",  "last_updated": "2026-06-13", "notes": "14 test files in tests/ including test_dashboard_render.py"},
     {"name": "UI Change Log",                      "status": "complete",    "spec": "SPEC 8",  "last_updated": "2026-06-13", "notes": "tests/ui_changelog.py; 20 render_* components tracked"},
-    {"name": "Living Requirements Tracker",        "status": "in_progress", "spec": "SPEC 9",  "last_updated": "2026-06-13", "notes": "tests/requirements_tracker.py — this file"},
+    {"name": "Living Requirements Tracker",        "status": "complete",    "spec": "SPEC 9",  "last_updated": "2026-06-26", "notes": "tests/requirements_tracker.py — scan, --status, --bug, --fix, --complete, --dry-run. SPEC 38/39 added."},
+    {"name": "Rebalance Suggestions",              "status": "complete",    "spec": "SPEC 38", "last_updated": "2026-06-26", "notes": "render_rebalance_suggestions(): grouped action plan — reduce/exit rows, add rows, net cash Δ, sector shift. Portfolio tab below Rebalance."},
+    {"name": "Paper Trading Scorecard",            "status": "complete",    "spec": "SPEC 39", "last_updated": "2026-06-26", "notes": "render_paper_trading_scorecard(): bot return vs SPY/QQQ, Sharpe, max DD, win rate, AI-follow rate (30d). Models tab, always visible."},
     # Backend features
     {"name": "5-min Trading Loop",                 "status": "complete",    "spec": "SPEC 10", "last_updated": "2026-06-13", "notes": "GitHub Actions cron; market-hours + holiday detection; HALT_TRADING emergency override", "category": "backend"},
     {"name": "Pre-market Screener",                "status": "complete",    "spec": "SPEC 11", "last_updated": "2026-06-13", "notes": "universe_today.json → screener_log; RL agent ranks candidates; separate premarket job", "category": "backend"},
@@ -320,8 +322,12 @@ _SPEC_DEFS = {
                 "14-file automated test suite covering render functions and bot components."),
     "SPEC_08": ("UI Change Log",                 "complete",
                 "tests/ui_changelog.py: snapshots render_* functions, diffs, updates docs/UI_CHANGELOG.md."),
-    "SPEC_09": ("Living Requirements Tracker",   "in_progress",
-                "tests/requirements_tracker.py maintains docs/REQUIREMENTS.md from JSON state."),
+    "SPEC_09": ("Living Requirements Tracker",   "complete",
+                "tests/requirements_tracker.py maintains docs/REQUIREMENTS.md from JSON state. Full CLI: --status, --bug, --fix, --complete, --dry-run."),
+    "SPEC_38": ("Rebalance Suggestions",         "complete",
+                "render_rebalance_suggestions(): reduce/exit/add rows, net cash change, sector risk shift. Portfolio tab."),
+    "SPEC_39": ("Paper Trading Scorecard",       "complete",
+                "render_paper_trading_scorecard(): bot vs SPY/QQQ return, Sharpe, max DD, win rate, AI follow rate. Models tab."),
 }
 
 

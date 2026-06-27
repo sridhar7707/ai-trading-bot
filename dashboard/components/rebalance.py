@@ -116,5 +116,95 @@ def render_rebalance() -> str:
     )
 
 
-# ── Gradio layout — 4-tab design ──────────────────────────────────────────────
-# Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
+
+# ── PANEL: Rebalance Suggestions — grouped action plan ────────────────────────
+@safe_render("Rebalance Suggestions")
+def render_rebalance_suggestions() -> str:
+    vm_rows = build_rebalance_vm()
+
+    if not vm_rows:
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("📋", "Action Plan", "what to change and why")}'
+            f'{_card(_empty_state("✅", "No changes needed", "All positions are at target weight."))}'
+            f'</div>'
+        )
+
+    from config import SECTOR_MAP
+
+    reduces = [r for r in vm_rows if r.delta_dollars < -50]
+    adds    = [r for r in vm_rows if r.delta_dollars >  50]
+
+    if not reduces and not adds:
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("📋", "Action Plan", "near target weights")}'
+            f'{_card(_empty_state("✅", "Near target weights", "No material trades needed this cycle."))}'
+            f'</div>'
+        )
+
+    cash_freed    = sum(abs(r.delta_dollars) for r in reduces)
+    cash_deployed = sum(r.delta_dollars      for r in adds)
+    net_cash      = cash_freed - cash_deployed
+    net_c = GAIN if net_cash > 0 else (LOSS if net_cash < -100 else TEXT2)
+
+    # Dominant sectors gaining / losing weight
+    _sec_add: dict[str, float] = {}
+    _sec_red: dict[str, float] = {}
+    for r in adds:
+        s = SECTOR_MAP.get(r.symbol, "Other")
+        _sec_add[s] = _sec_add.get(s, 0.0) + r.delta_dollars
+    for r in reduces:
+        s = SECTOR_MAP.get(r.symbol, "Other")
+        _sec_red[s] = _sec_red.get(s, 0.0) + abs(r.delta_dollars)
+    top_add = max(_sec_add, key=_sec_add.get) if _sec_add else None
+    top_red = max(_sec_red, key=_sec_red.get) if _sec_red else None
+    shift_parts = []
+    if top_add:
+        shift_parts.append(f'<span style="color:{GAIN};">↑ {top_add}</span>')
+    if top_red:
+        shift_parts.append(f'<span style="color:{LOSS};">↓ {top_red}</span>')
+    sector_shift = " &nbsp;·&nbsp; ".join(shift_parts) if shift_parts else "—"
+
+    def _row(r, is_last: bool) -> str:
+        td  = TD0 if is_last else TD
+        amt = f"${abs(r.delta_dollars):,.0f}"
+        badge = "TRIM" if r.delta_dollars < 0 else "ADD"
+        sec   = SECTOR_MAP.get(r.symbol, "—")
+        return (
+            f'<tr>'
+            f'<td {td}>{_symbol(r.symbol)}</td>'
+            f'<td {td}>{_action_badge(badge, "small")}</td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{r.delta_color};'
+            f'font-weight:{WEIGHT_BOLD};">{r.delta_weight:+.1f}%</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+            f'font-family:Courier New,monospace;">{amt}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT3};">{sec}</span></td>'
+            f'</tr>'
+        )
+
+    action_rows = reduces + adds
+    n    = len(action_rows)
+    rows = "".join(_row(r, i == n - 1) for i, r in enumerate(action_rows))
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Wt Δ</th>'
+        f'<th {TH}>Amount</th><th {TH}>Sector</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+
+    summary = (
+        f'<div style="display:flex;gap:0;flex-direction:column;">'
+        + _metric_row("Cash freed (reduces)",  f"${cash_freed:,.0f}",    GAIN if cash_freed > 0 else TEXT2)
+        + _metric_row("Cash deployed (adds)",  f"${cash_deployed:,.0f}", LOSS if cash_deployed > 0 else TEXT2)
+        + _metric_row("Net cash change",       f"${net_cash:+,.0f}",     net_c)
+        + _metric_row("Sector shift",          sector_shift,             TEXT1)
+        + f'</div>'
+    )
+    note = f"{len(reduces)} reduce · {len(adds)} add"
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("📋", "Action Plan", note)}'
+        f'{table}{_card(summary)}'
+        f'</div>'
+    )
