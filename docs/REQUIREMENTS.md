@@ -1,8 +1,8 @@
 # TradeGenius — Living Requirements Document
 
 Auto-generated and auto-updated.
-Last updated: 2026-06-27 00:11:52
-Version: 1.3.3
+Last updated: 2026-06-27 07:06:53
+Version: 1.3.6
 
 ---
 
@@ -183,7 +183,10 @@ Chronological list of all improvements:
 
 | ID | Description | Severity | Status | File | Discovered | Fixed |
 |----|-------------|----------|--------|------|------------|-------|
-| — | No bugs recorded | — | — | — | — | — |
+| BUG-001 | get_sell_analysis underscored extreme concentration | 🟡 Medium | 🔄 In Progress | recommendation_engine.py | 2026-06-14 | 2026-06-14 |
+| BUG-002 | get_sell_analysis underscored catastrophic losses | 🟠 High | 🔄 In Progress | recommendation_engine.py | 2026-06-14 | 2026-06-14 |
+| BUG-003 | get_sell_analysis underscored large profits | 🟡 Medium | 🔄 In Progress | recommendation_engine.py | 2026-06-14 | 2026-06-14 |
+| BUG-004 | log_exception() called with wrong arg count (2 vs 4) in 5 places | 🟡 Medium | 🔄 In Progress | multiple | 2026-06-14 | 2026-06-14 |
 
 Severity: 🔴 Critical  🟠 High  🟡 Medium  🟢 Low
 
@@ -215,11 +218,13 @@ Bot runs on scheduled GH Actions workflows. Dashboard auto-deploys from main bra
 ## KNOWN LIMITATIONS
 
 - Day trading not implemented — intentional to avoid the PDT rule
-- Historical performance shows '—' until enough bot history accumulates
+- Paper trading only — real money deployment gated behind win rate ≥ 60% sustained over 90 days
+- SQLite not suitable for high-frequency writes; intentional for swing-trading cadence
+- Dashboard read-only — no manual order entry by design (all orders through bot logic)
+- Historical performance shows --- until enough bot history accumulates (< 30 days live)
 - yfinance slow on first load with 10+ open positions (cached for 1 hour after)
-- Dashboard refreshes every 60 seconds (Gradio Timer)
-- Paper trading only — real money deployment gated behind confidence threshold
-- SQLite not suitable for high-frequency writes; fine for swing-trading cadence
+- Dashboard refreshes every 60 seconds (Gradio Timer) — real-time would require websockets
+- DuckDB analytics not yet surfaced in scorecard panel (reads SQLite directly instead)
 
 ---
 

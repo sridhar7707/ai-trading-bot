@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Living requirements tracker for TradeGenius AI.
 
-Maintains docs/REQUIREMENTS.md, docs/specs/ and docs/bugs/ from a JSON
-state file.  Run after any project change to keep documentation current.
+Auto-generates docs/REQUIREMENTS.md from JSON state.
+Manually-maintained docs (GOALS, ARCHITECTURE, etc.) are verified by --docs-check
+but never overwritten by this script.
 
 Usage:
-  python tests/requirements_tracker.py              # scan + update
+  python tests/requirements_tracker.py              # scan + update REQUIREMENTS.md
   python tests/requirements_tracker.py --dry-run   # preview, no writes
   python tests/requirements_tracker.py --status    # compact overview
+  python tests/requirements_tracker.py --docs-check # verify all 12 docs/*.md exist
   python tests/requirements_tracker.py --bug "desc" [--severity high]
   python tests/requirements_tracker.py --fix BUG-001
   python tests/requirements_tracker.py --complete SPEC-4
@@ -352,6 +354,74 @@ def _init_specs() -> None:
         )
 
 
+# ── Docs check ───────────────────────────────────────────────────────────────
+
+# These are the manually-maintained docs/*.md files.
+# requirements_tracker.py regenerates REQUIREMENTS.md only — never these.
+_MANAGED_DOCS = [
+    "GOALS.md",
+    "DESIGN_PRINCIPLES.md",
+    "RISK_REGISTER.md",
+    "SUCCESS_METRICS.md",
+    "EXTERNAL_SERVICES.md",
+    "DEPENDENCIES.md",
+    "ARCHITECTURE.md",
+    "TECHNICAL_DEBT.md",
+    "RELEASES.md",
+    "BACKUP_RECOVERY.md",
+    "NFR.md",
+    "README.md",
+]
+
+
+def cmd_docs_check() -> int:
+    """Verify all 12 managed docs exist, are non-empty, and README links are valid.
+
+    Returns 0 on success, 1 if any check fails.
+    """
+    docs_dir = ROOT / "docs"
+    readme   = docs_dir / "README.md"
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    print("Checking docs/*.md files...")
+    for filename in _MANAGED_DOCS:
+        path = docs_dir / filename
+        if not path.exists():
+            errors.append(f"  MISSING  {filename}")
+        elif path.stat().st_size < 50:
+            warnings.append(f"  WARN     {filename} is suspiciously small ({path.stat().st_size} bytes)")
+        else:
+            print(f"  OK       {filename} ({path.stat().st_size} bytes)")
+
+    # Verify README.md links
+    if readme.exists():
+        print("\nChecking docs/README.md links...")
+        readme_text = readme.read_text(encoding="utf-8")
+        for m in re.finditer(r'\[([^\]]+)\]\(([^)]+)\)', readme_text):
+            link_text, link_target = m.group(1), m.group(2)
+            if link_target.startswith("http"):
+                continue
+            # Resolve relative to docs/
+            target_path = (docs_dir / link_target).resolve()
+            if not target_path.exists():
+                errors.append(f"  BROKEN LINK  [{link_text}]({link_target}) in README.md")
+            else:
+                print(f"  OK LINK  {link_target}")
+
+    if warnings:
+        for w in warnings:
+            print(w)
+    if errors:
+        print("\nFAILED:")
+        for e in errors:
+            print(e)
+        return 1
+
+    print(f"\nAll {len(_MANAGED_DOCS)} docs present and README links valid. OK")
+    return 0
+
+
 # ── CLI commands ──────────────────────────────────────────────────────────────
 
 def _next_bug_id(state: dict) -> str:
@@ -445,13 +515,17 @@ def cmd_update(state: dict, dry_run: bool = False) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="TradeGenius requirements tracker")
-    ap.add_argument("--dry-run",  action="store_true")
-    ap.add_argument("--status",   action="store_true")
-    ap.add_argument("--bug",      metavar="DESC")
-    ap.add_argument("--severity", default="medium", choices=["critical", "high", "medium", "low"])
-    ap.add_argument("--fix",      metavar="BUG-ID")
-    ap.add_argument("--complete", metavar="SPEC-N")
+    ap.add_argument("--dry-run",     action="store_true")
+    ap.add_argument("--status",      action="store_true")
+    ap.add_argument("--docs-check",  action="store_true", help="Verify all 12 docs/*.md exist and README links are valid")
+    ap.add_argument("--bug",         metavar="DESC")
+    ap.add_argument("--severity",    default="medium", choices=["critical", "high", "medium", "low"])
+    ap.add_argument("--fix",         metavar="BUG-ID")
+    ap.add_argument("--complete",    metavar="SPEC-N")
     args = ap.parse_args()
+
+    if args.docs_check:
+        sys.exit(cmd_docs_check())
 
     state = _load_state()
 

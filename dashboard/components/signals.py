@@ -16,6 +16,8 @@ from dashboard.design_system import (
 import pandas as pd
 from dashboard.data import get_data, safe_query, _to_ct
 from dashboard.charts import _FI_LABELS
+from dashboard.components.portfolio import _SELL_REASON
+from dashboard.components.ai_panel import _WHY_MAP
 from bot.core.error_logger import safe_render
 _logger = logger
 

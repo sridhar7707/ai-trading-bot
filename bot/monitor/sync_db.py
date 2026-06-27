@@ -78,6 +78,47 @@ def push_db() -> bool:
         return False
 
 
+def backup_database(backup_dir: str | None = None) -> str | None:
+    """Create a timestamped local copy of trades.db.
+
+    Returns the backup file path on success, None on failure.
+    Keeps the last 30 backups; older ones are deleted automatically.
+
+    Usage:
+        from bot.monitor.sync_db import backup_database
+        path = backup_database()          # → backups/trades_20260627_143000.db
+        path = backup_database("/tmp/bk") # custom directory
+    """
+    import datetime
+    db_path, _, _ = _get_cfg()
+    src = Path(db_path)
+    if not src.exists():
+        logger.warning(f"backup_database: {db_path} not found — nothing to back up")
+        return None
+
+    dest_dir = Path(backup_dir) if backup_dir else src.parent / "backups"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = dest_dir / f"trades_{ts}.db"
+
+    try:
+        shutil.copy2(src, dest)
+        size_kb = dest.stat().st_size / 1024
+        logger.info(f"backup_database: {dest} ({size_kb:.0f} KB)")
+
+        # Prune: keep only the 30 most-recent backups
+        backups = sorted(dest_dir.glob("trades_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in backups[30:]:
+            old.unlink(missing_ok=True)
+            logger.debug(f"backup_database: removed old backup {old.name}")
+
+        return str(dest)
+    except Exception as exc:
+        logger.error(f"backup_database: failed — {exc}")
+        return None
+
+
 def pull_db(force: bool = False) -> bool:
     """Download trades.db from HF dataset. Returns True on success."""
     db_path, repo_id, token = _get_cfg()
