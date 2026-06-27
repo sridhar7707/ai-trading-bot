@@ -83,8 +83,9 @@ from dashboard.components.signals import (
 )
 from dashboard.components.history import (
     render_whats_changed, render_portfolio_performance, _perf_choices,
-    render_recommendation_history, render_news_feed,
 )
+from dashboard.components.recommendation_history import render_recommendation_history
+from dashboard.components.news import render_news_feed
 from dashboard.components.signal_history import render_signal_history
 from dashboard.components.actions import (
     render_todays_actions, render_portfolio_actions,

@@ -3,22 +3,17 @@ from __future__ import annotations
 import datetime
 from loguru import logger
 from dashboard.design_system import (
-    BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
-    ACTION_BUY, ACTION_SELL, ACTION_TRIM,
-    PRIMARY, GAIN, LOSS, NEURAL, GAIN_BD, LOSS_BD,
-    FONT_HERO, FONT_SECTION, FONT_VALUE, FONT_LABEL,
-    WEIGHT_BOLD, WEIGHT_MEDIUM, WEIGHT_NORMAL,
-    CARD_PADDING, SECTION_GAP,
-    _card, _label, _section_title, _action_badge, _symbol,
-    _confidence_bar, _metric_row, _divider, _empty_state, _section, _wrap,
-    _stat_card, TH, TD, TD0,
+    BG, SURFACE, BORDER, TEXT1, TEXT2,
+    PRIMARY, GAIN, LOSS,
+    FONT_HERO, FONT_VALUE, FONT_LABEL,
+    _section, _wrap,
 )
-from dashboard.data import get_data, get_db_conn, safe_query, DB_PATH
+from dashboard.data import get_data, get_db_conn, DB_PATH
 from bot.core.error_logger import safe_render, timed
 import os
 _logger = logger
 
-# ── Render: since-yesterday comparison panel ─────────────────────────────────
+# â”€â”€ Render: since-yesterday comparison panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @timed(_logger)
 @safe_render("Since Yesterday")
 def render_whats_changed() -> str:
@@ -30,7 +25,7 @@ def render_whats_changed() -> str:
     def _empty(msg: str) -> str:
         inner = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:{FONT_LABEL};">{msg}</div>')
         return (f'<div class="nt nt-wrap">'
-                f'{_section("📅", "Since Yesterday", date_label)}'
+                f'{_section("ðŸ“…", "Since Yesterday", date_label)}'
                 f'{_wrap(inner)}</div>')
 
     if not os.path.exists(DB_PATH):
@@ -65,7 +60,7 @@ def render_whats_changed() -> str:
         return _empty("Could not load comparison data.")
 
     if not yest_rows:
-        # No prior-day trade data — show today's intraday progress instead
+        # No prior-day trade data â€” show today's intraday progress instead
         try:
             with get_db_conn() as con:
                 first_snap = con.execute(
@@ -78,20 +73,20 @@ def render_whats_changed() -> str:
                     "ORDER BY timestamp DESC LIMIT 1",
                 ).fetchone()
         except Exception:
-            return _empty("First session — no comparison available yet.")
+            return _empty("First session â€” no comparison available yet.")
 
         if not first_snap or not last_snap:
-            return _empty("First session — no comparison available yet.")
+            return _empty("First session â€” no comparison available yet.")
 
         start_v = float(first_snap[0] or 0)
         cur_v   = float(last_snap[0] or 0)
         if start_v <= 0:
-            return _empty("First session — no comparison available yet.")
+            return _empty("First session â€” no comparison available yet.")
 
         delta = cur_v - start_v
         pct   = delta / start_v * 100
         d_c   = GAIN if delta >= 0 else LOSS
-        icon  = "📈" if delta >= 0 else "📉"
+        icon  = "ðŸ“ˆ" if delta >= 0 else "ðŸ“‰"
         word  = "up" if delta >= 0 else "down"
 
         d_data   = get_data()
@@ -130,7 +125,7 @@ def render_whats_changed() -> str:
         _today_title = "Today's Progress"
         return (
             f'<div class="nt nt-wrap">'
-            f'{_section("📅", _today_title, date_label)}'
+            f'{_section("ðŸ“…", _today_title, date_label)}'
             f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
             f'{pv_html}{pos_rows}</div></div>'
         )
@@ -140,7 +135,7 @@ def render_whats_changed() -> str:
     today_map = {r[0]: {"score": float(r[1] or 0), "regime": r[2] or "",
                          "sent": float(r[3] or 0)} for r in today_rows}
 
-    # ── Portfolio delta summary ────────────────────────────────────────────────
+    # â”€â”€ Portfolio delta summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     pv_html = ""
     if yest_pv_row and today_pv_row:
         yv = float(yest_pv_row[0] or 0)
@@ -149,7 +144,7 @@ def render_whats_changed() -> str:
             delta = tv - yv
             pct   = delta / yv * 100
             d_c   = GAIN if delta >= 0 else LOSS
-            icon  = "📈" if delta >= 0 else "📉"
+            icon  = "ðŸ“ˆ" if delta >= 0 else "ðŸ“‰"
             word  = "up" if delta >= 0 else "down"
             pv_html = (
                 f'<div style="background:{BG};border:1px solid {d_c}33;border-radius:6px;'
@@ -160,7 +155,7 @@ def render_whats_changed() -> str:
                 f' since yesterday</span></div>'
             )
 
-    # ── Per-symbol change rows ─────────────────────────────────────────────────
+    # â”€â”€ Per-symbol change rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     def _sent_label(v: float) -> str:
         return "Positive" if v > 0.05 else ("Negative" if v < -0.05 else "Neutral")
 
@@ -180,24 +175,24 @@ def render_whats_changed() -> str:
         changes: list[tuple[str, str, str]] = []
 
         if abs(score_delta) > 0.05:
-            arrow = (f'<span style="color:{GAIN};font-weight:700;">↑</span>' if score_delta > 0
-                     else f'<span style="color:{LOSS};font-weight:700;">↓</span>')
+            arrow = (f'<span style="color:{GAIN};font-weight:700;">â†‘</span>' if score_delta > 0
+                     else f'<span style="color:{LOSS};font-weight:700;">â†“</span>')
             changes.append(("Confidence", arrow,
-                            f'{y["score"] * 100:.0f}% → {t["score"] * 100:.0f}%'))
+                            f'{y["score"] * 100:.0f}% â†’ {t["score"] * 100:.0f}%'))
 
         if regime_y and regime_t and regime_y != regime_t:
             changes.append(("Regime",
-                            f'<span style="color:{TEXT2};font-weight:700;">→</span>',
-                            f'{regime_y} → {regime_t}'))
+                            f'<span style="color:{TEXT2};font-weight:700;">â†’</span>',
+                            f'{regime_y} â†’ {regime_t}'))
 
         if sent_y != sent_t:
             if sent_t == "Positive":
-                s_arrow = f'<span style="color:{GAIN};font-weight:700;">↑</span>'
+                s_arrow = f'<span style="color:{GAIN};font-weight:700;">â†‘</span>'
             elif sent_t == "Negative":
-                s_arrow = f'<span style="color:{LOSS};font-weight:700;">↓</span>'
+                s_arrow = f'<span style="color:{LOSS};font-weight:700;">â†“</span>'
             else:
-                s_arrow = f'<span style="color:{TEXT2};font-weight:700;">→</span>'
-            changes.append(("Sentiment", s_arrow, f'{sent_y} → {sent_t}'))
+                s_arrow = f'<span style="color:{TEXT2};font-weight:700;">â†’</span>'
+            changes.append(("Sentiment", s_arrow, f'{sent_y} â†’ {sent_t}'))
 
         if not changes:
             continue
@@ -219,19 +214,19 @@ def render_whats_changed() -> str:
     if not changes_seen:
         rows_html = (
             f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:12px 0;text-align:center;">'
-            f'No significant changes since yesterday — AI signals are stable.</div>'
+            f'No significant changes since yesterday â€” AI signals are stable.</div>'
         )
 
     return (
         f'<div class="nt nt-wrap">'
-        f'{_section("📅", "Since Yesterday", date_label)}'
+        f'{_section("ðŸ“…", "Since Yesterday", date_label)}'
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
         f'{pv_html}{rows_html}'
         f'</div></div>'
     )
 
 
-# ── Portfolio performance period helpers ──────────────────────────────────────
+# â”€â”€ Portfolio performance period helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _PERF_PERIODS = [
     ("1D",       1),
     ("1W",       7),
@@ -328,7 +323,7 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
 
                 # First DB record on or after the cutoff date (start-of-period proxy).
                 # If the effective start date equals the bot's first-ever trade date, the bot
-                # hasn't been running long enough for this period — show "—" to avoid displaying
+                # hasn't been running long enough for this period â€” show "â€”" to avoid displaying
                 # the same cumulative loss as All Time under a misleading label like "1M".
                 row = con.execute(
                     "SELECT portfolio_value, timestamp FROM trades "
@@ -361,13 +356,13 @@ def _perf_choices() -> list[str]:
             pct = (s[1] - s[0]) / s[0] * 100
             choices.append(f"{key}  {pct:+.1f}%")
         else:
-            choices.append(f"{key}  —")
+            choices.append(f"{key}  â€”")
     return choices
 
 
 @timed(_logger)
 @safe_render("Portfolio Performance")
-def render_portfolio_performance(period: str = "1M  —") -> str:
+def render_portfolio_performance(period: str = "1M  â€”") -> str:
     # Strip the inline stat suffix so we always have a clean key
     key = period.split()[0] if period else "1M"
 
@@ -377,17 +372,17 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
 
     if not first_any:
         empty = (f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:{FONT_LABEL};">'
-                 f'No portfolio history yet — data appears after the first trade.</div>')
+                 f'No portfolio history yet â€” data appears after the first trade.</div>')
         return f'<div class="nt nt-wrap">{empty}</div>'
 
     s = stats.get(key)
 
-    # ── Detail card for selected period ───────────────────────────────────────
+    # â”€â”€ Detail card for selected period â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if not s:
         detail = (
             f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;'
             f'padding:20px;text-align:center;color:{TEXT2};font-size:{FONT_VALUE};">'
-            f'Not enough data yet for <strong>{key}</strong> — the bot needs more trading history.</div>'
+            f'Not enough data yet for <strong>{key}</strong> â€” the bot needs more trading history.</div>'
         )
     else:
         start_val, end_val, start_date = s
@@ -407,11 +402,11 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
             # Subline
             f'<div style="font-size:{FONT_VALUE};color:{TEXT2};margin-bottom:14px;">'
             f'{sign}{pct:.2f}% {label_str}</div>'
-            # From → To
+            # From â†’ To
             f'<div style="display:flex;align-items:center;gap:12px;">'
             f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">From</span>'
             f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${start_val:,.2f}</span>'
-            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">→</span>'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">â†’</span>'
             f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${end_val:,.2f}</span>'
             f'</div>'
             # Start date
@@ -421,273 +416,3 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
         )
 
     return f'<div class="nt nt-wrap">{detail}</div>'
-
-
-# ── Render: recommendation history ───────────────────────────────────────────────
-@safe_render("Recommendation History")
-def render_recommendation_history() -> str:
-    # Read from trades.db (SQLite) — pushed to HF by push_db().
-    # DuckDB analytics.duckdb is never pushed so AnalyticsRepository always shows empty.
-    recs = safe_query("""
-        SELECT r.symbol, r.prediction_date, r.recommendation, r.confidence,
-               r.prev_recommendation, r.price_at_recommendation,
-               sl.regime, sl.ensemble_score
-        FROM recommendations r
-        LEFT JOIN (
-            SELECT symbol, date(timestamp) AS d,
-                   regime, ensemble_score,
-                   ROW_NUMBER() OVER (PARTITION BY symbol, date(timestamp) ORDER BY id DESC) AS rn
-            FROM signal_log
-        ) sl ON sl.symbol = r.symbol AND sl.d = r.prediction_date AND sl.rn = 1
-        WHERE r.prediction_date >= date('now', '-14 days')
-        ORDER BY r.prediction_date DESC, r.symbol ASC
-        LIMIT 200
-    """, default=[])
-
-    # Symbols that were actually bought, keyed by (symbol, date)
-    executed = set()
-    exec_rows = safe_query("""
-        SELECT symbol, date(timestamp), price FROM trades
-        WHERE action = 'BUY' AND date(timestamp) >= date('now', '-14 days')
-    """, default=[])
-    executed_price: dict = {}
-    for sym, dt, price in (exec_rows or []):
-        executed.add((sym, str(dt)[:10]))
-        executed_price[(sym, str(dt)[:10])] = price
-
-    if not recs:
-        return (
-            f'<div class="nt nt-wrap">'
-            f'{_section("📋", "Signal History", "")}'
-            f'{_card(_empty_state("📋", "No history yet", "Signals are recorded every cycle. Check back after the next bot run."))}'
-            f'</div>'
-        )
-
-    n         = len(recs)
-    n_changes = sum(
-        1 for r in recs
-        if r[4] and r[4] != r[2]  # prev_recommendation exists and differs
-    )
-    note = f"{n} signals · {n_changes} changes" if n_changes else f"{n} signals"
-
-    rows = ""
-    for i, row in enumerate(recs):
-        symbol, pred_date, rec, conf, prev, price_at_rec, regime, sl_score = row
-        is_last = (i == n - 1)
-        td      = TD0 if is_last else TD
-        rec     = str(rec or "—")
-        conf    = float(conf or sl_score or 0)
-        changed = bool(prev and prev != rec)
-        date_str = str(pred_date)[:10]
-        key = (symbol, date_str)
-
-        change_html = ""
-        if changed:
-            change_html = (
-                f' <span style="font-size:{FONT_LABEL};color:{ACTION_SELL};">'
-                f'was {prev}</span>'
-            )
-
-        # Friendly market context from regime
-        _regime_map = {
-            "bullish": "Rising market", "bull": "Rising market",
-            "bearish": "Falling market", "bear": "Falling market",
-            "ranging": "Sideways market", "range": "Sideways market",
-            "volatile": "Volatile market",
-        }
-        regime_clean = str(regime or "").lower().replace("_", " ").strip()
-        market_ctx = _regime_map.get(regime_clean, regime_clean.title() if regime_clean else "")
-
-        if rec == "BUY" and key in executed:
-            exec_p = executed_price.get(key, price_at_rec)
-            why = (f'<span style="color:{GAIN};font-weight:600;">Bought</span>'
-                   + (f'<span style="color:{TEXT2};"> at ${exec_p:,.2f}</span>' if exec_p else ""))
-        elif rec == "BUY":
-            why = (f'<span style="color:{TEXT3};">Held back</span>'
-                   + (f'<span style="color:{TEXT2};"> &middot; {market_ctx}</span>' if market_ctx else ""))
-        else:
-            why = f'<span style="color:{TEXT2};">{market_ctx}</span>' if market_ctx else "—"
-
-        rows += (
-            f'<tr>'
-            f'<td {td}>{_symbol(str(symbol))}</td>'
-            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{date_str}</span></td>'
-            f'<td {td}>{_action_badge(rec)}{change_html}</td>'
-            f'<td {td}>{_confidence_bar(conf, show_label=False)}</td>'
-            f'<td {td}><span style="font-size:{FONT_LABEL};">{why}</span></td>'
-            f'</tr>'
-        )
-
-    disclaimer = (
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};padding:8px 4px 12px;">'
-        f'These are AI recommendations, not executed trades. A BUY signal means the AI wanted to buy — '
-        f'but the bot may hold back if too many positions are open, cash is low, or daily loss limits are hit. '
-        f'Check the <strong>Trades</strong> tab to see what was actually bought or sold.'
-        f'</div>'
-    )
-    table = _wrap(
-        f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th><th {TH}>Date</th>'
-        f'<th {TH}>AI Decision</th><th {TH}>Conviction</th><th {TH}>Reason</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table>'
-    )
-    return (
-        f'<div class="nt nt-wrap">'
-        f'{_section("📋", "AI Decision Log", note)}'
-        f'{disclaimer}'
-        f'{table}'
-        f'</div>'
-    )
-
-
-# ── News feed (yfinance, free, no API key) ────────────────────────────────────
-_news_cache: dict[str, tuple[float, list]] = {}  # symbol → (fetched_at, items)
-_NEWS_CACHE_TTL = 1800.0  # 30 minutes
-
-
-def _time_ago(pub_date_str: str) -> str:
-    try:
-        import time as _t
-        from datetime import timezone
-        dt = datetime.datetime.strptime(pub_date_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        secs = _t.time() - dt.timestamp()
-        if secs < 3600:
-            return f"{int(secs // 60)}m ago"
-        if secs < 86400:
-            return f"{int(secs // 3600)}h ago"
-        return f"{int(secs // 86400)}d ago"
-    except Exception:
-        return ""
-
-
-def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
-    import time as _t
-    now = _t.time()
-    cached_ts, cached = _news_cache.get(symbol, (0.0, []))
-    if cached and now - cached_ts < _NEWS_CACHE_TTL:
-        return cached
-    try:
-        import yfinance as _yf
-        raw = _yf.Ticker(symbol).news or []
-        items = []
-        for r in raw[:max_items]:
-            c = r.get("content", {})
-            url = (c.get("clickThroughUrl") or {}).get("url", "")
-            items.append({
-                "symbol":    symbol,
-                "title":     c.get("title", ""),
-                "publisher": (c.get("provider") or {}).get("displayName", ""),
-                "pub_date":  c.get("pubDate", ""),
-                "url":       url,
-            })
-        _news_cache[symbol] = (now, items)
-        return items
-    except Exception as exc:
-        logger.debug(f"news_fetch {symbol}: {exc}")
-        _news_cache[symbol] = (now, [])
-        return []
-
-
-def _news_block(title: str, icon: str, items: list) -> str:
-    """Render a labelled list of news items."""
-    if not items:
-        return ""
-    rows_html = ""
-    for item in items:
-        sym       = item["symbol"]
-        headline  = item["title"]
-        publisher = item["publisher"]
-        pub_date  = item["pub_date"]
-        url       = item["url"]
-        age       = _time_ago(pub_date)
-
-        title_el = (
-            f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
-            f'style="color:{TEXT1};text-decoration:none;font-size:{FONT_VALUE};'
-            f'line-height:1.4;font-weight:{WEIGHT_MEDIUM};"'
-            f'onmouseover="this.style.color=\'{PRIMARY}\'" '
-            f'onmouseout="this.style.color=\'{TEXT1}\'">'
-            f'{headline}'
-            f'</a>'
-        ) if url else f'<span style="font-size:{FONT_VALUE};color:{TEXT1};">{headline}</span>'
-
-        rows_html += (
-            f'<div style="display:grid;grid-template-columns:52px 1fr;gap:10px;'
-            f'padding:10px 0;border-bottom:1px solid {BORDER};">'
-            f'<div style="padding-top:2px;">{_symbol(sym)}</div>'
-            f'<div>'
-            f'{title_el}'
-            f'<div style="margin-top:4px;font-size:{FONT_LABEL};color:{TEXT3};">'
-            f'{publisher}'
-            + (f' &nbsp;&middot;&nbsp; {age}' if age else "")
-            + f'</div>'
-            f'</div>'
-            f'</div>'
-        )
-
-    return (
-        f'<div style="margin-bottom:20px;">'
-        f'<div style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT2};'
-        f'padding:10px 0 4px;letter-spacing:.5px;text-transform:uppercase;">'
-        f'{icon} {title}</div>'
-        f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:0 16px;">'
-        f'{rows_html}'
-        f'</div>'
-        f'</div>'
-    )
-
-
-@timed(_logger)
-@safe_render("News Feed")
-def render_news_feed() -> str:
-    d = get_data()
-    open_syms = list(d.get("open_pos", {}).keys())
-
-    # Today's BUY signals that were NOT executed = potential buys on the radar
-    today_str = datetime.date.today().isoformat()
-    buy_signals = safe_query(
-        "SELECT DISTINCT symbol FROM recommendations "
-        "WHERE recommendation = 'BUY' AND prediction_date = ?",
-        (today_str,), default=[]
-    )
-    executed_today = safe_query(
-        "SELECT DISTINCT symbol FROM trades WHERE action='BUY' AND date(timestamp)=?",
-        (today_str,), default=[]
-    )
-    executed_syms = {r[0] for r in (executed_today or [])}
-    watchlist_syms = [r[0] for r in (buy_signals or []) if r[0] not in executed_syms and r[0] not in open_syms]
-
-    held_news: list = []
-    for sym in open_syms[:5]:
-        held_news.extend(_fetch_symbol_news(sym, max_items=2))
-    held_news.sort(key=lambda x: x["pub_date"], reverse=True)
-    held_news = held_news[:5]
-
-    radar_news: list = []
-    for sym in watchlist_syms[:5]:
-        radar_news.extend(_fetch_symbol_news(sym, max_items=2))
-    radar_news.sort(key=lambda x: x["pub_date"], reverse=True)
-    radar_news = radar_news[:5]
-
-    if not held_news and not radar_news:
-        return (
-            f'<div class="nt nt-wrap">'
-            f'{_section("📰", "Market News", "")}'
-            f'{_card(_empty_state("📰", "No news available", "Yahoo Finance returned no recent articles for your positions."))}'
-            f'</div>'
-        )
-
-    held_block   = _news_block("Stocks You Hold", "📌", held_news)
-    radar_block  = _news_block("On the Radar (BUY signals not yet bought)", "🔭", radar_news)
-    note = "via Yahoo Finance · free · updates every 30 min"
-
-    return (
-        f'<div class="nt nt-wrap">'
-        f'{_section("📰", "Market News", note)}'
-        f'{held_block}'
-        f'{radar_block}'
-        f'</div>'
-    )
-
-
-# ── Render: today's trades timeline ─────────────────────────────────────────────
