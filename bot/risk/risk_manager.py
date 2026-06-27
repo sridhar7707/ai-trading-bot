@@ -203,7 +203,14 @@ class RiskManager:
         ETFs in 'Broad_ETF' are always allowed (they're already diversified).
         """
         sector = SECTOR_MAP.get(symbol, "Unknown")
+        # Broad ETFs are always allowed (already diversified by construction).
         if sector == "Broad_ETF":
+            return True
+        # Unknown sector means the screener surfaced a symbol not yet in SECTOR_MAP.
+        # Applying a limit against an unclassified bucket would incorrectly group
+        # all unmapped stocks together and block legitimate buys.
+        if sector == "Unknown":
+            logger.debug(f"Sector check: {symbol} not in SECTOR_MAP — skipping sector limit")
             return True
         held_in_sector = sum(
             1 for sym in open_positions

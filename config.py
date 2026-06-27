@@ -99,25 +99,36 @@ SECTOR_MAP: dict[str, str] = {
     "AAPL": "Technology",  "MSFT": "Technology",  "NVDA": "Technology",
     "AMD":  "Technology",  "AVGO": "Technology",  "CRM":  "Technology",
     "QQQ":  "Technology",  "XLK":  "Technology",  "ARKK": "Technology",
+    "PANW": "Technology",  "SNOW": "Technology",  "CSCO": "Technology",
+    "NOW":  "Technology",  "ADBE": "Technology",  "INTU": "Technology",
     # Communication Services
     "GOOGL": "Comm_Services", "META": "Comm_Services", "NFLX": "Comm_Services",
-    "XLC":   "Comm_Services",
+    "XLC":   "Comm_Services", "DIS":  "Comm_Services", "BKNG": "Comm_Services",
     # Consumer Discretionary
     "AMZN": "Consumer_Disc", "TSLA": "Consumer_Disc",
     "NKE":  "Consumer_Disc", "MCD":  "Consumer_Disc", "XLY":  "Consumer_Disc",
+    "HD":   "Consumer_Disc", "TGT":  "Consumer_Disc", "LOW":  "Consumer_Disc",
+    "ABNB": "Consumer_Disc", "LULU": "Consumer_Disc",
     # Consumer Staples
     "WMT":  "Consumer_Staples", "COST": "Consumer_Staples",
     "PG":   "Consumer_Staples", "XLP":  "Consumer_Staples",
+    "SBUX": "Consumer_Staples", "KO":   "Consumer_Staples", "PEP": "Consumer_Staples",
     # Financials
     "JPM":   "Financials", "BAC": "Financials", "V":   "Financials",
     "MA":    "Financials", "XLF": "Financials", "BRK-B": "Financials",
+    "MS":    "Financials", "GS":  "Financials", "WFC": "Financials",
+    "BLK":   "Financials", "AXP": "Financials",
     # Healthcare
     "JNJ":  "Healthcare", "UNH":  "Healthcare", "ABBV": "Healthcare",
-    "PFE":  "Healthcare", "XLV":  "Healthcare",
+    "PFE":  "Healthcare", "XLV":  "Healthcare", "LLY":  "Healthcare",
+    "MRK":  "Healthcare", "TMO":  "Healthcare",
     # Energy
     "XOM":  "Energy", "CVX": "Energy", "XLE": "Energy",
+    "COP":  "Energy", "SLB": "Energy",
     # Industrials
     "CAT":  "Industrials", "HON": "Industrials", "XLI": "Industrials",
+    "GE":   "Industrials", "MMM": "Industrials", "DE":  "Industrials",
+    "RTX":  "Industrials", "LMT": "Industrials", "BA":  "Industrials",
     # Broad / macro
     "SPY":  "Broad_ETF", "VTI": "Broad_ETF", "VOO": "Broad_ETF",
     "IWM":  "Broad_ETF",
