@@ -50,8 +50,12 @@ def render_symbol_detail(symbol: str) -> str:
     buy_df   = sym_df[sym_df["action"] == "BUY"]
     lb       = buy_df.iloc[-1] if not buy_df.empty else None
 
-    cur_price = prices.get(symbol, 0.0)
-    pos       = open_pos.get(symbol)
+    cur_price  = prices.get(symbol, 0.0)
+    pos        = open_pos.get(symbol)
+    has_bot_buy = lb is not None
+    # Reconciled: bot sold the position but never recorded a BUY (seeded from Alpaca)
+    has_sells   = not sym_df[sym_df["action"].str.startswith("SELL")].empty if not sym_df.empty else False
+    is_external = (not has_bot_buy) and has_sells
 
     conf    = float(lb.get("ensemble_score",  0.0) or 0.0) if lb is not None else 0.0
     xgb_p   = float(lb.get("xgb_prob",        0.0) or 0.0) if lb is not None else 0.0
@@ -76,8 +80,14 @@ def render_symbol_detail(symbol: str) -> str:
         pnl_str = f"{pnl_v:+.1f}%"
         pnl_c   = GAIN if pnl_v >= 0 else LOSS
 
-    status_lbl = "OPEN POSITION" if pos else "RECENTLY TRADED"
-    status_c   = GAIN if pos else TEXT2
+    if pos:
+        status_lbl, status_c = "OPEN POSITION",      GAIN
+    elif is_external:
+        status_lbl, status_c = "EXTERNAL / RECONCILED", NEURAL
+    elif not sym_df.empty:
+        status_lbl, status_c = "RECENTLY TRADED",    TEXT2
+    else:
+        status_lbl, status_c = "NO HISTORY",         TEXT3
     conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "—"
 
     # SHAP drivers
@@ -99,7 +109,16 @@ def render_symbol_detail(symbol: str) -> str:
     except Exception as exc:
         logger.debug(f"build_why_html: {exc}")
     if not why_html:
-        why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
+        if is_external:
+            why_html = (
+                f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">'
+                f'This position was <strong>seeded from your Alpaca account</strong> at bot startup '
+                f'— it was not opened by this bot session. No BUY signal or SHAP drivers on record.</div>'
+            )
+        elif not has_bot_buy:
+            why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">No bot BUY on record for this symbol.</div>'
+        else:
+            why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">SHAP breakdown available after next model retrain.</div>'
 
     # Mini model bars
     def _mbar(label, v, c):
@@ -170,71 +189,81 @@ def render_symbol_detail(symbol: str) -> str:
 
     # ── SPEC 31: action card ──────────────────────────────────────────────────────
     # ── Why Panel — recommendation engine signals ──────────────────────────────
-    _pa  = get_portfolio_action(symbol, d)
-    _exp = get_recommendation_explanation(symbol, d)
-    _sz2 = get_position_sizing(symbol, d)
-    _ac  = _pa.get("action", "HOLD")
-    _pa_conf = _pa.get("confidence", 0)
-    _pa_reason = _pa.get("reason", "—")
-    _ac_colors = {
-        "EXIT":  (LOSS,      "#2a0a0a"),
-        "SELL":  (LOSS,      "#2a0a0a"),
-        "TRIM":  ("#f59e0b", "#2a1f08"),
-        "WATCH": (NEURAL,    "#1a1030"),
-        "ADD":   (GAIN,      "#0a2010"),
-        "BUY":   (GAIN,      "#0a2010"),
-        "HOLD":  (TEXT2,     SURFACE2),
-    }
-    _ac_c, _ac_bg = _ac_colors.get(_ac, (TEXT2, SURFACE2))
-    _bc = GAIN if _pa_conf >= 75 else (NEURAL if _pa_conf >= 60 else TEXT2)
+    if pos:
+        # Live open position — full recommendation engine output
+        _pa  = get_portfolio_action(symbol, d)
+        _exp = get_recommendation_explanation(symbol, d)
+        _sz2 = get_position_sizing(symbol, d)
+        _ac      = _pa.get("action", "HOLD")
+        _pa_conf = _pa.get("confidence", 0)
+        _pa_reason = _pa.get("reason", "—")
+        _ac_colors = {
+            "EXIT":  (LOSS,      "#2a0a0a"),
+            "SELL":  (LOSS,      "#2a0a0a"),
+            "TRIM":  ("#f59e0b", "#2a1f08"),
+            "WATCH": (NEURAL,    "#1a1030"),
+            "ADD":   (GAIN,      "#0a2010"),
+            "BUY":   (GAIN,      "#0a2010"),
+            "HOLD":  (TEXT2,     SURFACE2),
+        }
+        _ac_c, _ac_bg = _ac_colors.get(_ac, (TEXT2, SURFACE2))
+        _bc = GAIN if _pa_conf >= 75 else (NEURAL if _pa_conf >= 60 else TEXT2)
 
-    _bull_items = _exp.get("bullish", [])[:3]
-    _bear_items = _exp.get("bearish", [])[:3]
-    _bull_html  = "".join(
-        f'<div style="font-size:{FONT_LABEL};color:{GAIN};margin-bottom:2px;">+ {b}</div>'
-        for b in _bull_items
-    ) or f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">No bullish signals</div>'
-    _bear_html  = "".join(
-        f'<div style="font-size:{FONT_LABEL};color:{LOSS};margin-bottom:2px;">- {b}</div>'
-        for b in _bear_items
-    ) or ""
+        _bull_items = _exp.get("bullish", [])[:3]
+        _bear_items = _exp.get("bearish", [])[:3]
+        _bull_html  = "".join(
+            f'<div style="font-size:{FONT_LABEL};color:{GAIN};margin-bottom:2px;">+ {b}</div>'
+            for b in _bull_items
+        ) or f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">No bullish signals</div>'
+        _bear_html  = "".join(
+            f'<div style="font-size:{FONT_LABEL};color:{LOSS};margin-bottom:2px;">- {b}</div>'
+            for b in _bear_items
+        ) or ""
 
-    _dol_disp = _sz2.get("dollar_display", "—")
-    _tgt_w    = _sz2.get("target_weight", 0.0)
-    _sh = (f"Target {_tgt_w:.0f}% · {_dol_disp}" if _tgt_w > 0 else
-           "Max 12% allocation" if _pa_conf >= 75 else
-           "Max 8% allocation"  if _pa_conf >= 60 else "Max 5% allocation")
+        _dol_disp = _sz2.get("dollar_display", "—")
+        _tgt_w    = _sz2.get("target_weight", 0.0)
+        _sh = (f"Target {_tgt_w:.0f}% · {_dol_disp}" if _tgt_w > 0 else
+               "Max 12% allocation" if _pa_conf >= 75 else
+               "Max 8% allocation"  if _pa_conf >= 60 else "Max 5% allocation")
 
-    action_card_html = (
-        f'<div style="background:{BG};border-radius:6px;padding:12px 14px;margin-bottom:14px;">'
-        f'<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
-        # Action badge
-        f'<div style="flex:0 0 auto;">'
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
-        f'letter-spacing:.8px;margin-bottom:4px;">AI Action</div>'
-        f'<span style="display:inline-block;background:{_ac_bg};border:1px solid {_ac_c};'
-        f'color:{_ac_c};font-size:{FONT_VALUE};font-weight:700;letter-spacing:.5px;'
-        f'padding:4px 14px;border-radius:4px;">{_ac}</span>'
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;max-width:140px;">{_pa_reason}</div>'
-        f'</div>'
-        # Conviction bar + signals
-        f'<div style="flex:1;min-width:160px;">'
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
-        f'letter-spacing:.8px;margin-bottom:4px;">AI Conviction</div>'
-        f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
-        f'<div style="background:{BORDER};border-radius:2px;height:6px;flex:1;">'
-        f'<div style="background:{_bc};height:100%;width:{_pa_conf}%;border-radius:2px;"></div>'
-        f'</div><span style="font-size:{FONT_LABEL};font-weight:700;color:{_bc};">{_pa_conf}%</span>'
-        f'</div>'
-        f'{_bull_html}{_bear_html}'
-        f'</div>'
-        # Sizing
-        f'<div style="text-align:right;flex:0 0 auto;">'
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
-        f'letter-spacing:.8px;margin-bottom:4px;">Sizing Guidance</div>'
-        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{_sh}</div>'
-        f'</div></div></div>'
-    )
+        action_card_html = (
+            f'<div style="background:{BG};border-radius:6px;padding:12px 14px;margin-bottom:14px;">'
+            f'<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
+            f'<div style="flex:0 0 auto;">'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:4px;">AI Action</div>'
+            f'<span style="display:inline-block;background:{_ac_bg};border:1px solid {_ac_c};'
+            f'color:{_ac_c};font-size:{FONT_VALUE};font-weight:700;letter-spacing:.5px;'
+            f'padding:4px 14px;border-radius:4px;">{_ac}</span>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;max-width:140px;">{_pa_reason}</div>'
+            f'</div>'
+            f'<div style="flex:1;min-width:160px;">'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:4px;">AI Conviction</div>'
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">'
+            f'<div style="background:{BORDER};border-radius:2px;height:6px;flex:1;">'
+            f'<div style="background:{_bc};height:100%;width:{_pa_conf}%;border-radius:2px;"></div>'
+            f'</div><span style="font-size:{FONT_LABEL};font-weight:700;color:{_bc};">{_pa_conf}%</span>'
+            f'</div>'
+            f'{_bull_html}{_bear_html}'
+            f'</div>'
+            f'<div style="text-align:right;flex:0 0 auto;">'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:4px;">Sizing Guidance</div>'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{_sh}</div>'
+            f'</div></div></div>'
+        )
+    else:
+        # Position is closed or was never held — no live AI signal to show
+        _close_note = (
+            "Position was seeded from Alpaca at startup (external entry). "
+            "The bot closed it via stop-loss. No AI signal was generated at entry."
+        ) if is_external else "Position is closed. AI signals are only generated for open positions."
+        action_card_html = (
+            f'<div style="background:{BG};border-radius:6px;padding:12px 14px;margin-bottom:14px;">'
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{_close_note}</div>'
+            f'</div>'
+        )
 
     card = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-top:3px solid {PRIMARY};border-radius:8px;padding:20px;">'
