@@ -95,22 +95,24 @@ def _detect_regime(spy_closes: pd.Series) -> str:
 def _factor_weights(regime: str) -> dict[str, float]:
     if regime == "BULL":
         return {
-            "risk_adj_mom": 0.30,
-            "rs_20":        0.20,
-            "r2":           0.15,
+            "risk_adj_mom": 0.25,   # reduced from 0.30 to make room for PEAD
+            "rs_20":        0.18,   # reduced from 0.20
+            "r2":           0.12,
             "proximity_hi": 0.10,
             "vol_surge":    0.10,
             "etf_momentum": 0.15,
+            "pead":         0.10,   # post-earnings drift — strong 1-week edge
         }
     # BEAR — rotate toward quality + RS, de-emphasise raw momentum
     return {
-        "risk_adj_mom": 0.10,
-        "rs_20":        0.25,
-        "r2":           0.20,
+        "risk_adj_mom": 0.08,
+        "rs_20":        0.22,
+        "r2":           0.18,
         "proximity_hi": 0.05,
         "vol_surge":    0.05,
         "etf_momentum": 0.15,
-        "defensive":    0.20,
+        "defensive":    0.17,
+        "pead":         0.10,   # earnings beats work in bear markets too
     }
 
 
@@ -199,6 +201,43 @@ def _earnings_blackout_set(symbols: list[str], window_days: int = 2) -> set[str]
             pass
         time.sleep(0.17)  # ~6 req/s — stay well under Yahoo Finance's burst threshold
     return blocked
+
+
+def _pead_score(symbol: str) -> float:
+    """Post-Earnings Announcement Drift score: 0.0–1.0.
+
+    Returns > 0 when the stock reported earnings 2–10 days ago with a positive
+    EPS surprise. Drift is strongest in the first 3–10 trading days after a beat
+    (Foster, Olsen & Shevlin 1984; Bernard & Thomas 1989).
+    ETFs are skipped — they have no earnings.
+    """
+    if symbol in _ETF_SYMBOLS:
+        return 0.0
+    try:
+        today = datetime.now(timezone.utc).date()
+        lo    = today - timedelta(days=10)
+        hi    = today - timedelta(days=2)   # wait 2 days before entering (gap settles)
+
+        hist = yf.Ticker(symbol).earnings_history
+        if hist is None or hist.empty:
+            return 0.0
+
+        # Normalize index to plain date
+        hist_dates = pd.to_datetime(hist.index).date
+        mask       = (hist_dates >= lo) & (hist_dates <= hi)
+        recent     = hist[mask]
+        if recent.empty:
+            return 0.0
+
+        row = recent.iloc[-1]
+        surprise = float(row.get("surprisePercent", 0) or 0)
+        if surprise <= 0:
+            return 0.0
+
+        # 10%+ EPS beat → 1.0; linear below
+        return float(min(1.0, surprise / 10.0))
+    except Exception:
+        return 0.0
 
 
 def _avg_overnight_gap(closes: pd.Series, opens: pd.Series) -> float:

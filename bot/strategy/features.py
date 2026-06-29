@@ -102,14 +102,29 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # Jegadeesh-Titman (1993): intermediate momentum strongly predicts next-month returns
     df["ret_5d"]   = close.pct_change(5)    # 1-week momentum
     df["ret_21d"]  = close.pct_change(21)   # 1-month momentum
-    df["ret_63d"]  = close.pct_change(63)   # 3-month momentum
-    df["ret_126d"] = close.pct_change(126)  # 6-month momentum
+    df["ret_63d"]  = close.pct_change(63)   # 3-month momentum (kept for compatibility)
+    df["ret_126d"] = close.pct_change(126)  # 6-month momentum (kept for compatibility)
     # AQR 12-1 month momentum: skip the most recent month to remove the 1-month reversal
     df["mom_12_1"] = close.pct_change(252) - close.pct_change(21)
 
     # Distance from 52-week high (George-Hwang 2004): stocks near their high
     # exhibit continuation; far-from-high stocks show anchoring/reversal
     df["high_52w_pct"] = close / (close.rolling(252).max() + eps) - 1
+
+    # ── Short-term signals for 1-week prediction horizon (FEATURE_COLS_V3) ──────
+    # Overnight gap: open vs prior close. Large gaps show mean-reversion within 1-3 days.
+    if "open" in df.columns:
+        df["gap_overnight"] = (df["open"] - close.shift(1)) / (close.shift(1) + eps)
+    else:
+        df["gap_overnight"] = 0.0
+
+    # RSI divergence: today's RSI minus yesterday's — captures momentum acceleration
+    df["rsi_divergence"] = df["rsi"].diff(1)
+
+    # MACD crossover boolean: 1 when histogram flips from negative to positive (buy signal)
+    df["macd_cross_up"] = (
+        (df["macd_diff"] > 0) & (df["macd_diff"].shift(1) <= 0)
+    ).astype(float)
 
     df.dropna(inplace=True)
     return df
@@ -150,4 +165,30 @@ FEATURE_COLS = [
     "ret_126d",           # 6-month return
     "mom_12_1",           # 12-1 month momentum (AQR style, skips reversal month)
     "high_52w_pct",       # distance from 52-week high (George-Hwang 2004)
+]
+
+# v3 feature set — optimised for FORWARD_PERIODS=5 (1-week horizon).
+# Swap out long-horizon momentum (ret_63d, ret_126d, mom_12_1) for short-term
+# signals (gap_overnight, rsi_divergence, macd_cross_up).
+# USE THIS after the next model retrain (scripts/train_model.py).
+FEATURE_COLS_V3 = [
+    "rsi",
+    "mfi",
+    "volume_ratio",
+    "obv_chg_pct",
+    "vol_ratio_trend",
+    "bb_width",
+    "atr_pct",
+    "bb_position",
+    "returns",
+    "hl_ratio",
+    "vwap_dev",
+    "macd_diff_pct",
+    "ema_spread",
+    "ret_5d",             # 1-week return — still relevant at 1-week target
+    "ret_21d",            # 1-month return — useful for mean-reversion context
+    "high_52w_pct",       # proximity to yearly high (breakout continuation)
+    "gap_overnight",      # overnight gap size — mean-reversion signal (new)
+    "rsi_divergence",     # RSI momentum acceleration (new)
+    "macd_cross_up",      # MACD histogram flipped positive (new)
 ]

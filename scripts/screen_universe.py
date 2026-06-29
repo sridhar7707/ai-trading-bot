@@ -68,6 +68,7 @@ from scripts._screener_helpers import (  # noqa: E402
     _sector, _rank_pct, _trend_r2, _compute_beta, _detect_regime,
     _factor_weights, _corr_dedup, _earnings_blackout_set,
     _avg_overnight_gap, _analyst_signal, _sector_etf_momentum,
+    _pead_score,
 )
 
 CANDIDATE_UNIVERSE: list[str] = [
@@ -252,12 +253,20 @@ def screen(
         # ── Factor 7: defensive sector bonus (only active in BEAR regime) ─────
         defensive = 1.0 if sec in DEFENSIVE_SECTORS else 0.0
 
+        # ── Factor 8: post-earnings drift (PEAD) ─────────────────────────────
+        # Scores 0.0–1.0 when stock beat EPS estimates 2–10 days ago.
+        # Throttled inside _pead_score; ETFs always return 0.0.
+        pead = _pead_score(sym)
+        if pead > 0:
+            logger.info(f"PEAD signal: {sym} earnings beat score={pead:.2f}")
+
         scores[sym] = {
             "beta": beta, "price": last_price,
             "risk_adj_mom": risk_adj_mom, "rs_20": rs_20,
             "r2": r2, "proximity_hi": proximity_hi,
             "vol_surge": vol_surge, "etf_momentum": etf_momentum,
             "defensive": defensive, "analyst_signal": 0.0,  # filled in Stage 2b
+            "pead": pead,
         }
 
     logger.info(
@@ -312,7 +321,7 @@ def screen(
             logger.info("FINNHUB_API_KEY not set — analyst signal skipped (set secret to enable)")
 
     display_cols = ["beta", "price", "risk_adj_mom", "rs_20", "r2",
-                    "proximity_hi", "etf_momentum", "analyst_signal", "composite"]
+                    "proximity_hi", "etf_momentum", "pead", "analyst_signal", "composite"]
     top10_cols = [c for c in display_cols if c in score_df.columns]
     logger.info(f"Top 10 candidates ({regime} regime):\n"
                 f"{score_df.head(10)[top10_cols].round(3).to_string()}")
