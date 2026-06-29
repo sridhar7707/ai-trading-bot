@@ -18,8 +18,8 @@ from config import (
     MAX_POSITION_DRIFT_PCT, MAX_POSITION_PCT,
     MAX_RISK_PER_TRADE_PCT, MAX_SECTOR_EXPOSURE_PCT,
     MIN_CASH_RESERVE_PCT, MIN_RR_RATIO, MIN_TP_PCT,
-    MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR, RS_LOOKBACK_BARS,
-    SECTOR_MAP, STOP_LOSS_PCT,
+    MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR, REQUIRE_MACD_CONFIRMATION,
+    RS_LOOKBACK_BARS, SECTOR_MAP, STOP_LOSS_PCT,
 )
 from bot._main_db import log_trade, _save_risk_state
 from bot._main_market import _log_buy_skip
@@ -291,6 +291,14 @@ def _handle_entry(
     if symbol in stop_fired_today:
         _log_buy_skip(symbol, "stop-loss fired earlier today (re-entry blocked)")
         return available_cash
+
+    # Gate 7.9 — MACD confirmation: only buy when MACD histogram is positive (line above signal)
+    # Off by default — enable via REQUIRE_MACD_CONFIRMATION=true once backtest validates win-rate gain
+    if REQUIRE_MACD_CONFIRMATION:
+        _macd_diff = float(latest.get("macd_diff", float("nan")))
+        if math.isnan(_macd_diff) or _macd_diff <= 0:
+            _log_buy_skip(symbol, f"MACD not confirmed (macd_diff={_macd_diff:.4f})")
+            return available_cash
 
     # Gate 8 — Cash and risk approval
     # ensemble_size: STRONG_BUY=0.20, BUY=0.12 — use as confidence multiplier on Kelly
