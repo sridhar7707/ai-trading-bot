@@ -1,8 +1,11 @@
 from __future__ import annotations
+import json
 import os
+import sqlite3
 import time
 import requests
 from datetime import date, timedelta
+from pathlib import Path
 from loguru import logger
 
 NEWSAPI_KEY    = os.getenv("NEWSAPI_KEY", "")
@@ -10,9 +13,56 @@ NEWSAPI_KEY    = os.getenv("NEWSAPI_KEY", "")
 # Set SEC_USER_AGENT env var (e.g. "ai-trading-bot your@email.com") — do not hardcode in source.
 SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "ai-trading-bot contact@example.com")
 
-# Per-day in-process cache for NewsAPI — prevents burning the 100 req/day free-tier
-# quota on re-runs or fallback cycles. Keyed by "TICKER:YYYY-MM-DD".
+# L1 in-process cache — resets on process restart (GitHub Actions: new process each cycle).
+# Keyed by "TICKER:YYYY-MM-DD".
 _NEWS_DAY_CACHE: dict[str, list[str]] = {}
+
+# L2 DB-backed cache — persists across process restarts so each symbol is fetched
+# at most once per calendar day regardless of how many bot cycles run.
+_NEWS_DB_PATH: str = os.getenv("TRADE_DB_PATH", "trades.db")
+
+def _news_db_get(ticker: str, today: str) -> list[str] | None:
+    """Return today's cached headlines from DB, or None if not cached yet."""
+    try:
+        db = Path(_NEWS_DB_PATH)
+        if not db.exists():
+            return None
+        con = sqlite3.connect(str(db), check_same_thread=False, timeout=3)
+        try:
+            row = con.execute(
+                "SELECT headlines_json FROM news_cache WHERE symbol=? AND fetch_date=?",
+                (ticker, today),
+            ).fetchone()
+            return json.loads(row[0]) if row else None
+        finally:
+            con.close()
+    except Exception:
+        return None
+
+
+def _news_db_set(ticker: str, today: str, headlines: list[str]) -> None:
+    """Write today's headlines to DB cache. Creates the table on first use."""
+    try:
+        db = Path(_NEWS_DB_PATH)
+        if not db.exists():
+            return
+        con = sqlite3.connect(str(db), check_same_thread=False, timeout=3)
+        try:
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS news_cache "
+                "(symbol TEXT, fetch_date TEXT, headlines_json TEXT, cached_at TEXT, "
+                "PRIMARY KEY (symbol, fetch_date))"
+            )
+            con.execute(
+                "INSERT OR REPLACE INTO news_cache VALUES (?,?,?,datetime('now'))",
+                (ticker, today, json.dumps(headlines)),
+            )
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        pass
+
 
 _finbert_pipeline = None
 
@@ -59,10 +109,21 @@ def _finbert_score(texts: list[str]) -> float:
 def get_news_headlines(ticker: str) -> list[str]:
     if not NEWSAPI_KEY:
         return []
-    _cache_key = f"{ticker}:{date.today().isoformat()}"
+    today = date.today().isoformat()
+    _cache_key = f"{ticker}:{today}"
+
+    # L1: in-process memory cache
     if _cache_key in _NEWS_DAY_CACHE:
-        logger.debug(f"NewsAPI cache hit — {ticker} (quota preserved)")
+        logger.debug(f"NewsAPI L1 cache hit — {ticker} (quota preserved)")
         return _NEWS_DAY_CACHE[_cache_key]
+
+    # L2: DB cache — survives process restarts on GitHub Actions
+    db_cached = _news_db_get(ticker, today)
+    if db_cached is not None:
+        _NEWS_DAY_CACHE[_cache_key] = db_cached
+        logger.debug(f"NewsAPI L2 DB cache hit — {ticker} (quota preserved)")
+        return db_cached
+
     try:
         resp = requests.get(
             "https://newsapi.org/v2/everything",
@@ -90,6 +151,7 @@ def get_news_headlines(ticker: str) -> list[str]:
         resp.raise_for_status()
         headlines = [a["title"] for a in resp.json().get("articles", []) if a.get("title")]
         _NEWS_DAY_CACHE[_cache_key] = headlines
+        _news_db_set(ticker, today, headlines)
         return headlines
     except Exception as e:
         logger.warning(f"NewsAPI failed for {ticker}: {e}")

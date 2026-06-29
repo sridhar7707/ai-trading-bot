@@ -5,10 +5,13 @@ from bot.strategy.sentiment import get_news_headlines, batch_sentiment_scores
 
 
 @pytest.fixture(autouse=True)
-def _clear_news_cache():
-    """Clear the per-day NewsAPI cache before each test so tests don't bleed into each other."""
+def _clear_caches():
+    """Clear L1 memory cache and stub out L2 DB cache before each test."""
     _sentiment_mod._NEWS_DAY_CACHE.clear()
-    yield
+    # Prevent DB reads/writes from touching a real trades.db during unit tests
+    with patch("bot.strategy.sentiment._news_db_get", return_value=None), \
+         patch("bot.strategy.sentiment._news_db_set"):
+        yield
     _sentiment_mod._NEWS_DAY_CACHE.clear()
 
 
@@ -103,3 +106,56 @@ def test_batch_sentiment_scores_all_empty_texts():
         result = batch_sentiment_scores({"AAPL": [], "MSFT": []})
     assert result == {"AAPL": 0.0, "MSFT": 0.0}
     mock_pipe.assert_not_called()
+
+
+# --- DB cache (L2) ---
+
+def test_get_news_headlines_uses_db_cache_and_skips_api():
+    """L2 DB hit should return cached headlines without calling NewsAPI."""
+    cached = ["DB headline 1", "DB headline 2"]
+    with patch("bot.strategy.sentiment._news_db_get", return_value=cached), \
+         patch("bot.strategy.sentiment._news_db_set") as mock_set, \
+         patch("bot.strategy.sentiment.requests.get") as mock_api, \
+         patch("bot.strategy.sentiment.NEWSAPI_KEY", "test-key"):
+        result = get_news_headlines("AAPL")
+    assert result == cached
+    mock_api.assert_not_called()
+    mock_set.assert_not_called()
+
+
+def test_get_news_headlines_writes_to_db_after_api_fetch():
+    """Successful NewsAPI fetch should persist headlines to DB cache."""
+    payload = {"articles": [{"title": "Fresh headline"}]}
+    with patch("bot.strategy.sentiment._news_db_get", return_value=None), \
+         patch("bot.strategy.sentiment._news_db_set") as mock_set, \
+         patch("bot.strategy.sentiment.requests.get", return_value=_mock_resp(200, payload)), \
+         patch("bot.strategy.sentiment.NEWSAPI_KEY", "test-key"):
+        result = get_news_headlines("AAPL")
+    assert result == ["Fresh headline"]
+    mock_set.assert_called_once()
+    args = mock_set.call_args[0]
+    assert args[0] == "AAPL"
+    assert args[2] == ["Fresh headline"]
+
+
+def test_get_news_headlines_does_not_write_db_on_quota_error():
+    """426 quota error should not write empty list to DB (prevents poisoning cache)."""
+    with patch("bot.strategy.sentiment._news_db_get", return_value=None), \
+         patch("bot.strategy.sentiment._news_db_set") as mock_set, \
+         patch("bot.strategy.sentiment.requests.get", return_value=_mock_resp(426)), \
+         patch("bot.strategy.sentiment.NEWSAPI_KEY", "test-key"):
+        result = get_news_headlines("AAPL")
+    assert result == []
+    mock_set.assert_not_called()
+
+
+def test_get_news_headlines_l1_cache_takes_priority_over_db():
+    """L1 memory cache hit should not touch the DB at all."""
+    import bot.strategy.sentiment as mod
+    from datetime import date
+    mod._NEWS_DAY_CACHE[f"AAPL:{date.today().isoformat()}"] = ["L1 headline"]
+    with patch("bot.strategy.sentiment._news_db_get") as mock_db_get, \
+         patch("bot.strategy.sentiment.NEWSAPI_KEY", "test-key"):
+        result = get_news_headlines("AAPL")
+    assert result == ["L1 headline"]
+    mock_db_get.assert_not_called()
