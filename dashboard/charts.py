@@ -88,7 +88,7 @@ def render_equity_chart() -> Any:
 
         if not has_data:
             fig.add_annotation(
-                text="Building history — bot trades 9:30am–4pm ET, Mon–Fri. Chart appears after the first trading day.",
+                text="Building history &mdash; bot trades 9:30am-4pm ET, Mon-Fri. Chart appears after the first trading day.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
                 showarrow=False, font=dict(color=TEXT2, size=12))
         else:
@@ -116,7 +116,7 @@ def render_equity_chart() -> Any:
                     font=dict(color=GAIN, size=10), bgcolor=GAIN_BG, bordercolor=GAIN_BD)
 
         fig.update_layout(
-            title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>— end-of-day snapshots, includes cash + open positions</span>",
+            title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>&mdash; end-of-day snapshots, includes cash + open positions</span>",
                        font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
             yaxis=dict(title="Account Value ($)", **PLOTLY_LAYOUT["yaxis"],
@@ -213,7 +213,7 @@ def render_pnl_chart() -> Any:
             ))
 
         fig.update_layout(
-            title=dict(text="Daily Realized P&L  <span style='font-size:11px;'>— profit/loss from SELL trades only (unrealized not included)</span>",
+            title=dict(text="Daily Realized P&L  <span style='font-size:11px;'>&mdash; profit/loss from SELL trades only (unrealized not included)</span>",
                        font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
             yaxis=dict(title="P&L ($)", **PLOTLY_LAYOUT["yaxis"], tickformat="$,.0f",
@@ -293,14 +293,14 @@ def _sparkline(symbol: str) -> str:
     """Return an 80×32 inline SVG sparkline from the last 30 days of cached price data."""
     hist = _price_cache.get(symbol)
     if hist is None or hist.empty or "Close" not in hist.columns:
-        return f'<span style="color:{TEXT2};">—</span>'
+        return f'<span style="color:{TEXT2};">&mdash;</span>'
     try:
         prices = [float(p) for p in hist["Close"].iloc[-30:]]
     except Exception as exc:
         logger.debug(f"_sparkline prices: {exc}")
-        return f'<span style="color:{TEXT2};">—</span>'
+        return f'<span style="color:{TEXT2};">&mdash;</span>'
     if not prices:
-        return f'<span style="color:{TEXT2};">—</span>'
+        return f'<span style="color:{TEXT2};">&mdash;</span>'
 
     color = GAIN if prices[-1] >= prices[0] else LOSS
 
@@ -335,7 +335,7 @@ def render_feature_importance_chart() -> Any:
         fi_path = "models/feature_importance.json"
         if not os.path.exists(fi_path):
             fig.add_annotation(
-                text="Feature importance not yet available — run scripts/train_model.py first, then push models to HF.",
+                text="Feature importance not yet available &mdash; run scripts/train_model.py first, then push models to HF.",
                 xref="paper", yref="paper", x=0.5, y=0.5,
                 showarrow=False, font=dict(color=TEXT2, size=12))
         else:
@@ -355,7 +355,7 @@ def render_feature_importance_chart() -> Any:
             ))
         fig.update_layout(
             title=dict(
-                text="Which signals drive the AI's BUY decisions  <span style='font-size:{FONT_LABEL};'>— longer bar = more influence on each trade</span>",
+                text="Which signals drive the AI's BUY decisions  <span style='font-size:{FONT_LABEL};'>&mdash; longer bar = more influence on each trade</span>",
                 font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="Importance (normalised gain)", **PLOTLY_LAYOUT["xaxis"],
                        tickfont=dict(color=TEXT2)),

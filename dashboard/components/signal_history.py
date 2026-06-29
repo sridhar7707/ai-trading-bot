@@ -1,4 +1,4 @@
-"""High-confidence signal tracker — entry / stop / target / outcome."""
+"""High-confidence signal tracker &mdash; entry / stop / target / outcome."""
 from __future__ import annotations
 
 from loguru import logger
@@ -42,7 +42,7 @@ def _outcome_badge(outcome: str) -> str:
 
 def _setup_badge(setup: str) -> str:
     color = NEURAL if setup == "breakout" else GAIN
-    label = setup.upper() if setup not in ("none", "") else "—"
+    label = setup.upper() if setup not in ("none", "") else "&mdash;"
     return (
         f'<span style="font-size:{FONT_LABEL};color:{color};'
         f'font-weight:{WEIGHT_BOLD};">{label}</span>'

@@ -1,4 +1,4 @@
-"""AI Decision Log — recommendations vs executed trades (14-day window)."""
+"""AI Decision Log &mdash; recommendations vs executed trades (14-day window)."""
 from __future__ import annotations
 from loguru import logger
 from dashboard.design_system import (
@@ -70,7 +70,7 @@ def render_recommendation_history() -> str:
         symbol, pred_date, rec, conf, prev, price_at_rec, regime, sl_score = row
         is_last = (i == n - 1)
         td      = TD0 if is_last else TD
-        rec     = str(rec or "—")
+        rec     = str(rec or "&mdash;")
         conf    = float(conf or sl_score or 0)
         changed = bool(prev and prev != rec)
         date_str = str(pred_date)[:10]
@@ -94,7 +94,7 @@ def render_recommendation_history() -> str:
             why = (f'<span style="color:{TEXT3};">Held back</span>'
                    + (f'<span style="color:{TEXT2};"> &middot; {market_ctx}</span>' if market_ctx else ""))
         else:
-            why = f'<span style="color:{TEXT2};">{market_ctx}</span>' if market_ctx else "—"
+            why = f'<span style="color:{TEXT2};">{market_ctx}</span>' if market_ctx else "&mdash;"
 
         rows += (
             f'<tr>'
@@ -108,7 +108,7 @@ def render_recommendation_history() -> str:
 
     disclaimer = (
         f'<div style="font-size:{FONT_LABEL};color:{TEXT2};padding:8px 4px 12px;">'
-        f'These are AI recommendations, not executed trades. A BUY signal means the AI wanted to buy — '
+        f'These are AI recommendations, not executed trades. A BUY signal means the AI wanted to buy &mdash; '
         f'but the bot may hold back if too many positions are open, cash is low, or daily loss limits are hit. '
         f'Check the <strong>Trades</strong> tab to see what was actually bought or sold.'
         f'</div>'

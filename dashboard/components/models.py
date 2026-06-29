@@ -56,7 +56,7 @@ def render_paper_trading_scorecard() -> str:
         return (
             f'<div class="nt nt-wrap">'
             f'{_section("🏆", "Paper Trading Scorecard", "vs market")}'
-            f'{_card(_empty_state("📊", "Need ≥ 2 days", "Building history — check back tomorrow."))}'
+            f'{_card(_empty_state("📊", "Need ≥ 2 days", "Building history &mdash; check back tomorrow."))}'
             f'</div>'
         )
 
@@ -121,7 +121,7 @@ def render_paper_trading_scorecard() -> str:
 
     def _vs(bench):
         if bench is None:
-            return "—"
+            return "&mdash;"
         diff = bot_ret - bench
         return f"{'+'if diff>=0 else ''}{diff:.1%}"
 
@@ -143,7 +143,7 @@ def render_paper_trading_scorecard() -> str:
                      f"since {start_date}", 0.0)
         + _stat_card("vs SPY",       _vs(spy_ret),      TEXT2, _vc(spy_ret), spy_sub, 0.06)
         + _stat_card("vs QQQ",       _vs(qqq_ret),      TEXT2, _vc(qqq_ret), qqq_sub, 0.12)
-        + _stat_card("Win Rate",     f"{win_rate:.0%}" if len(sells) > 0 else "—",
+        + _stat_card("Win Rate",     f"{win_rate:.0%}" if len(sells) > 0 else "&mdash;",
                      TEXT2, wr_c, f"{len(sells)} closed trades", 0.18)
         + f'</div>'
     )
@@ -154,7 +154,7 @@ def render_paper_trading_scorecard() -> str:
         + _stat_card("Max Drawdown",    f"{max_dd:.1%}",   TEXT2, dd_c,
                      "worst peak-to-trough", 0.06)
         + _stat_card("AI Follow Rate",
-                     f"{follow_rate:.0%}" if follow_rate is not None else "—",
+                     f"{follow_rate:.0%}" if follow_rate is not None else "&mdash;",
                      TEXT2, fr_c, "BUY signals executed (30d)", 0.12)
         + _stat_card("Days Running",    str(n_days),       TEXT2, TEXT2,
                      f"since {start_date}", 0.18)
@@ -202,22 +202,22 @@ def render_validation_report() -> str:
         _vr("XGB Val AUC",    f"{auc:.3f}",                    auc_c)
         + _vr("LSTM Val Loss",f"{val_loss:.4f}",               loss_c)
         + _vr("Train Rows",   f"{r.get('training_rows',0):,}")
-        + _vr("Symbols",      str(r.get("training_symbols","—")))
-        + _vr("Cutoff",       r.get("train_cutoff", "—"))
-        + _vr("Data From",    dr.get("from", "—"))
-        + _vr("Data To",      dr.get("to",   "—"))
+        + _vr("Symbols",      str(r.get("training_symbols","&mdash;")))
+        + _vr("Cutoff",       r.get("train_cutoff", "&mdash;"))
+        + _vr("Data From",    dr.get("from", "&mdash;"))
+        + _vr("Data To",      dr.get("to",   "&mdash;"))
         + _vr("Generated",    r.get("generated_at","")[:10])
     )
     help_html = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:10px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'<strong style="color:{TEXT1};">How to read this:</strong><br>'
-        f'<b>XGB Val AUC</b> — How well XGBoost predicts the right direction on data it '
+        f'<b>XGB Val AUC</b> &mdash; How well XGBoost predicts the right direction on data it '
         f'<em>never trained on</em>. 0.50 = random guessing. 0.60+ = meaningfully predictive. '
         f'1.0 = perfect (never achieved in practice).<br>'
-        f'<b>LSTM Val Loss</b> — Prediction error on unseen data. Lower is better. '
+        f'<b>LSTM Val Loss</b> &mdash; Prediction error on unseen data. Lower is better. '
         f'A random classifier scores ~0.69; a well-trained model scores below 0.65.<br>'
-        f'<b>Train Cutoff</b> — All data <em>after</em> this date was held out during training '
+        f'<b>Train Cutoff</b> &mdash; All data <em>after</em> this date was held out during training '
         f'to test real-world performance.'
         f'</div>'
     )
@@ -304,7 +304,7 @@ def render_institutional_metrics() -> str:
         + _row("Max Drawdown",  f"{max_dd:.1%}",  dd_c, "Worst peak-to-trough in account history")
         + _row("CAGR",          f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
                "Compound Annual Growth Rate over tracked period")
-        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown — higher is better")
+        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown &mdash; higher is better")
         + _row("VaR (95%, 1d)", f"{var_95:.2%}",  vr_c, "Worst expected 1-day loss at 95% confidence")
         + _row("Win Rate",      f"{win_rate:.1%}", wr_c, "% of closed trades that returned a profit")
     )
@@ -315,7 +315,7 @@ def render_institutional_metrics() -> str:
         f'Short history (&lt;30 days) may produce unreliable Sharpe / Sortino estimates.'
         f'</div>'
     )
-    n_str = f"{n_days} days of history" if n_days > 0 else "—"
+    n_str = f"{n_days} days of history" if n_days > 0 else "&mdash;"
     table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_block)
     return (f'<div class="nt nt-wrap">'
             f'{_section("📐","Institutional Metrics", n_str)}{table}</div>')
@@ -350,9 +350,9 @@ def _model_quality_fallback() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _stat_card("Win Rate",          "—",
+        + _stat_card("Win Rate",          "&mdash;",
                 TEXT2, TEXT2, "appears after first closed trade", 0.0)
-        + _stat_card("Avg Winning Trade", "—",
+        + _stat_card("Avg Winning Trade", "&mdash;",
                 TEXT2, TEXT2, "appears after first closed trade", 0.06)
         + _stat_card("XGB Model AUC",     f"{auc:.3f}",
                 TEXT2, auc_c, "≥0.60 = good · 0.50 = random", 0.12)
@@ -394,16 +394,16 @@ def render_investor_view() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _stat_card("Win Rate",          f"{wr:.0%}" if n_s > 0 else "—",
+        + _stat_card("Win Rate",          f"{wr:.0%}" if n_s > 0 else "&mdash;",
                 TEXT2, GAIN if wr >= 0.55 else (NEURAL if wr >= 0.45 else LOSS),
                 f"AI correct {len(wins)} of {n_s} closed trades", 0.0)
-        + _stat_card("Avg Winning Trade", f"+{avg_w:.1f}%" if avg_w > 0 else "—",
+        + _stat_card("Avg Winning Trade", f"+{avg_w:.1f}%" if avg_w > 0 else "&mdash;",
                 TEXT2, GAIN, "Average gain per winning trade", 0.06)
-        + _stat_card("Avg Losing Trade",  f"{avg_l:.1f}%"  if avg_l < 0 else "—",
+        + _stat_card("Avg Losing Trade",  f"{avg_l:.1f}%"  if avg_l < 0 else "&mdash;",
                 TEXT2, LOSS, "Average loss per losing trade",  0.12)
-        + _stat_card("Risk / Reward",     f"{rr:.1f}×"     if rr > 0   else "—",
+        + _stat_card("Risk / Reward",     f"{rr:.1f}×"     if rr > 0   else "&mdash;",
                 TEXT2, GAIN if rr >= 1.5 else (NEURAL if rr >= 1.0 else LOSS),
-                "Avg win ÷ avg loss — >1.5× is good", 0.18)
+                "Avg win ÷ avg loss &mdash; >1.5× is good", 0.18)
         + f'</div>'
     )
 

@@ -1,4 +1,4 @@
-"""Market Mood widget — intraday broad market, sector, and stock snapshot."""
+"""Market Mood widget &mdash; intraday broad market, sector, and stock snapshot."""
 from __future__ import annotations
 
 import datetime
@@ -146,24 +146,24 @@ def _generate_reasons(
     """Return list of (icon, text) reason strings derived from the data."""
     reasons: list[tuple[str, str]] = []
 
-    # 1. QQQ vs SPY divergence — pinpoints tech-specific vs broad move
+    # 1. QQQ vs SPY divergence &mdash; pinpoints tech-specific vs broad move
     if qqq is not None:
         gap = qqq - spy
         if gap < -1.5:
-            reasons.append(("📉", f"Tech-specific selling — QQQ lagging SPY by {abs(gap):.1f}%. "
+            reasons.append(("📉", f"Tech-specific selling &mdash; QQQ lagging SPY by {abs(gap):.1f}%. "
                             "Large-cap tech is driving the weakness, not the broader market."))
         elif gap > 1.5:
-            reasons.append(("📈", f"Tech-led rally — QQQ ahead of SPY by {gap:.1f}%. "
+            reasons.append(("📈", f"Tech-led rally &mdash; QQQ ahead of SPY by {gap:.1f}%. "
                             "Growth stocks are pulling the market up."))
 
-    # 2. IWM vs SPY — signals whether move is macro or large-cap specific
+    # 2. IWM vs SPY &mdash; signals whether move is macro or large-cap specific
     if iwm is not None:
         gap = iwm - spy
         if gap > 1.0:
-            reasons.append(("🏦", f"Small caps ({iwm:+.1f}%) outperforming large caps ({spy:+.1f}%) — "
+            reasons.append(("🏦", f"Small caps ({iwm:+.1f}%) outperforming large caps ({spy:+.1f}%) &mdash; "
                             "selloff is concentrated in mega-cap stocks, not economy-wide."))
         elif gap < -1.0:
-            reasons.append(("⚠️", f"Small caps ({iwm:+.1f}%) lagging large caps ({spy:+.1f}%) — "
+            reasons.append(("⚠️", f"Small caps ({iwm:+.1f}%) lagging large caps ({spy:+.1f}%) &mdash; "
                             "broader risk-off; smaller companies more exposed to rate/credit pressure."))
 
     # 3. Sector rotation pattern
@@ -178,14 +178,14 @@ def _generate_reasons(
         all_pos = all(v > 0 for v in sectors.values())
 
         if all_neg:
-            reasons.append(("🔻", "All 8 sectors negative — broad-based selling with no safe sector."))
+            reasons.append(("🔻", "All 8 sectors negative &mdash; broad-based selling with no safe sector."))
         elif all_pos:
-            reasons.append(("🟢", "All 8 sectors positive — broad participation in the rally."))
+            reasons.append(("🟢", "All 8 sectors positive &mdash; broad participation in the rally."))
         elif spread > 3.0:
             neg_sectors = [n for n, v in sectors.items() if v < -0.5]
             pos_sectors = [n for n, v in sectors.items() if v > 0.5]
             if neg_sectors and pos_sectors:
-                reasons.append(("🔄", f"Sector rotation — capital moving out of "
+                reasons.append(("🔄", f"Sector rotation &mdash; capital moving out of "
                                 f"{', '.join(neg_sectors[:2])} "
                                 f"into {', '.join(pos_sectors[:2])}. "
                                 f"Spread between best ({best_name} {best_v:+.1f}%) "
@@ -194,16 +194,16 @@ def _generate_reasons(
     # 4. VIX interpretation
     if vix is not None and vix > 0:
         if vix > 30:
-            reasons.append(("🚨", f"VIX {vix:.1f} — extreme fear. Institutions are buying protection at elevated cost. "
+            reasons.append(("🚨", f"VIX {vix:.1f} &mdash; extreme fear. Institutions are buying protection at elevated cost. "
                             "Historically precedes sharp reversals."))
         elif vix > 22:
-            reasons.append(("⚠️", f"VIX {vix:.1f} — elevated fear. Market participants pricing in meaningful uncertainty. "
+            reasons.append(("⚠️", f"VIX {vix:.1f} &mdash; elevated fear. Market participants pricing in meaningful uncertainty. "
                             "Bot macro cap remains 1.0× until VIX exceeds 28."))
         elif vix > 16:
-            reasons.append(("📊", f"VIX {vix:.1f} — moderate concern (calm baseline is <15). "
+            reasons.append(("📊", f"VIX {vix:.1f} &mdash; moderate concern (calm baseline is <15). "
                             "Some uncertainty priced in but not alarming."))
         else:
-            reasons.append(("✅", f"VIX {vix:.1f} — low volatility. Markets calm; complacency risk if sustained."))
+            reasons.append(("✅", f"VIX {vix:.1f} &mdash; low volatility. Markets calm; complacency risk if sustained."))
 
     # 5. Semiconductor / AI cluster (AMD, NVDA, AVGO, CRM)
     semis = {s: v for s, v in stocks.items() if s in ("AMD", "NVDA", "AVGO")}
@@ -219,7 +219,7 @@ def _generate_reasons(
     if len(def_up) >= 2:
         names = ", ".join(f"{s} ({v:+.1f}%)" for s, v in sorted(def_up, key=lambda x: -x[1])[:3])
         reasons.append(("🛡️", f"Defensive stocks leading: {names}. "
-                        "Investors rotating into lower-risk, dividend-paying names — "
+                        "Investors rotating into lower-risk, dividend-paying names &mdash; "
                         "classic 'risk-off within equities' signal."))
 
     return reasons[:5]  # cap at 5 reasons for readability
@@ -229,7 +229,7 @@ def _generate_reasons(
 
 def _pct_span(v: Optional[float], color: str) -> str:
     if v is None:
-        return f'<span style="color:{TEXT3};">—</span>'
+        return f'<span style="color:{TEXT3};">&mdash;</span>'
     return (f'<span style="color:{color};font-weight:{WEIGHT_BOLD};'
             f'font-size:{FONT_VALUE};">{v:+.2f}%</span>')
 

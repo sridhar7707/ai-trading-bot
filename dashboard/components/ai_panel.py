@@ -59,8 +59,8 @@ _WHY_MAP: dict[str, tuple[str, str]] = {
     "mfi":            ("Money Flow positive",      "Capital flowing into the stock"),
     "stoch_k":        ("Stochastic momentum",      "Oscillator confirming continued upward momentum"),
     # Volume
-    "volume_ratio":   ("Unusual buying volume",    "Volume above recent average — signals conviction"),
-    "obv_chg_pct":    ("OBV flow positive",        "On-Balance Volume rising — buyers in control"),
+    "volume_ratio":   ("Unusual buying volume",    "Volume above recent average &mdash; signals conviction"),
+    "obv_chg_pct":    ("OBV flow positive",        "On-Balance Volume rising &mdash; buyers in control"),
     "vol_ratio_trend":("Volume accelerating",      "Short-term volume trend outpacing the baseline"),
     # Volatility / range
     "atr_pct":        ("Volatility confirmed",     "Position size validated against current ATR"),
@@ -68,25 +68,25 @@ _WHY_MAP: dict[str, tuple[str, str]] = {
     "bb_position":    ("Price in upper BB zone",   "Price in the upper half of the Bollinger Bands"),
     "hl_ratio":       ("Strong intraday range",    "Wide intraday range signals trader conviction"),
     # Price vs moving averages
-    "norm_close":     ("Closing near day's high",  "Price strength at close — bullish structure"),
+    "norm_close":     ("Closing near day's high",  "Price strength at close &mdash; bullish structure"),
     "ema20_pct":      ("Above 20-period EMA",      "Short-term trend is pointing up"),
     "ema50_pct":      ("Above 50-period EMA",      "Medium-term trend supports the trade"),
     "sma20_pct":      ("Above 20-period SMA",      "Price holding above 20-day simple average"),
-    "ema_spread":     ("EMA trend spread positive","Fast EMA above slow EMA — uptrend confirmed"),
+    "ema_spread":     ("EMA trend spread positive","Fast EMA above slow EMA &mdash; uptrend confirmed"),
     "vwap_dev":       ("Trading above VWAP",       "Price above today's volume-weighted average"),
     # Multi-period momentum (Jegadeesh-Titman / AQR)
     "ret_5d":         ("1-week price gain",        "Stock outperformed over the past week"),
-    "ret_21d":        ("1-month momentum",         "Positive 1-month return — intermediate trend intact"),
-    "ret_63d":        ("3-month momentum",         "3-month return positive — medium-term trend up"),
-    "ret_126d":       ("6-month momentum",         "6-month return positive — strong sustained trend"),
+    "ret_21d":        ("1-month momentum",         "Positive 1-month return &mdash; intermediate trend intact"),
+    "ret_63d":        ("3-month momentum",         "3-month return positive &mdash; medium-term trend up"),
+    "ret_126d":       ("6-month momentum",         "6-month return positive &mdash; strong sustained trend"),
     "mom_12_1":       ("12-1 month momentum",      "AQR-style factor: 12-month return minus reversal month"),
-    "high_52w_pct":   ("Near 52-week high",        "Price close to its annual peak — breakout candidate"),
+    "high_52w_pct":   ("Near 52-week high",        "Price close to its annual peak &mdash; breakout candidate"),
     # Raw return
     "returns":        ("Recent return positive",   "Latest bar closed higher than the previous"),
 }
 
 
-# ── Render: AI recommendation card — full-width hero ─────────────────────────
+# ── Render: AI recommendation card &mdash; full-width hero ─────────────────────────
 @safe_render("AI Recommendation")
 def render_ai_recommendation() -> str:
     d   = get_data()
@@ -95,20 +95,20 @@ def render_ai_recommendation() -> str:
 
     if not lb or not lb.get("symbol"):
         _es = _empty_state("🤖", "No active signal",
-                           "The AI monitors markets Mon–Fri 9:30am–4pm ET. "
+                           "The AI monitors markets Mon-Fri 9:30am-4pm ET. "
                            "When all entry gates pass, the recommendation appears here.")
         return (f'<div class="nt nt-wrap">'
                 f'{_section("🤖","AI Recommendation","live signal · updated every 60s")}'
                 f'{_card(_es)}'
                 f'</div>')
 
-    sym     = lb.get("symbol", "—")
+    sym     = lb.get("symbol", "&mdash;")
     conf    = float(lb.get("ensemble_score",  0.0) or 0.0)
     xgb_p   = float(lb.get("xgb_prob",         0.0) or 0.0)
     lstm_p  = float(lb.get("lstm_prob",         0.0) or 0.0)
     sent    = float(lb.get("sentiment_score",   0.0) or 0.0)
     entry   = float(lb.get("price",            0.0) or 0.0)
-    regime  = str(lb.get("regime") or "—").replace("_", " ").title()
+    regime  = str(lb.get("regime") or "&mdash;").replace("_", " ").title()
     ts      = lb.get("timestamp", "")
     drv_raw = lb.get("feature_drivers")
 
@@ -119,7 +119,7 @@ def render_ai_recommendation() -> str:
 
     risk_label, risk_color = _risk_level(vix, regime)
     conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
-    conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
+    conf_pct = f"{conf*100:.0f}%" if conf > 0 else "&mdash;"
     conf_w   = int(conf * 100) if conf > 0 else 0
 
     # Ensemble agreement (how many signals/conditions fired strongly)
@@ -301,7 +301,7 @@ def render_ai_committee() -> str:
                 f'{_card(_empty_state("🏛", "Fully in cash", "Committee convenes once the bot enters positions."))}</div>')
 
     def _vote_chip(label: str, member_vote: str, member_color: str, pct_val: float) -> str:
-        v_str = f"{pct_val*100:.0f}%" if pct_val > 0 else "—"
+        v_str = f"{pct_val*100:.0f}%" if pct_val > 0 else "&mdash;"
         return (
             f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;'
             f'background:{BG};border-radius:6px;padding:8px 10px;min-width:64px;">'
@@ -355,7 +355,7 @@ def render_ai_committee() -> str:
             f'<div style="display:flex;gap:6px;flex:1;">{chip_html}</div>'
             f'<div style="text-align:right;min-width:80px;">'
             f'<div style="font-size:{FONT_LABEL};font-weight:700;color:{vm.final_color};">'
-            f'{"—" if vm.no_data else vm.final_vote}</div></div></div>'
+            f'{"&mdash;" if vm.no_data else vm.final_vote}</div></div></div>'
         )
 
     if not rows_html:
@@ -366,4 +366,4 @@ def render_ai_committee() -> str:
             f'{_wrap(rows_html)}</div>')
 
 
-# ── PANEL 3: Sell Analysis — called internally by render_decision_center ──────
+# ── PANEL 3: Sell Analysis &mdash; called internally by render_decision_center ──────

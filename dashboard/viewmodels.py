@@ -1,4 +1,4 @@
-"""Pure Python dataclasses for dashboard view models — zero HTML."""
+"""Pure Python dataclasses for dashboard view models &mdash; zero HTML."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

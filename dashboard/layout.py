@@ -1,4 +1,4 @@
-"""Gradio CSS and static HTML layout constants — extracted from design_system.py."""
+"""Gradio CSS and static HTML layout constants &mdash; extracted from design_system.py."""
 from __future__ import annotations
 
 from dashboard.design_system import (
@@ -20,7 +20,7 @@ GRADIO_CSS = f"""
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
 
-/* ── Tab navigation — high contrast fix ─────── */
+/* ── Tab navigation &mdash; high contrast fix ─────── */
 .tabs > .tab-nav,
 div.tabs > div.tab-nav,
 .gradio-container .tabs > .tab-nav {{
@@ -185,7 +185,7 @@ div.tabs > div.tab-nav > button.selected,
   table {{ font-size: 13px !important; }}
   table td, table th {{ padding: 8px 10px !important; }}
 
-  /* Tab nav: scroll horizontally — all tabs always reachable */
+  /* Tab nav: scroll horizontally &mdash; all tabs always reachable */
   .tabs > .tab-nav,
   div.tabs > div.tab-nav,
   .gradio-container .tabs > .tab-nav {{

@@ -70,7 +70,7 @@ def render_signals_tab() -> str:
 
     if not buys:
         _es = _empty_state("⚡", "No signals yet",
-                           "The AI generates signals Mon–Fri 9:30am–4pm ET "
+                           "The AI generates signals Mon-Fri 9:30am-4pm ET "
                            "when all entry gates pass.")
         return (f'<div class="nt nt-wrap">'
                 f'{_section("⚡","AI Buy Signals","recent")}'
@@ -81,12 +81,12 @@ def render_signals_tab() -> str:
     shown = buys[:20]
     for i, sig in enumerate(shown):
         ts      = sig.get("timestamp", "")
-        sym     = sig.get("symbol", "—")
+        sym     = sig.get("symbol", "&mdash;")
         price   = float(sig.get("price",          0.0) or 0.0)
         conf    = float(sig.get("ensemble_score",  0.0) or 0.0)
-        regime  = str(sig.get("regime") or "—").replace("_", " ").title()
+        regime  = str(sig.get("regime") or "&mdash;").replace("_", " ").title()
         drv_raw = sig.get("feature_drivers")
-        driver_text = "—"
+        driver_text = "&mdash;"
         try:
             import json as _j
             ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
@@ -94,10 +94,10 @@ def render_signals_tab() -> str:
                 f"{_FI_LABELS.get(f, f)}{'↑' if float(v) > 0 else '↓'}"
                 for f, v in (ds or [])[:2]
             ]
-            driver_text = " · ".join(parts) if parts else "—"
+            driver_text = " · ".join(parts) if parts else "&mdash;"
         except Exception as exc:
             logger.debug(f"parse_driver_text: {exc}")
-        conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
+        conf_pct = f"{conf*100:.0f}%" if conf > 0 else "&mdash;"
         conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
         td   = TD if i < len(shown) - 1 else TD0
         anim = f'style="animation:slideInRow .3s ease both;animation-delay:{i*0.04:.2f}s;"'
@@ -117,7 +117,7 @@ def render_signals_tab() -> str:
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
-        f'<b>Confidence</b> ≥75% strong · 60–75% moderate · &lt;60% weak &nbsp;·&nbsp;'
+        f'<b>Confidence</b> ≥75% strong · 60-75% moderate · &lt;60% weak &nbsp;·&nbsp;'
         f'<b>Top Drivers</b> show which indicators pushed the AI to BUY &nbsp;·&nbsp;'
         f'<b>Regime</b> = macro trend when signal fired'
         f'</div>'
@@ -147,7 +147,7 @@ def render_risk_panel() -> str:
     # Portfolio value as float
     pv = 0.0
     try:
-        pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_risk_panel: {exc}")
 
@@ -227,7 +227,7 @@ def render_risk_panel() -> str:
             f'</div>'
         )
     if not sector_rows:
-        sector_rows = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};">No open positions — fully in cash</div>'
+        sector_rows = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};">No open positions &mdash; fully in cash</div>'
 
     note = (f'Concentration: <span style="color:{cc_c};font-weight:700;">{max_conc:.1f}%</span>'
             f' largest position')
@@ -320,7 +320,7 @@ def render_institutional_metrics() -> str:
         + _row("Max Drawdown",  f"{max_dd:.1%}",  dd_c, "Worst peak-to-trough in account history")
         + _row("CAGR",          f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
                "Compound Annual Growth Rate over tracked period")
-        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown — higher is better")
+        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown &mdash; higher is better")
         + _row("VaR (95%, 1d)", f"{var_95:.2%}",  vr_c, "Worst expected 1-day loss at 95% confidence")
         + _row("Win Rate",      f"{win_rate:.1%}", wr_c, "% of closed trades that returned a profit")
     )
@@ -331,7 +331,7 @@ def render_institutional_metrics() -> str:
         f'Short history (&lt;30 days) may produce unreliable Sharpe / Sortino estimates.'
         f'</div>'
     )
-    n_str = f"{n_days} days of history" if n_days > 0 else "—"
+    n_str = f"{n_days} days of history" if n_days > 0 else "&mdash;"
     table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_block)
     return (f'<div class="nt nt-wrap">'
             f'{_section("📐","Institutional Metrics", n_str)}{table}</div>')
@@ -411,7 +411,7 @@ def render_timeline() -> str:
     items  = ""
     for i, (_, row) in enumerate(recent.iterrows()):
         action  = str(row.get("action", ""))
-        sym     = str(row.get("symbol", "—"))
+        sym     = str(row.get("symbol", "&mdash;"))
         ts      = row.get("timestamp", "")
         conf    = float(row.get("ensemble_score",  0.0) or 0.0)
         regime  = str(row.get("regime") or "").replace("_", " ").title()

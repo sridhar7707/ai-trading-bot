@@ -36,7 +36,7 @@ def render_position_sizing() -> str:
 
     _pv = 0.0
     try:
-        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_position_sizing: {exc}")
 
@@ -59,7 +59,7 @@ def render_position_sizing() -> str:
         if ens >= 0.75:   target_pct, rationale = 12.0, "High conviction"
         elif ens >= 0.65: target_pct, rationale = 8.0,  "Moderate conviction"
         elif ens >= 0.55: target_pct, rationale = 5.0,  "Low conviction"
-        else:             target_pct, rationale = 3.0,  "Very low — consider exit"
+        else:             target_pct, rationale = 3.0,  "Very low &mdash; consider exit"
 
         delta = target_pct - cur_pct
         if abs(delta) < 0.5:   adj_lbl, adj_c = "On target",           TEXT2
@@ -125,7 +125,7 @@ def render_ai_committee() -> str:
     def _vote_chip(label: str, pct_val: float, threshold: float = 0.60) -> str:
         vote  = "BUY" if pct_val >= threshold else ("HOLD" if pct_val >= 0.45 else "SELL")
         c     = GAIN if vote == "BUY" else (TEXT2 if vote == "HOLD" else LOSS)
-        v_str = f"{pct_val*100:.0f}%" if pct_val > 0 else "—"
+        v_str = f"{pct_val*100:.0f}%" if pct_val > 0 else "&mdash;"
         return (
             f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;'
             f'background:{BG};border-radius:6px;padding:8px 10px;min-width:64px;">'
@@ -163,7 +163,7 @@ def render_ai_committee() -> str:
             f'<div style="display:flex;gap:6px;flex:1;">{chip_html}</div>'
             f'<div style="text-align:right;min-width:80px;">'
             f'<div style="font-size:{FONT_LABEL};font-weight:700;color:{verdict_c};">'
-            f'{"—" if no_data else verdict}</div></div></div>'
+            f'{"&mdash;" if no_data else verdict}</div></div></div>'
         )
 
     if not rows_html:
@@ -174,7 +174,7 @@ def render_ai_committee() -> str:
             f'{_wrap(rows_html)}</div>')
 
 
-# ── PANEL 3: Sell Analysis — called internally by render_decision_center ──────
+# ── PANEL 3: Sell Analysis &mdash; called internally by render_decision_center ──────
 @safe_render("Sell Analysis")
 def render_sell_analysis() -> str:
     d        = get_data()
@@ -235,7 +235,7 @@ def render_sell_analysis() -> str:
         )
 
     act_count = sum(1 for a in analyses if a["recommendation"] != "HOLD")
-    note = f"{act_count} need attention · stop-loss 8%" if act_count else f"{n} positions — all holding"
+    note = f"{act_count} need attention · stop-loss 8%" if act_count else f"{n} positions &mdash; all holding"
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Symbol</th><th {TH}>Signal</th><th {TH}>Score</th>'
@@ -245,7 +245,7 @@ def render_sell_analysis() -> str:
     return f'<div class="nt nt-wrap">{_section("📉","Sell Analysis",note)}{table}</div>'
 
 
-# ── PANEL 5: Position Sizing — called internally by render_decision_center ────
+# ── PANEL 5: Position Sizing &mdash; called internally by render_decision_center ────
 @safe_render("Position Sizing")
 def render_position_sizing_panel() -> str:
     d        = get_data()

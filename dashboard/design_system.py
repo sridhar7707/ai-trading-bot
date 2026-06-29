@@ -1,4 +1,4 @@
-"""TradeGenius Design System v1.0 — constants and HTML builder helpers."""
+"""TradeGenius Design System v1.0 &mdash; constants and HTML builder helpers."""
 from __future__ import annotations
 
 # ══════════════════════════════════════════════════
@@ -9,17 +9,17 @@ from __future__ import annotations
 # ══════════════════════════════════════════════════
 
 # ── Backgrounds ───────────────────────────────────
-BG       = "#0f1115"   # page background — not pure black
+BG       = "#0f1115"   # page background &mdash; not pure black
 SURFACE  = "#171a21"   # card background
 SURFACE2 = "#222733"   # elevated surface / hover
 BORDER   = "#2d3445"   # card borders and dividers
 
-# ── Text — exactly 3 levels, no more ─────────────
-TEXT1 = "#ffffff"   # primary — all values, numbers, amounts
-TEXT2 = "#b0b7c3"   # secondary — labels, captions, timestamps
-TEXT3 = "#7f8896"   # tertiary — helper text, placeholders only
+# ── Text &mdash; exactly 3 levels, no more ─────────────
+TEXT1 = "#ffffff"   # primary &mdash; all values, numbers, amounts
+TEXT2 = "#b0b7c3"   # secondary &mdash; labels, captions, timestamps
+TEXT3 = "#7f8896"   # tertiary &mdash; helper text, placeholders only
 
-# ── Action Colors — consistent everywhere ─────────
+# ── Action Colors &mdash; consistent everywhere ─────────
 ACTION_BUY   = "#00c853"   # green
 ACTION_SELL  = "#ff5252"   # red
 ACTION_TRIM  = "#ffb300"   # amber
@@ -50,7 +50,7 @@ GAIN_BD    = "#00a005"
 LOSS_BD    = "#cc3d00"
 NEURAL_BD  = "#8b3aaa"
 
-# ── Typography — exactly 4 sizes, no more ─────────
+# ── Typography &mdash; exactly 4 sizes, no more ─────────
 FONT_HERO    = "36px"   # portfolio value, health score
 FONT_SECTION = "20px"   # card titles
 FONT_VALUE   = "15px"   # data values, prices, percentages
@@ -120,7 +120,7 @@ def _label(text: str) -> str:
     )
 
 def _hero_value(value: str, color: str = TEXT1, subtext: str = "") -> str:
-    """Large hero number — portfolio value, health score."""
+    """Large hero number &mdash; portfolio value, health score."""
     sub = (f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:4px;">'
            f'{subtext}</div>' if subtext else "")
     return (
@@ -140,7 +140,7 @@ def _section_title(title: str, note: str = "") -> str:
     )
 
 def _action_badge(action: str, size: str = "normal") -> str:
-    """Colored action badge. Single source of truth. Colors FIXED — never override."""
+    """Colored action badge. Single source of truth. Colors FIXED &mdash; never override."""
     action = action.upper()
     _colors = {
         "BUY":   (ACTION_BUY,   ACTION_BUY_BG),

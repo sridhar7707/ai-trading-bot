@@ -62,7 +62,7 @@ def build_positions_vm() -> list[PositionRow]:
     prices    = d.get("prices", {})
     _pv = 0.0
     try:
-        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "—") != "—" else 0.0
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "&mdash;") != "&mdash;" else 0.0
     except Exception:
         pass
 
@@ -79,7 +79,7 @@ def build_positions_vm() -> list[PositionRow]:
         sz     = get_position_sizing(sym, d)
         action = pa.get("action", "HOLD")
         conf   = int(pa.get("confidence", 0))
-        reason = pa.get("reason", "—")
+        reason = pa.get("reason", "&mdash;")
         tgt_w  = sz.get("target_weight", 0.0)
 
         sa         = get_sell_analysis(sym, d)
@@ -130,7 +130,7 @@ def build_trades_vm() -> list[TradeRow]:
             notional=float(notional) if notional else 0.0,
             pnl_pct=pnl,
             pnl_color=_pnl_color(pnl) if pnl is not None else TEXT2,
-            regime=(regime or "—").replace("_", " ").title(),
+            regime=(regime or "&mdash;").replace("_", " ").title(),
         ))
     return rows
 
@@ -141,9 +141,9 @@ def build_health_vm() -> HealthViewModel:
     d     = get_data()
     h     = get_portfolio_health(d)
     score = h.get("total", 0)
-    grade = h.get("grade", "—")
+    grade = h.get("grade", "&mdash;")
     gl    = h.get("grade_label", "")
-    risk_txt   = h.get("biggest_risk", "—")
+    risk_txt   = h.get("biggest_risk", "&mdash;")
     strengths  = h.get("strengths", [])[:2]
     comps = h.get("components", {})
 
@@ -198,16 +198,16 @@ def build_actions_vm() -> list[ActionRow]:
         rec   = get_portfolio_action(sym, d)
         sz    = get_position_sizing(sym, d)
         action      = rec.get("action", "HOLD")
-        dol_display = sz.get("dollar_display", "—")
+        dol_display = sz.get("dollar_display", "&mdash;")
         # Only show delta for actionable signals; HOLD/WATCH with a negative
-        # delta reads as a loss to users — suppress it.
+        # delta reads as a loss to users &mdash; suppress it.
         if action in ("HOLD", "WATCH") and str(dol_display).startswith("-"):
-            dol_display = "—"
+            dol_display = "&mdash;"
         recs.append({
             "symbol":       sym,
             "action":       action,
             "confidence":   rec.get("confidence", 0),
-            "reason":       rec.get("reason", "—"),
+            "reason":       rec.get("reason", "&mdash;"),
             "detail":       dol_display,
             "urgency":      rec.get("urgency", "low"),
         })
@@ -262,7 +262,7 @@ def build_decision_vm() -> list[DecisionRow]:
         cur_w   = sz.get("current_weight", 0.0)
         tgt_w   = sz.get("target_weight", 0.0)
         delta_w = sz.get("delta_weight", 0.0)
-        dol     = sz.get("dollar_display", "—")
+        dol     = sz.get("dollar_display", "&mdash;")
 
         # Reconcile target weight with portfolio action.
         # get_position_sizing() uses the stored-at-buy ensemble score which
@@ -270,9 +270,9 @@ def build_decision_vm() -> list[DecisionRow]:
         # (actual sell threshold is 40%, not 55%). Ensure the Decision Center
         # reflects what the bot is actually doing.
         if action == "HOLD":
-            tgt_w   = cur_w   # no change — bot is holding the position
+            tgt_w   = cur_w   # no change &mdash; bot is holding the position
             delta_w = 0.0
-            dol     = "—"
+            dol     = "&mdash;"
         elif action == "WATCH" and tgt_w < cur_w * 0.5:
             # WATCH means keep an eye on it, not exit. Cap reduction at 50%.
             tgt_w   = round(cur_w * 0.5, 1)
@@ -318,7 +318,7 @@ def build_rebalance_vm() -> list[RebalanceRow]:
             delta_weight=delta_w,
             delta_color=delta_c,
             badge_action=badge,
-            dollar_display=sz.get("dollar_display", "—"),
+            dollar_display=sz.get("dollar_display", "&mdash;"),
             delta_dollars=float(sz.get("delta_dollars", 0.0)),
         ))
     rows.sort(key=lambda r: -r.cur_weight)

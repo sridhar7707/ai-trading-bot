@@ -44,7 +44,7 @@ def render_positions() -> str:
             f'{_section("📊","Open Positions","no positions held")}'
             + _card(_empty_state("📊", "No open positions",
                                  "The bot enters trades during market hours "
-                                 "(9:30am–4pm ET, Mon–Fri) when signals align."))
+                                 "(9:30am-4pm ET, Mon-Fri) when signals align."))
             + f'</div>'
         )
 
@@ -122,10 +122,10 @@ def render_trades() -> str:
 
     rows = ""
     for i, r in enumerate(vm_rows):
-        pnl_str = f"{r.pnl_pct:+.2%}" if r.pnl_pct is not None else "—"
-        val_str = f"${r.notional:.2f}" if r.notional else "—"
-        qty_str = f"{r.shares:.4f}"    if r.shares   else "—"
-        px_str  = f"${r.price:.2f}"   if r.price    else "—"
+        pnl_str = f"{r.pnl_pct:+.2%}" if r.pnl_pct is not None else "&mdash;"
+        val_str = f"${r.notional:.2f}" if r.notional else "&mdash;"
+        qty_str = f"{r.shares:.4f}"    if r.shares   else "&mdash;"
+        px_str  = f"${r.price:.2f}"   if r.price    else "&mdash;"
         td   = TD if i < shown - 1 else TD0
         anim = f'style="animation:slideInRow .35s ease both;animation-delay:{i*0.05:.2f}s;"'
         rows += (

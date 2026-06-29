@@ -1,4 +1,4 @@
-"""News feed — Yahoo Finance headlines for held positions and BUY-signal watchlist."""
+"""News feed &mdash; Yahoo Finance headlines for held positions and BUY-signal watchlist."""
 from __future__ import annotations
 import datetime
 from loguru import logger

@@ -1,4 +1,4 @@
-"""TradeGenius dashboard package — re-exports all render functions."""
+"""TradeGenius dashboard package &mdash; re-exports all render functions."""
 from dashboard.components.overview import (
     render_metrics,
     render_dashboard_hero,

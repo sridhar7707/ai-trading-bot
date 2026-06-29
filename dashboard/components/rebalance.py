@@ -21,7 +21,7 @@ from bot.core.recommendation_engine import get_portfolio_health
 _logger = logger
 
 
-# ── PANEL: Rebalance — current vs target allocation ───────────────────────────
+# ── PANEL: Rebalance &mdash; current vs target allocation ───────────────────────────
 @timed(_logger)
 @safe_render("Rebalance")
 def render_rebalance() -> str:
@@ -35,7 +35,7 @@ def render_rebalance() -> str:
     d = get_data()
     _pv = 0.0
     try:
-        _pv = float(d["portfolio"].replace("$","").replace(",","")) if d["portfolio"] != "—" else 0.0
+        _pv = float(d["portfolio"].replace("$","").replace(",","")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_rebalance: {exc}")
 
@@ -83,16 +83,16 @@ def render_rebalance() -> str:
         f'<td {TD0}><span style="font-size:{FONT_LABEL};color:{cash_c};'
         f'font-weight:{WEIGHT_BOLD};">{cash_delta:+.1f}%</span></td>'
         f'<td {TD0}>{_action_badge(cash_badge, "small")}</td>'
-        f'<td {TD0}>—</td>'
+        f'<td {TD0}>&mdash;</td>'
         f'</tr>'
     )
 
     net_rebalance = sum(abs(r.delta_dollars) for r in vm_rows) / 2
-    net_str = f"${net_rebalance:,.0f}" if net_rebalance > 0 else "—"
+    net_str = f"${net_rebalance:,.0f}" if net_rebalance > 0 else "&mdash;"
 
     health       = get_portfolio_health(d)
     health_score = health.get("total", 0)
-    grade        = health.get("grade", "—")
+    grade        = health.get("grade", "&mdash;")
 
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
@@ -117,7 +117,7 @@ def render_rebalance() -> str:
 
 
 
-# ── PANEL: Rebalance Suggestions — grouped action plan ────────────────────────
+# ── PANEL: Rebalance Suggestions &mdash; grouped action plan ────────────────────────
 @safe_render("Rebalance Suggestions")
 def render_rebalance_suggestions() -> str:
     vm_rows = build_rebalance_vm()
@@ -164,13 +164,13 @@ def render_rebalance_suggestions() -> str:
         shift_parts.append(f'<span style="color:{GAIN};">↑ {top_add}</span>')
     if top_red:
         shift_parts.append(f'<span style="color:{LOSS};">↓ {top_red}</span>')
-    sector_shift = " &nbsp;·&nbsp; ".join(shift_parts) if shift_parts else "—"
+    sector_shift = " &nbsp;·&nbsp; ".join(shift_parts) if shift_parts else "&mdash;"
 
     def _row(r, is_last: bool) -> str:
         td  = TD0 if is_last else TD
         amt = f"${abs(r.delta_dollars):,.0f}"
         badge = "TRIM" if r.delta_dollars < 0 else "ADD"
-        sec   = SECTOR_MAP.get(r.symbol, "—")
+        sec   = SECTOR_MAP.get(r.symbol, "&mdash;")
         return (
             f'<tr>'
             f'<td {td}>{_symbol(r.symbol)}</td>'

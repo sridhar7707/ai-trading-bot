@@ -19,7 +19,7 @@ from bot.core.error_logger import safe_render, timed
 _logger = logger
 
 
-# ── PANEL: Decision Center — what to do with each position ────────────────────
+# ── PANEL: Decision Center &mdash; what to do with each position ────────────────────
 # NOTE: render_portfolio_actions, render_sell_analysis, render_position_sizing_panel
 #       are consolidated here. They remain functional but are not wired to layout.
 @timed(_logger)
@@ -54,7 +54,7 @@ def render_decision_center() -> str:
         reason_parts = []
         if r.action == "HOLD":
             # HOLD: show what's good first, then any soft concerns
-            hold_reason = r.reasons_hold[0] if r.reasons_hold else (r.pa_reason or "Below exit threshold — bot is holding")
+            hold_reason = r.reasons_hold[0] if r.reasons_hold else (r.pa_reason or "Below exit threshold &mdash; bot is holding")
             reason_parts.append(
                 f'<span style="color:{ACTION_BUY};">✓</span>'
                 f'<span style="font-size:{FONT_LABEL};color:{TEXT2};"> {hold_reason}</span>'

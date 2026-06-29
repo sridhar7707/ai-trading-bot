@@ -60,7 +60,7 @@ def render_whats_changed() -> str:
         return _empty("Could not load comparison data.")
 
     if not yest_rows:
-        # No prior-day trade data â€” show today's intraday progress instead
+        # No prior-day trade data &mdash; show today's intraday progress instead
         try:
             with get_db_conn() as con:
                 first_snap = con.execute(
@@ -73,15 +73,15 @@ def render_whats_changed() -> str:
                     "ORDER BY timestamp DESC LIMIT 1",
                 ).fetchone()
         except Exception:
-            return _empty("First session â€” no comparison available yet.")
+            return _empty("First session &mdash; no comparison available yet.")
 
         if not first_snap or not last_snap:
-            return _empty("First session â€” no comparison available yet.")
+            return _empty("First session &mdash; no comparison available yet.")
 
         start_v = float(first_snap[0] or 0)
         cur_v   = float(last_snap[0] or 0)
         if start_v <= 0:
-            return _empty("First session â€” no comparison available yet.")
+            return _empty("First session &mdash; no comparison available yet.")
 
         delta = cur_v - start_v
         pct   = delta / start_v * 100
@@ -214,7 +214,7 @@ def render_whats_changed() -> str:
     if not changes_seen:
         rows_html = (
             f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:12px 0;text-align:center;">'
-            f'No significant changes since yesterday â€” AI signals are stable.</div>'
+            f'No significant changes since yesterday &mdash; AI signals are stable.</div>'
         )
 
     return (
@@ -323,7 +323,7 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
 
                 # First DB record on or after the cutoff date (start-of-period proxy).
                 # If the effective start date equals the bot's first-ever trade date, the bot
-                # hasn't been running long enough for this period â€” show "â€”" to avoid displaying
+                # hasn't been running long enough for this period &mdash; show "&mdash;" to avoid displaying
                 # the same cumulative loss as All Time under a misleading label like "1M".
                 row = con.execute(
                     "SELECT portfolio_value, timestamp FROM trades "
@@ -356,13 +356,13 @@ def _perf_choices() -> list[str]:
             pct = (s[1] - s[0]) / s[0] * 100
             choices.append(f"{key}  {pct:+.1f}%")
         else:
-            choices.append(f"{key}  â€”")
+            choices.append(f"{key}  &mdash;")
     return choices
 
 
 @timed(_logger)
 @safe_render("Portfolio Performance")
-def render_portfolio_performance(period: str = "1M  â€”") -> str:
+def render_portfolio_performance(period: str = "1M  &mdash;") -> str:
     # Strip the inline stat suffix so we always have a clean key
     key = period.split()[0] if period else "1M"
 
@@ -372,7 +372,7 @@ def render_portfolio_performance(period: str = "1M  â€”") -> str:
 
     if not first_any:
         empty = (f'<div style="color:{TEXT2};text-align:center;padding:20px;font-size:{FONT_LABEL};">'
-                 f'No portfolio history yet â€” data appears after the first trade.</div>')
+                 f'No portfolio history yet &mdash; data appears after the first trade.</div>')
         return f'<div class="nt nt-wrap">{empty}</div>'
 
     s = stats.get(key)
@@ -382,7 +382,7 @@ def render_portfolio_performance(period: str = "1M  â€”") -> str:
         detail = (
             f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;'
             f'padding:20px;text-align:center;color:{TEXT2};font-size:{FONT_VALUE};">'
-            f'Not enough data yet for <strong>{key}</strong> â€” the bot needs more trading history.</div>'
+            f'Not enough data yet for <strong>{key}</strong> &mdash; the bot needs more trading history.</div>'
         )
     else:
         start_val, end_val, start_date = s

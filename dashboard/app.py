@@ -11,7 +11,7 @@
 #   python tests/requirements_tracker.py
 # This updates docs/REQUIREMENTS.md automatically.
 # ================================================================
-"""Gradio dashboard — TradeGenius AI, hosted on HuggingFace Spaces."""
+"""Gradio dashboard &mdash; TradeGenius AI, hosted on HuggingFace Spaces."""
 from __future__ import annotations
 
 import sys as _sys
@@ -111,7 +111,7 @@ from bot.core.recommendation_engine import (
 
 _logger = logger
 
-# ── Gradio layout — 4-tab design ──────────────────────────────────────────────
+# ── Gradio layout &mdash; 4-tab design ──────────────────────────────────────────────
 # Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 _theme = gr.themes.Base(
     primary_hue=gr.themes.colors.green,
@@ -166,7 +166,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            # Exactly 5 panels — open dashboard and within 3s: health, actions, risk
+            # Exactly 5 panels &mdash; open dashboard and within 3s: health, actions, risk
             hero_out           = gr.HTML(value=render_portfolio_health_hero)
             market_mood_out    = gr.HTML(value=render_market_mood)
             todays_actions_out = gr.HTML(value=render_todays_actions)
@@ -249,7 +249,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         outputs=[investor_out, dev_col],
     )
 
-    # Portfolio performance period selection — also store the bare key in state
+    # Portfolio performance period selection &mdash; also store the bare key in state
     def _on_perf_change(period_label):
         key = (period_label or "1M").split()[0]
         return render_portfolio_performance(period_label), key
@@ -266,7 +266,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         outputs=[symbol_detail_out],
     )
 
-    # One shared timer — cache layer ensures a single DB+API refresh per tick
+    # One shared timer &mdash; cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
     # Dashboard (5 panels)
     timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
@@ -282,7 +282,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         return gr.update(choices=choices, value=val)
     timer.tick(fn=_refresh_symbol_choices, inputs=[symbol_selector], outputs=symbol_selector)
     timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
-    # News tab (30-min internal cache — refreshes on every timer tick but skips API if cached)
+    # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
     timer.tick(fn=render_news_feed, outputs=news_out)
     # Signals tab
     timer.tick(fn=render_timeline,              outputs=timeline_out)
@@ -291,13 +291,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_watchlist,             outputs=watchlist_out)
     # Signal History tab
     timer.tick(fn=render_signal_history, outputs=signal_history_out)
-    # Portfolio tab — use key state (not Radio value) to avoid stale-label validation errors
+    # Portfolio tab &mdash; use key state (not Radio value) to avoid stale-label validation errors
     def _refresh_perf_tabs(current_key):
         choices = _perf_choices()
         matched = next((c for c in choices if c.split()[0] == current_key), None)
         val     = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
         new_key = val.split()[0] if val else current_key
-        html    = render_portfolio_performance(val or "1M  —")
+        html    = render_portfolio_performance(val or "1M  &mdash;")
         return gr.update(choices=choices, value=val), new_key, html
     timer.tick(fn=_refresh_perf_tabs, inputs=[perf_key_state],
                outputs=[perf_tabs, perf_key_state, perf_out])

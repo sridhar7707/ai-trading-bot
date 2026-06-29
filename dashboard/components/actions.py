@@ -19,7 +19,7 @@ from bot.core.error_logger import safe_render
 _logger = logger
 
 
-# ── PANEL 2: Today's Priority Actions — recommendation-based ─────────────────
+# ── PANEL 2: Today's Priority Actions &mdash; recommendation-based ─────────────────
 @safe_render("Today's Actions")
 def render_todays_actions() -> str:
     vm_rows = build_actions_vm()
@@ -63,7 +63,7 @@ def render_todays_actions() -> str:
     return f'<div class="nt nt-wrap">{_section("⚡","Priority Actions",note)}{table}</div>'
 
 
-# ── Render: portfolio actions — dead code (called internally by decision center)
+# ── Render: portfolio actions &mdash; dead code (called internally by decision center)
 @safe_render("Portfolio Actions")
 def render_portfolio_actions() -> str:
     from dashboard.data import get_data
@@ -81,7 +81,7 @@ def render_portfolio_actions() -> str:
 
     _pv = 0.0
     try:
-        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_portfolio_actions: {exc}")
 
@@ -126,7 +126,7 @@ def render_portfolio_actions() -> str:
 
         pnl_c   = GAIN if pnl_pct >= 0 else LOSS
         ens_c   = GAIN if ens >= 0.75 else (NEURAL if ens >= 0.60 else TEXT2)
-        ens_str = f"{ens*100:.0f}%" if ens > 0 else "—"
+        ens_str = f"{ens*100:.0f}%" if ens > 0 else "&mdash;"
         td = TD if i < len(items) - 1 else TD0
         rows += (
             f'<tr><td {td}>{_sym(sym)}</td>'

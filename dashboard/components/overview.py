@@ -32,12 +32,12 @@ def render_metrics() -> str:
     total_pnl      = total_cur - total_invested
     pnl_pct_all    = (total_pnl / total_invested * 100) if total_invested > 0 else 0.0
 
-    pnl_str    = f"${total_pnl:+,.2f}" if total_invested > 0 else "—"
+    pnl_str    = f"${total_pnl:+,.2f}" if total_invested > 0 else "&mdash;"
     pnl_sub    = f"{pnl_pct_all:+.2f}% on capital" if total_invested > 0 else "no open positions"
     pnl_color  = GAIN if total_pnl >= 0 else LOSS
     pnl_accent = GAIN_BD if total_pnl >= 0 else LOSS_BD
 
-    invested_str = f"${total_invested:,.2f}" if total_invested > 0 else "—"
+    invested_str = f"${total_invested:,.2f}" if total_invested > 0 else "&mdash;"
 
     r_lower = d["regime_raw"].lower()
     if any(x in r_lower for x in ["bull", "trending up"]):
@@ -50,7 +50,7 @@ def render_metrics() -> str:
     sell_count = d["sell_count"]
     win_count  = d["win_count"]
     win_rate   = (win_count / sell_count * 100) if sell_count > 0 else 0.0
-    wr_str     = f"{win_rate:.1f}%" if sell_count > 0 else "—"
+    wr_str     = f"{win_rate:.1f}%" if sell_count > 0 else "&mdash;"
     wr_color   = GAIN if win_rate >= 50 else (LOSS if sell_count > 0 else TEXT2)
     wr_accent  = GAIN_BD if win_rate >= 50 else (LOSS_BD if sell_count > 0 else BORDER)
 
@@ -105,9 +105,9 @@ def render_metrics() -> str:
         + _stat_card("Total Invested",      invested_str,            TEXT2,     TEXT1,
                 "Capital currently deployed in open trades",   0.06)
         + _stat_card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,
-                "AI-detected trend — drives position sizing",  0.12)
+                "AI-detected trend &mdash; drives position sizing",  0.12)
         + _stat_card("Market Session",      mkt_label,               TEXT2,     mkt_color,
-                "NYSE/NASDAQ open 9:30am–4pm ET, Mon–Fri",    0.18)
+                "NYSE/NASDAQ open 9:30am-4pm ET, Mon-Fri",    0.18)
         + f'</div>'
     )
 
@@ -146,11 +146,11 @@ def render_dashboard_hero() -> str:
                       if total_invested > 0 else "No open positions")
 
     avg_conf   = d.get("avg_confidence", 0.0)
-    conf_str   = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—"
+    conf_str   = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "&mdash;"
     conf_color = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
 
     vix = d.get("vix", 0.0)
-    vix_str = f"{vix:.1f}" if vix > 0 else "—"
+    vix_str = f"{vix:.1f}" if vix > 0 else "&mdash;"
     if vix == 0: vix_color = TEXT2
     elif vix < 15: vix_color = GAIN
     elif vix < 25: vix_color = NEURAL
@@ -172,7 +172,7 @@ def render_dashboard_hero() -> str:
     # ── Portfolio Health Score ──────────────────────────────────────────────
     pv_float = 0.0
     try:
-        pv_float = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        pv_float = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_portfolio_health_hero: {exc}")
 
@@ -341,15 +341,15 @@ def render_portfolio_health_hero() -> str:
         )
 
     avg_conf = d.get("avg_confidence", 0.0)
-    conf_str = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—"
+    conf_str = f"{avg_conf*100:.0f}%" if avg_conf > 0 else "&mdash;"
     conf_c   = GAIN if avg_conf >= 0.75 else (NEURAL if avg_conf >= 0.60 else TEXT2)
     vix      = d.get("vix", 0.0)
-    vix_str  = f"{vix:.1f}" if vix > 0 else "—"
+    vix_str  = f"{vix:.1f}" if vix > 0 else "&mdash;"
     vix_c    = GAIN if vix < 15 else (NEURAL if vix < 25 else LOSS)
 
     stats_row = (
         f'<div style="display:flex;flex-wrap:wrap;border-top:1px solid {BORDER};margin-top:10px;">'
-        + _stat("Portfolio", d.get("portfolio", "—"), TEXT1)
+        + _stat("Portfolio", d.get("portfolio", "&mdash;"), TEXT1)
         + _stat("P&L", hero_chg, pnl_c)
         + _stat("Positions", str(len(open_pos)), TEXT1)
         + _stat("AI Conf.", conf_str, conf_c)
@@ -400,8 +400,8 @@ def render_benchmark_comparison() -> str:
     d = get_data()
     pv = 0.0
     try:
-        raw = d.get("portfolio", "—")
-        if raw != "—":
+        raw = d.get("portfolio", "&mdash;")
+        if raw != "&mdash;":
             pv = float(raw.replace("$", "").replace(",", ""))
     except (ValueError, TypeError):
         pass

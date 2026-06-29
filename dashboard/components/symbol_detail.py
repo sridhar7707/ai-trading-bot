@@ -29,7 +29,7 @@ _logger = logger
 def _get_symbol_choices() -> list[str]:
     from config import SYMBOLS
     d = get_data()
-    # Open positions first (actionable — AI card is live for these)
+    # Open positions first (actionable &mdash; AI card is live for these)
     syms = list(d["open_pos"].keys())
     # Then full watchlist for research; closed/sold positions are excluded
     # because the AI action card is suppressed for them anyway
@@ -64,7 +64,7 @@ def render_symbol_detail(symbol: str) -> str:
     xgb_p   = float(lb.get("xgb_prob",        0.0) or 0.0) if lb is not None else 0.0
     lstm_p  = float(lb.get("lstm_prob",        0.0) or 0.0) if lb is not None else 0.0
     sent    = float(lb.get("sentiment_score",  0.0) or 0.0) if lb is not None else 0.0
-    regime  = (str(lb.get("regime") or "—").replace("_", " ").title() if lb is not None
+    regime  = (str(lb.get("regime") or "&mdash;").replace("_", " ").title() if lb is not None
                else d["regime_raw"].title())
     entry   = float(lb.get("price", 0.0) or 0.0) if lb is not None else 0.0
     drv_raw = lb.get("feature_drivers") if lb is not None else None
@@ -77,7 +77,7 @@ def render_symbol_detail(symbol: str) -> str:
     r_color = (GAIN if any(x in r_lower for x in ["bull","trending up"]) else
                LOSS if any(x in r_lower for x in ["bear","trending down"]) else NEURAL)
 
-    pnl_str, pnl_c = "—", TEXT2
+    pnl_str, pnl_c = "&mdash;", TEXT2
     if pos and entry > 0 and cur_price > 0:
         pnl_v   = (cur_price - entry) / entry * 100
         pnl_str = f"{pnl_v:+.1f}%"
@@ -91,7 +91,7 @@ def render_symbol_detail(symbol: str) -> str:
         status_lbl, status_c = "RECENTLY TRADED",    TEXT2
     else:
         status_lbl, status_c = "NO HISTORY",         TEXT3
-    conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "—"
+    conf_pct   = f"{conf*100:.0f}%" if conf > 0 else "&mdash;"
 
     # SHAP drivers
     why_html = ""
@@ -116,7 +116,7 @@ def render_symbol_detail(symbol: str) -> str:
             why_html = (
                 f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">'
                 f'This position was <strong>seeded from your Alpaca account</strong> at bot startup '
-                f'— it was not opened by this bot session. No BUY signal or SHAP drivers on record.</div>'
+                f'&mdash; it was not opened by this bot session. No BUY signal or SHAP drivers on record.</div>'
             )
         elif not has_bot_buy:
             why_html = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};padding:8px 0;">No bot BUY on record for this symbol.</div>'
@@ -173,7 +173,7 @@ def render_symbol_detail(symbol: str) -> str:
     )
     pos_g = ""
     if pos:
-        cur_str = f"${cur_price:.2f}" if cur_price > 0 else "—"
+        cur_str = f"${cur_price:.2f}" if cur_price > 0 else "&mdash;"
         pos_g = (
             f'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;">'
             f'<div style="background:{BG};border-radius:6px;padding:10px 12px;">'
@@ -191,15 +191,15 @@ def render_symbol_detail(symbol: str) -> str:
     ts_note = f'<div style="font-size:{FONT_LABEL};color:{TEXT2};margin-top:8px;">Signal: {_to_ct(ts)[:16]}</div>' if ts else ""
 
     # ── SPEC 31: action card ──────────────────────────────────────────────────────
-    # ── Why Panel — recommendation engine signals ──────────────────────────────
+    # ── Why Panel &mdash; recommendation engine signals ──────────────────────────────
     if pos:
-        # Live open position — full recommendation engine output
+        # Live open position &mdash; full recommendation engine output
         _pa  = get_portfolio_action(symbol, d)
         _exp = get_recommendation_explanation(symbol, d)
         _sz2 = get_position_sizing(symbol, d)
         _ac      = _pa.get("action", "HOLD")
         _pa_conf = _pa.get("confidence", 0)
-        _pa_reason = _pa.get("reason", "—")
+        _pa_reason = _pa.get("reason", "&mdash;")
         _ac_colors = {
             "EXIT":  (LOSS,      "#2a0a0a"),
             "SELL":  (LOSS,      "#2a0a0a"),
@@ -223,7 +223,7 @@ def render_symbol_detail(symbol: str) -> str:
             for b in _bear_items
         ) or ""
 
-        _dol_disp = _sz2.get("dollar_display", "—")
+        _dol_disp = _sz2.get("dollar_display", "&mdash;")
         _tgt_w    = _sz2.get("target_weight", 0.0)
         _sh = (f"Target {_tgt_w:.0f}% · {_dol_disp}" if _tgt_w > 0 else
                "Max 12% allocation" if _pa_conf >= 75 else
@@ -257,7 +257,7 @@ def render_symbol_detail(symbol: str) -> str:
             f'</div></div></div>'
         )
     else:
-        # Position is closed or was never held — no live AI signal to show
+        # Position is closed or was never held &mdash; no live AI signal to show
         _close_note = (
             "Position was seeded from Alpaca at startup (external entry). "
             "The bot closed it via stop-loss. No AI signal was generated at entry."

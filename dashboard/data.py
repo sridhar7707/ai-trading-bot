@@ -30,7 +30,7 @@ _PRICE_CACHE_TTL: float = 3600.0
 
 _EMPTY_CACHE: dict = {
     "open_pos": {}, "prices": {}, "trades_df": pd.DataFrame(),
-    "portfolio": "—", "regime_raw": "Unknown",
+    "portfolio": "&mdash;", "regime_raw": "Unknown",
     "total_trades": 0, "buy_count": 0, "sell_count": 0, "win_count": 0,
     "recent_trades": [],
     "vix": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
@@ -121,7 +121,7 @@ def _sync_db() -> None:
         if any(x in msg for x in ("404", "not found", "entry", "does not exist")):
             if os.path.exists(DB_PATH):
                 os.remove(DB_PATH)
-                logger.info("DB sync: trades.db deleted from HF — local copy removed")
+                logger.info("DB sync: trades.db deleted from HF &mdash; local copy removed")
         else:
             logger.opt(exception=True).warning(f"DB sync: {e}")
     for filename, dest in [
@@ -195,7 +195,7 @@ def _refresh_cache() -> dict:
                     "feature_drivers "
                     "FROM trades ORDER BY id", con)
             except Exception as _e:
-                logger.opt(exception=True).warning(f"Extended trades query failed (missing columns?): {_e} — falling back to base schema")
+                logger.opt(exception=True).warning(f"Extended trades query failed (missing columns?): {_e} &mdash; falling back to base schema")
                 df = pd.read_sql(
                     "SELECT id,timestamp,symbol,action,shares,price,notional,"
                     "pnl_pct,portfolio_value,regime FROM trades ORDER BY id", con)
@@ -223,7 +223,7 @@ def _refresh_cache() -> dict:
 
     last = df.iloc[-1]
     result["portfolio"]  = (f"${last['portfolio_value']:,.2f}"
-                            if pd.notna(last["portfolio_value"]) else "—")
+                            if pd.notna(last["portfolio_value"]) else "&mdash;")
     result["regime_raw"] = (str(last["regime"] or "Unknown")).replace("_", " ")
 
     pos: dict = {}
@@ -335,4 +335,4 @@ def _market_status() -> tuple:
         return "After Hours", TEXT2
     except Exception as exc:
         logger.debug(f"_market_status: {exc}")
-        return "—", TEXT2
+        return "&mdash;", TEXT2

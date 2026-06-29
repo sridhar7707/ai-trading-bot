@@ -52,7 +52,7 @@ def _risk_level(vix: float, regime: str) -> tuple[str, str]:
 def render_market_intelligence() -> str:
     d        = get_data()
     vix      = d.get("vix", 0.0)
-    regime   = d.get("regime_raw", "—")
+    regime   = d.get("regime_raw", "&mdash;")
     avg_conf = d.get("avg_confidence", 0.0)
     sent     = d.get("sentiment_avg", 0.0)
 
@@ -76,11 +76,11 @@ def render_market_intelligence() -> str:
 
     cards = (
         f'<div class="nt-cards">'
-        + _stat_card("VIX", f"{vix:.1f}" if vix > 0 else "—",
+        + _stat_card("VIX", f"{vix:.1f}" if vix > 0 else "&mdash;",
                 TEXT2, vix_color, f"{vix_label} · <15=calm, >30=fear", 0.00)
         + _stat_card("Market Regime", regime.replace("_", " ").title(),
                 TEXT2, r_color, "AI-detected trend · drives position size", 0.06)
-        + _stat_card("Signal Strength", f"{avg_conf*100:.0f}%" if avg_conf > 0 else "—",
+        + _stat_card("Signal Strength", f"{avg_conf*100:.0f}%" if avg_conf > 0 else "&mdash;",
                 TEXT2, conf_color, "Avg confidence · last 5 buy signals", 0.12)
         + _stat_card("News Sentiment", sent_label,
                 TEXT2, sent_color, "FinBERT score · recent headlines", 0.18)
@@ -138,7 +138,7 @@ def render_signals_tab() -> str:
 
     if not buys:
         _es = _empty_state("⚡", "No signals yet",
-                           "The AI generates signals Mon–Fri 9:30am–4pm ET "
+                           "The AI generates signals Mon-Fri 9:30am-4pm ET "
                            "when all entry gates pass.")
         return (f'<div class="nt nt-wrap">'
                 f'{_section("⚡","AI Buy Signals","recent")}'
@@ -149,12 +149,12 @@ def render_signals_tab() -> str:
     shown = buys[:20]
     for i, sig in enumerate(shown):
         ts      = sig.get("timestamp", "")
-        sym     = sig.get("symbol", "—")
+        sym     = sig.get("symbol", "&mdash;")
         price   = float(sig.get("price",          0.0) or 0.0)
         conf    = float(sig.get("ensemble_score",  0.0) or 0.0)
-        regime  = str(sig.get("regime") or "—").replace("_", " ").title()
+        regime  = str(sig.get("regime") or "&mdash;").replace("_", " ").title()
         drv_raw = sig.get("feature_drivers")
-        driver_text = "—"
+        driver_text = "&mdash;"
         try:
             import json as _j
             ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
@@ -162,10 +162,10 @@ def render_signals_tab() -> str:
                 f"{_FI_LABELS.get(f, f)}{'↑' if float(v) > 0 else '↓'}"
                 for f, v in (ds or [])[:2]
             ]
-            driver_text = " · ".join(parts) if parts else "—"
+            driver_text = " · ".join(parts) if parts else "&mdash;"
         except Exception as exc:
             logger.debug(f"parse_driver_text: {exc}")
-        conf_pct = f"{conf*100:.0f}%" if conf > 0 else "—"
+        conf_pct = f"{conf*100:.0f}%" if conf > 0 else "&mdash;"
         conf_c   = GAIN if conf >= 0.75 else (NEURAL if conf >= 0.60 else TEXT2)
         td   = TD if i < len(shown) - 1 else TD0
         anim = f'style="animation:slideInRow .3s ease both;animation-delay:{i*0.04:.2f}s;"'
@@ -185,7 +185,7 @@ def render_signals_tab() -> str:
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
-        f'<b>Confidence</b> ≥75% strong · 60–75% moderate · &lt;60% weak &nbsp;·&nbsp;'
+        f'<b>Confidence</b> ≥75% strong · 60-75% moderate · &lt;60% weak &nbsp;·&nbsp;'
         f'<b>Top Drivers</b> show which indicators pushed the AI to BUY &nbsp;·&nbsp;'
         f'<b>Regime</b> = macro trend when signal fired'
         f'</div>'
@@ -215,7 +215,7 @@ def render_risk_panel() -> str:
     # Portfolio value as float
     pv = 0.0
     try:
-        pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "—" else 0.0
+        pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d["portfolio"] != "&mdash;" else 0.0
     except Exception as exc:
         logger.debug(f"parse_portfolio_value render_risk_panel: {exc}")
 
@@ -295,7 +295,7 @@ def render_risk_panel() -> str:
             f'</div>'
         )
     if not sector_rows:
-        sector_rows = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};">No open positions — fully in cash</div>'
+        sector_rows = f'<div style="color:{TEXT2};font-size:{FONT_LABEL};">No open positions &mdash; fully in cash</div>'
 
     note = (f'Concentration: <span style="color:{cc_c};font-weight:700;">{max_conc:.1f}%</span>'
             f' largest position')
