@@ -16,7 +16,7 @@ from dashboard.design_system import (
     _action_row, _table, _sym, _badge, _num, _pnl, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
-from dashboard.data import get_data, _now_ct, _market_status
+from dashboard.data import get_data, _now_ct, _market_status, _next_market_open, get_next_buy_candidate
 from dashboard.builders import build_health_vm
 from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
@@ -126,7 +126,30 @@ def render_metrics() -> str:
         + f'</div>'
     )
 
-    return f'<div class="nt nt-wrap">{hero}{status}{legend}{row1}{row2}</div>'
+    nxt  = get_next_buy_candidate()
+    if nxt:
+        nxt_sym   = nxt["symbol"]
+        nxt_score = f'{nxt["score"]:.3f}'
+        nxt_sub   = f'{nxt["regime"]} &middot; AI score {nxt_score}'
+        nxt_entry = _next_market_open()
+        nxt_color = ACTION_BUY
+        entry_color = NEURAL if "active" in nxt_entry.lower() else TEXT2
+    else:
+        nxt_sym   = "&mdash;"
+        nxt_sub   = "No BUY signal in last 24 h"
+        nxt_entry = _next_market_open()
+        nxt_color = TEXT2
+        entry_color = TEXT2
+
+    row3 = (
+        f'<div class="nt-cards">'
+        + _stat_card("Next BUY Candidate", nxt_sym, nxt_color, nxt_color, nxt_sub, 0.48)
+        + _stat_card("Est. Entry Window",  nxt_entry, entry_color, entry_color,
+                     "Bot executes at 9:30 AM ET on the next trading day", 0.54)
+        + f'</div>'
+    )
+
+    return f'<div class="nt nt-wrap">{hero}{status}{legend}{row1}{row2}{row3}</div>'
 
 
 # ── Render: dashboard hero (Bloomberg-style 4-pack + status bar) ─────────────

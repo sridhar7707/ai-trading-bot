@@ -336,3 +336,62 @@ def _market_status() -> tuple:
     except Exception as exc:
         logger.debug(f"_market_status: {exc}")
         return "&mdash;", TEXT2
+
+
+def _next_market_open() -> str:
+    """Human-readable label for when the next NYSE session starts."""
+    try:
+        from zoneinfo import ZoneInfo
+        et = datetime.datetime.now(ZoneInfo("America/New_York"))
+        open_t  = et.replace(hour=9,  minute=30, second=0, microsecond=0)
+        close_t = et.replace(hour=16, minute=0,  second=0, microsecond=0)
+        if et.weekday() < 5 and open_t <= et < close_t:
+            return "Now &mdash; market active"
+        if et.weekday() < 5 and et < open_t:
+            return "Today, 9:30 AM ET"
+        nxt = et + datetime.timedelta(days=1)
+        while nxt.weekday() >= 5:
+            nxt += datetime.timedelta(days=1)
+        days = (nxt.date() - et.date()).days
+        prefix = "Tomorrow" if days == 1 else nxt.strftime("%a %b %d")
+        return f"{prefix}, 9:30 AM ET"
+    except Exception:
+        return "Next market open"
+
+
+def get_next_buy_candidate() -> dict:
+    """Return the highest-scored non-held BUY signal from the last 24 hours."""
+    try:
+        with get_db_conn() as con:
+            held_rows = con.execute("SELECT symbol FROM position_state").fetchall()
+            held = {r[0] for r in held_rows}
+            if held:
+                placeholders = ",".join("?" * len(held))
+                sql = (
+                    "SELECT symbol, ensemble_score, regime, MAX(timestamp) as last_seen "
+                    "FROM signal_log "
+                    f"WHERE ensemble_action LIKE '%BUY%' "
+                    f"AND timestamp >= datetime('now','-24 hours') "
+                    f"AND symbol NOT IN ({placeholders}) "
+                    "GROUP BY symbol ORDER BY ensemble_score DESC LIMIT 1"
+                )
+                row = con.execute(sql, tuple(held)).fetchone()
+            else:
+                row = con.execute(
+                    "SELECT symbol, ensemble_score, regime, MAX(timestamp) as last_seen "
+                    "FROM signal_log "
+                    "WHERE ensemble_action LIKE '%BUY%' "
+                    "AND timestamp >= datetime('now','-24 hours') "
+                    "GROUP BY symbol ORDER BY ensemble_score DESC LIMIT 1"
+                ).fetchone()
+            if not row:
+                return {}
+            return {
+                "symbol":  row[0],
+                "score":   round(float(row[1]), 3),
+                "regime":  str(row[2] or "").replace("_", " ").title(),
+                "last_seen": str(row[3] or "")[:16],
+            }
+    except Exception as exc:
+        logger.warning(f"get_next_buy_candidate: {exc}")
+        return {}
