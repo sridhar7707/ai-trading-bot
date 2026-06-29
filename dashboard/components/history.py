@@ -356,13 +356,13 @@ def _perf_choices() -> list[str]:
             pct = (s[1] - s[0]) / s[0] * 100
             choices.append(f"{key}  {pct:+.1f}%")
         else:
-            choices.append(f"{key}  &mdash;")
+            choices.append(f"{key}  —")
     return choices
 
 
 @timed(_logger)
 @safe_render("Portfolio Performance")
-def render_portfolio_performance(period: str = "1M  &mdash;") -> str:
+def render_portfolio_performance(period: str = "1M  —") -> str:
     # Strip the inline stat suffix so we always have a clean key
     key = period.split()[0] if period else "1M"
 

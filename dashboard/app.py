@@ -297,7 +297,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         matched = next((c for c in choices if c.split()[0] == current_key), None)
         val     = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
         new_key = val.split()[0] if val else current_key
-        html    = render_portfolio_performance(val or "1M  &mdash;")
+        html    = render_portfolio_performance(val or "1M  —")
         return gr.update(choices=choices, value=val), new_key, html
     timer.tick(fn=_refresh_perf_tabs, inputs=[perf_key_state],
                outputs=[perf_tabs, perf_key_state, perf_out])
