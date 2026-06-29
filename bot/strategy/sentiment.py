@@ -1,4 +1,5 @@
 from __future__ import annotations
+import contextlib
 import json
 import os
 import sqlite3
@@ -17,51 +18,44 @@ SEC_USER_AGENT = os.getenv("SEC_USER_AGENT", "ai-trading-bot contact@example.com
 # Keyed by "TICKER:YYYY-MM-DD".
 _NEWS_DAY_CACHE: dict[str, list[str]] = {}
 
-# L2 DB-backed cache — persists across process restarts so each symbol is fetched
-# at most once per calendar day regardless of how many bot cycles run.
-_NEWS_DB_PATH: str = os.getenv("TRADE_DB_PATH", "trades.db")
+
+def _news_db_path() -> str:
+    """Resolve DB path at call time so TRADE_DB_PATH env var changes take effect."""
+    return os.getenv("TRADE_DB_PATH", "trades.db")
+
 
 def _news_db_get(ticker: str, today: str) -> list[str] | None:
     """Return today's cached headlines from DB, or None if not cached yet."""
     try:
-        db = Path(_NEWS_DB_PATH)
+        db = Path(_news_db_path())
         if not db.exists():
             return None
-        con = sqlite3.connect(str(db), check_same_thread=False, timeout=3)
-        try:
+        with contextlib.closing(sqlite3.connect(str(db), check_same_thread=False, timeout=3)) as con:
             row = con.execute(
                 "SELECT headlines_json FROM news_cache WHERE symbol=? AND fetch_date=?",
                 (ticker, today),
             ).fetchone()
             return json.loads(row[0]) if row else None
-        finally:
-            con.close()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"NewsAPI L2 cache read failed: {e}")
         return None
 
 
 def _news_db_set(ticker: str, today: str, headlines: list[str]) -> None:
-    """Write today's headlines to DB cache. Creates the table on first use."""
+    """Write today's headlines to DB cache (table created by init_db)."""
     try:
-        db = Path(_NEWS_DB_PATH)
+        db = Path(_news_db_path())
         if not db.exists():
+            logger.warning(f"NewsAPI L2 cache write skipped — {db} not found (init_db not called yet?)")
             return
-        con = sqlite3.connect(str(db), check_same_thread=False, timeout=3)
-        try:
-            con.execute(
-                "CREATE TABLE IF NOT EXISTS news_cache "
-                "(symbol TEXT, fetch_date TEXT, headlines_json TEXT, cached_at TEXT, "
-                "PRIMARY KEY (symbol, fetch_date))"
-            )
+        with contextlib.closing(sqlite3.connect(str(db), check_same_thread=False, timeout=3)) as con:
             con.execute(
                 "INSERT OR REPLACE INTO news_cache VALUES (?,?,?,datetime('now'))",
                 (ticker, today, json.dumps(headlines)),
             )
             con.commit()
-        finally:
-            con.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"NewsAPI L2 cache write failed for {ticker}: {e}")
 
 
 _finbert_pipeline = None

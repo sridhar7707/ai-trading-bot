@@ -335,13 +335,13 @@ def get_sell_analysis(symbol: str, d: dict) -> dict:
 # HELPER 4 — get_recommendation_explanation
 # Answers: Why?
 # ─────────────────────────────────────────────────────────────────────────────
-def get_recommendation_explanation(symbol: str, d: dict) -> dict:
+def get_recommendation_explanation(symbol: str, d: dict, portfolio_action: dict | None = None) -> dict:
     """Returns bullish/bearish factors and model breakdown for symbol."""
     try:
         df    = d.get("trades_df")
         vix   = d.get("vix", 0.0)
 
-        action_data = get_portfolio_action(symbol, d)
+        action_data = portfolio_action if portfolio_action is not None else get_portfolio_action(symbol, d)
         action      = action_data.get("action", "HOLD")
         confidence  = action_data.get("confidence", 0)
 

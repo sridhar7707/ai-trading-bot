@@ -56,16 +56,19 @@ def render_symbol_detail(symbol: str) -> str:
     cur_price  = prices.get(symbol, 0.0)
     pos        = open_pos.get(symbol)
     has_bot_buy = lb is not None
-    # Reconciled: bot sold the position but never recorded a BUY (seeded from Alpaca)
-    has_sells   = not sym_df[sym_df["action"].str.startswith("SELL")].empty if not sym_df.empty else False
+    # Reconciled: bot sold the position but never recorded a BUY (seeded from Alpaca).
+    # Exclude SELL_RECONCILE (bot-recorded external close) — consistent with recommendation_portfolio.py.
+    has_sells   = (
+        sym_df["action"].str.startswith("SELL") & (sym_df["action"] != "SELL_RECONCILE")
+    ).any() if not sym_df.empty else False
     is_external = (not has_bot_buy) and has_sells
 
     conf    = float(lb.get("ensemble_score",  0.0) or 0.0) if lb is not None else 0.0
     xgb_p   = float(lb.get("xgb_prob",        0.0) or 0.0) if lb is not None else 0.0
     lstm_p  = float(lb.get("lstm_prob",        0.0) or 0.0) if lb is not None else 0.0
     sent    = float(lb.get("sentiment_score",  0.0) or 0.0) if lb is not None else 0.0
-    regime  = (str(lb.get("regime") or "&mdash;").replace("_", " ").title() if lb is not None
-               else d["regime_raw"].title())
+    _regime_val = str(lb.get("regime") or "") if lb is not None else d.get("regime_raw", "")
+    regime      = _regime_val.replace("_", " ").title() or "&mdash;"
     entry   = float(lb.get("price", 0.0) or 0.0) if lb is not None else 0.0
     drv_raw = lb.get("feature_drivers") if lb is not None else None
     ts      = lb.get("timestamp", "") if lb is not None else ""
@@ -195,7 +198,7 @@ def render_symbol_detail(symbol: str) -> str:
     if pos:
         # Live open position &mdash; full recommendation engine output
         _pa  = get_portfolio_action(symbol, d)
-        _exp = get_recommendation_explanation(symbol, d)
+        _exp = get_recommendation_explanation(symbol, d, portfolio_action=_pa)
         _sz2 = get_position_sizing(symbol, d)
         _ac      = _pa.get("action", "HOLD")
         _pa_conf = _pa.get("confidence", 0)
@@ -260,7 +263,7 @@ def render_symbol_detail(symbol: str) -> str:
         # Position is closed or was never held &mdash; no live AI signal to show
         _close_note = (
             "Position was seeded from Alpaca at startup (external entry). "
-            "The bot closed it via stop-loss. No AI signal was generated at entry."
+            "The bot closed it. No AI signal was generated at entry."
         ) if is_external else "Position is closed. AI signals are only generated for open positions."
         action_card_html = (
             f'<div style="background:{BG};border-radius:6px;padding:12px 14px;margin-bottom:14px;">'

@@ -163,6 +163,12 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
             UNIQUE(symbol, prediction_date)
         )
     """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS news_cache (
+            symbol TEXT, fetch_date TEXT, headlines_json TEXT, cached_at TEXT,
+            PRIMARY KEY (symbol, fetch_date)
+        )
+    """)
     con.commit()
     return con
 
