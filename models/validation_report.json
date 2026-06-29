@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-06-26T15:27:05.569641+00:00",
-  "train_cutoff": "2026-05-27",
+  "generated_at": "2026-06-28T06:40:30.415326+00:00",
+  "train_cutoff": "2026-05-29",
   "training_symbols": 45,
-  "training_rows": 197730,
+  "training_rows": 197820,
   "date_range": {
     "from": "2008-01-03",
-    "to": "2026-05-26"
+    "to": "2026-05-28"
   },
-  "xgb_val_auc": 0.5456,
-  "lstm_val_loss": 0.5944,
+  "xgb_val_auc": 0.5434,
+  "lstm_val_loss": 0.5949,
   "feature_count": 19,
   "feature_cols": [
     "rsi",
