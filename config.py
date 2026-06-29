@@ -142,8 +142,8 @@ EARNINGS_WINDOW_DAYS = int(os.getenv("EARNINGS_WINDOW_DAYS", 2))   # block buys 
 MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 25))         # force exit after N days with <1% gain (25 = 5 weeks max for 3-week momentum trades)
 KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades used to estimate Kelly fraction
 KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
-CORRELATION_THRESHOLD = float(os.getenv("CORRELATION_THRESHOLD", 0.80))  # block buy if corr > this with held pos
-REQUIRE_MACD_CONFIRMATION = os.getenv("REQUIRE_MACD_CONFIRMATION", "false").lower() == "true"  # Gate 7.9: require MACD > signal before entry (off by default — needs backtest validation)
+CORRELATION_THRESHOLD   = float(os.getenv("CORRELATION_THRESHOLD",   0.80))   # block buy if corr > this with held pos
+MACD_CONFIRMATION_MIN   = float(os.getenv("MACD_CONFIRMATION_MIN",   "-inf"))  # Gate 7.9: block entry if daily macd_diff <= this; -inf = disabled (default)
 RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5-min relative strength vs SPY
 # Regimes that allow new long entries. HIGH_VOLATILITY is included because the
 # risk manager still caps position size and the stop-loss hard-overrides any exit.

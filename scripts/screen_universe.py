@@ -21,7 +21,7 @@ Regime-adaptive weights:
   Bear (SPY < 50-SMA): emphasise RS + trend quality + defensive sectors
 
 Final pass — correlation deduplication:
-  Replace any pair with pairwise correlation >0.85 with the next-best
+  Replace any pair with pairwise correlation >CORRELATION_THRESHOLD with the next-best
   uncorrelated candidate (avoids owning 3 stocks that move identically).
 
 Falls back to config.SYMBOLS on any failure.

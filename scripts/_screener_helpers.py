@@ -15,9 +15,9 @@ import yfinance as yf
 from loguru import logger
 from scipy import stats as scipy_stats
 
-from config import SECTOR_MAP
+from config import CORRELATION_THRESHOLD, SECTOR_MAP
 
-CORR_THRESHOLD        = 0.85
+CORR_THRESHOLD        = CORRELATION_THRESHOLD
 ANALYST_LOOKBACK_DAYS = 5
 _FINNHUB_BASE         = "https://finnhub.io/api/v1"
 
