@@ -27,13 +27,16 @@ _logger = logger
 
 # ── Symbol choices + detail drilldown ─────────────────────────────────────────
 def _get_symbol_choices() -> list[str]:
+    from config import SYMBOLS
     d = get_data()
+    # Open positions first (actionable — AI card is live for these)
     syms = list(d["open_pos"].keys())
-    if not d["trades_df"].empty:
-        for s in d["trades_df"]["symbol"].unique():
-            if s not in syms:
-                syms.append(s)
-    return syms[:20]
+    # Then full watchlist for research; closed/sold positions are excluded
+    # because the AI action card is suppressed for them anyway
+    for s in SYMBOLS:
+        if s not in syms:
+            syms.append(s)
+    return syms
 
 
 @safe_render("Symbol Detail")
