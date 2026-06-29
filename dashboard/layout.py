@@ -175,17 +175,25 @@ div.tabs > div.tab-nav > button.selected,
     align-items: center !important;
     justify-content: center !important;
   }}
+  /* Sticky tab bar — stays visible while scrolling content */
+  .tabs > .tab-nav,
+  div.tabs > div.tab-nav,
+  .gradio-container .tabs > .tab-nav {{
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+  }}
 }}
 
 /* ── Mobile 480px ────────────────────────────────────────────────────────── */
 @media (max-width: 480px) {{
   .nt-wrap {{ padding: 8px !important; }}
-  .nt-cards {{ grid-template-columns: repeat(2, 1fr) !important; }}
+  .nt-cards {{ grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; }}
   .nt-ai-split {{ flex-direction: column !important; gap: 16px !important; }}
   table {{ font-size: 13px !important; }}
   table td, table th {{ padding: 8px 10px !important; }}
 
-  /* Tab nav: scroll horizontally &mdash; all tabs always reachable */
+  /* Tab nav: scroll horizontally — all tabs always reachable */
   .tabs > .tab-nav,
   div.tabs > div.tab-nav,
   .gradio-container .tabs > .tab-nav {{
@@ -199,13 +207,21 @@ div.tabs > div.tab-nav > button.selected,
   div.tabs > div.tab-nav::-webkit-scrollbar {{ display: none !important; }}
   .tabs > .tab-nav > button,
   div.tabs > div.tab-nav > button {{
-    padding: 10px 14px !important;
+    padding: 10px 12px !important;
     font-size: 12px !important;
     min-height: 44px !important;
     flex-shrink: 0 !important;
   }}
 
-  .nt-header {{ padding: 12px 14px !important; gap: 10px !important; }}
+  /* Header: wrap logo+title above badge; hide badge entirely to save height */
+  .nt-header {{ padding: 10px 12px !important; gap: 8px !important; flex-wrap: wrap !important; }}
+  .nt-badge {{ display: none !important; }}
+
+  /* Status bar: stack vertically, hide countdown bar */
+  .nt-status {{ flex-direction: column !important; align-items: flex-start !important;
+    gap: 4px !important; padding: 6px 12px !important; }}
+  .nt-countdown {{ display: none !important; }}
+  .nt-refresh-label {{ display: none !important; }}
 }}
 """
 
@@ -240,13 +256,14 @@ STYLES = f"""<style>
   font-size:15px;font-weight:600;margin-top:6px;
 }}
 .nt-cards {{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px;
 }}
 .nt-card {{
   background:{SURFACE};border-radius:8px;padding:14px 16px;
-  position:relative;overflow:hidden;transition:background .15s;
+  position:relative;overflow:hidden;transition:background .15s,box-shadow .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,0.35);
 }}
-.nt-card:hover {{ background:{SURFACE2}; }}
+.nt-card:hover {{ background:{SURFACE2};box-shadow:0 4px 16px rgba(0,0,0,0.5); }}
 .nt-sec {{
   display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;
   text-transform:uppercase;letter-spacing:1.5px;margin:12px 0 8px;
@@ -276,13 +293,17 @@ STYLES = f"""<style>
     border-top:1px solid {BORDER};padding-top:14px;margin-top:14px; }}
 }}
 @media(max-width:480px){{
-  .nt-hero-val  {{ font-size:32px!important; }}
+  .nt-hero-val  {{ font-size:28px!important; }}
   .nt-wrap      {{ padding:8px 10px 0!important; }}
-  /* Bump 11px labels to 12px floor on small screens */
   .nt-tbl th    {{ font-size:11px!important; }}
   .nt-tbl td    {{ font-size:13px!important;padding:10px 12px!important; }}
   .nt-sec       {{ font-size:10px!important; }}
-  .nt-card      {{ padding:12px!important; }}
+  .nt-card      {{ padding:11px 12px!important; }}
+  /* Bump 11px labels to 12px on phones — inline style needs !important override */
+  .nt-card div[style*="font-size:11px"],
+  .nt-card span[style*="font-size:11px"] {{ font-size:12px!important; }}
+  .nt-hero-chg  {{ font-size:13px!important; }}
+  .nt-cards     {{ grid-template-columns:repeat(2,1fr)!important;gap:6px!important; }}
 }}
 </style>"""
 
@@ -323,16 +344,16 @@ LOGO = f"""<svg width="52" height="52" viewBox="0 0 56 56" xmlns="http://www.w3.
 
 HEADER_HTML = f"""{STYLES}
 <div class="nt nt-wrap">
-<div class="nt-header">
+<div class="nt-header" style="flex-wrap:wrap;">
   {LOGO}
-  <div style="flex:1;">
+  <div style="flex:1;min-width:160px;">
     <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;color:{TEXT1};">
       TradeGenius AI</div>
     <div style="font-size:11px;color:{TEXT2};margin-top:2px;">
       XGBoost + SHAP &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT &nbsp;·&nbsp; Walk-Forward Validated
     </div>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div class="nt-badge" style="display:flex;gap:8px;align-items:center;">
     <div style="display:flex;align-items:center;gap:6px;background:{NEURAL_BG};
       border:1px solid {NEURAL_BD};color:{NEURAL};padding:5px 14px;
       border-radius:6px;font-size:11px;font-weight:700;letter-spacing:.3px;">

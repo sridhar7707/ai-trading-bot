@@ -82,10 +82,10 @@ def render_metrics() -> str:
         f'display:inline-block;"></span>'
         f'<span style="color:{mkt_color};font-weight:600;font-size:{FONT_LABEL};">'
         f'{mkt_label}</span></span>'
-        f'<div style="height:2px;width:100px;background:{BORDER};border-radius:1px;">'
+        f'<div class="nt-countdown" style="height:2px;width:100px;background:{BORDER};border-radius:1px;">'
         f'<div style="height:100%;width:100%;background:{PRIMARY};border-radius:1px;'
         f'animation:countdown 60s linear forwards;"></div></div>'
-        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
+        f'<span class="nt-refresh-label" style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
         f'</div>'
     )
 
@@ -398,7 +398,7 @@ def render_portfolio_health_hero() -> str:
         f'display:inline-block;"></span>'
         f'<span style="color:{mkt_color};font-weight:600;font-size:{FONT_LABEL};">'
         f'{mkt_label}</span></span>'
-        f'<span style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
+        f'<span class="nt-refresh-label" style="color:{TEXT2};font-size:{FONT_LABEL};">60s refresh</span>'
         f'</div>'
     )
     inner = (
