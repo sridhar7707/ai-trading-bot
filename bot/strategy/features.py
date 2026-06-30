@@ -130,47 +130,6 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# NOTE: FEATURE_COLS changed — saved XGBoost and LSTM models must be retrained
-# before the bot trades again. Trigger: scripts/train_model.py or the train_models
-# GitHub Actions workflow.
-#
-# Changes from v1 (22 features) → v2 (19 features):
-#   Removed (r > 0.85 with kept features): stoch_k, stoch_d, log_returns, rsi_15m,
-#     macd_pct, macd_sig_pct, ema20_pct, ema50_pct, sma20_pct, bb_high_pct, bb_low_pct
-#   Added (evidence-based, independent): ema_spread, bb_position, vol_ratio_trend,
-#     ret_5d, ret_21d, ret_63d, ret_126d, mom_12_1, high_52w_pct
-FEATURE_COLS = [
-    # Momentum oscillators (independent: RSI=price range, MFI=volume-weighted)
-    "rsi",
-    "mfi",
-    # Volume signals
-    "volume_ratio",       # current vs 20-bar average
-    "obv_chg_pct",        # OBV directional flow
-    "vol_ratio_trend",    # is volume accelerating or fading?
-    # Volatility & band structure
-    "bb_width",           # Bollinger Band width (regime volatility)
-    "atr_pct",            # ATR normalized to price
-    "bb_position",        # price location within Bollinger Bands (0–1)
-    # Price action
-    "returns",            # 1-bar return
-    "hl_ratio",           # intraday high-low range / close
-    "vwap_dev",           # price vs 20-bar volume-weighted avg price
-    # Trend
-    "macd_diff_pct",      # MACD histogram (crossover signal, normalized)
-    "ema_spread",         # EMA-20 minus EMA-50 (trend direction & strength)
-    # Multi-period momentum (Jegadeesh-Titman / AQR factors)
-    "ret_5d",             # 1-week return
-    "ret_21d",            # 1-month return
-    "ret_63d",            # 3-month return
-    "ret_126d",           # 6-month return
-    "mom_12_1",           # 12-1 month momentum (AQR style, skips reversal month)
-    "high_52w_pct",       # distance from 52-week high (George-Hwang 2004)
-]
-
-# v3 feature set — optimised for FORWARD_PERIODS=5 (1-week horizon).
-# Swap out long-horizon momentum (ret_63d, ret_126d, mom_12_1) for short-term
-# signals (gap_overnight, rsi_divergence, macd_cross_up).
-# USE THIS after the next model retrain (scripts/train_model.py).
 FEATURE_COLS_V3 = [
     "rsi",
     "mfi",
@@ -192,3 +151,7 @@ FEATURE_COLS_V3 = [
     "rsi_divergence",     # RSI momentum acceleration (new)
     "macd_cross_up",      # MACD histogram flipped positive (new)
 ]
+
+# Activated 2026-06-30: short-term signals aligned with FORWARD_PERIODS=5 target.
+# Drops long-horizon features (ret_63d, ret_126d, mom_12_1) that noise the 1-week signal.
+FEATURE_COLS = FEATURE_COLS_V3
