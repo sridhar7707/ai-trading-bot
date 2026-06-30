@@ -84,7 +84,7 @@ from dashboard.components.signals import (
 from dashboard.components.history import (
     render_whats_changed, render_portfolio_performance, _perf_choices,
 )
-from dashboard.components.recommendation_history import render_recommendation_history, render_buy_candidates
+from dashboard.components.recommendation_history import render_recommendation_history, render_buy_candidates, render_top_picks
 from dashboard.components.news import render_news_feed
 from dashboard.components.signal_history import render_signal_history
 from dashboard.components.actions import (
@@ -168,6 +168,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         with gr.TabItem("📊 Dashboard"):
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
             spy_banner_dash_out = gr.HTML(value=render_spy_banner)
+            top_picks_out       = gr.HTML(value=render_top_picks)
             market_mood_out     = gr.HTML(value=render_market_mood)
             trade_freq_out      = gr.HTML(value=render_trade_frequency)
             todays_actions_out  = gr.HTML(value=render_todays_actions)
@@ -274,6 +275,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     # Dashboard tab
     timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
     timer.tick(fn=render_spy_banner,            outputs=spy_banner_dash_out)
+    timer.tick(fn=render_top_picks,             outputs=top_picks_out)
     timer.tick(fn=render_market_mood,           outputs=market_mood_out)
     timer.tick(fn=render_trade_frequency,       outputs=trade_freq_out)
     timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)

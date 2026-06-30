@@ -401,3 +401,92 @@ def render_buy_candidates() -> str:
         f'{table}'
         f'</div>'
     )
+
+
+@safe_render("Top Picks")
+def render_top_picks() -> str:
+    """Compact ranked card: top 10 stocks the AI recommends buying right now."""
+    rows = safe_query("""
+        SELECT r.symbol, r.confidence,
+               sl.feature_drivers, sl.xgb_prob, sl.lstm_prob
+        FROM recommendations r
+        LEFT JOIN (
+            SELECT symbol, MAX(id) AS max_id
+            FROM signal_log
+            WHERE timestamp >= datetime('now', '-7 days')
+            GROUP BY symbol
+        ) latest ON latest.symbol = r.symbol
+        LEFT JOIN signal_log sl ON sl.id = latest.max_id
+        LEFT JOIN position_state ps ON ps.symbol = r.symbol
+        WHERE r.recommendation = 'BUY'
+          AND r.prediction_date >= date('now', '-3 days')
+          AND ps.symbol IS NULL
+        ORDER BY r.confidence DESC
+        LIMIT 10
+    """, default=[])
+
+    if not rows:
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("🎯", "Top 10 Buy Picks", "AI-ranked · updated each cycle")}'
+            f'{_card(_empty_state("🎯", "No picks right now", "All high-conviction stocks are already held, or the AI has not fired BUY signals in the last 3 days."))}'
+            f'</div>'
+        )
+
+    items = ""
+    for rank, (symbol, conf, feature_drivers, xgb_prob, lstm_prob) in enumerate(rows, start=1):
+        conf = float(conf or 0)
+
+        if conf >= 0.75:
+            dot_c, label, label_c = GAIN,   "STRONG BUY", GAIN
+        elif conf >= 0.60:
+            dot_c, label, label_c = NEURAL, "BUY",        NEURAL
+        else:
+            dot_c, label, label_c = TEXT3,  "BUILDING",   TEXT2
+
+        rank_c = GAIN if rank == 1 else (NEURAL if rank <= 3 else TEXT2)
+
+        driver_parts: list[str] = []
+        try:
+            ds = json.loads(feature_drivers) if isinstance(feature_drivers, str) else (feature_drivers or [])
+            pos = sorted([(f, float(v)) for f, v in (ds or []) if float(v) > 0], key=lambda x: -x[1])
+            for feat, _ in pos[:2]:
+                driver_parts.append(_PLAIN_WHY.get(feat, feat.replace("_", " ").title()))
+        except Exception:
+            pass
+        why = " · ".join(driver_parts) if driver_parts else "Signals aligning"
+
+        border = f"border-bottom:1px solid {BORDER};" if rank < len(rows) else ""
+        items += (
+            f'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;{border}">'
+            f'<span style="font-size:11px;font-weight:700;color:{rank_c};width:22px;flex-shrink:0;">#{rank}</span>'
+            f'<span style="color:{dot_c};font-size:10px;flex-shrink:0;">●</span>'
+            f'<span style="font-family:Courier New,monospace;font-weight:700;color:{TEXT1};'
+            f'width:50px;flex-shrink:0;">{symbol}</span>'
+            f'<span style="font-size:{FONT_LABEL};font-weight:700;color:{label_c};'
+            f'width:80px;flex-shrink:0;">{label}</span>'
+            f'<span style="font-weight:700;color:{dot_c};width:34px;flex-shrink:0;'
+            f'font-size:{FONT_LABEL};">{conf*100:.0f}%</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};flex:1;min-width:0;'
+            f'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{why}</span>'
+            f'</div>'
+        )
+
+    footer = (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT3};margin-top:6px;padding-top:6px;'
+        f'border-top:1px solid {BORDER};">'
+        f'Bot will auto-buy these when it has room &nbsp;·&nbsp; '
+        f'<span style="color:{GAIN};">●</span> ≥75% &nbsp; '
+        f'<span style="color:{NEURAL};">●</span> 60–75% &nbsp; '
+        f'<span style="color:{TEXT3};">●</span> building'
+        f'</div>'
+    )
+    note = f"{len(rows)} picks · not currently held"
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("🎯", "Top 10 Buy Picks", note)}'
+        f'<div style="background:{SURFACE};border:1px solid {BORDER};'
+        f'border-radius:8px;padding:4px 16px 10px;">'
+        f'{items}{footer}'
+        f'</div></div>'
+    )
