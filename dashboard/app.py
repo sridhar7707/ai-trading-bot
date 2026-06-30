@@ -61,7 +61,7 @@ from dashboard.charts import (
 # ── Component render functions ────────────────────────────────────────────────
 from dashboard.components.overview import (
     render_metrics, render_dashboard_hero, render_portfolio_health_hero,
-    render_benchmark_comparison,
+    render_benchmark_comparison, render_trade_frequency, render_spy_banner,
 )
 from dashboard.components.market_mood import render_market_mood
 from dashboard.components.ai_panel import (
@@ -166,14 +166,15 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
-            # Exactly 5 panels &mdash; open dashboard and within 3s: health, actions, risk
-            hero_out           = gr.HTML(value=render_portfolio_health_hero)
-            market_mood_out    = gr.HTML(value=render_market_mood)
-            todays_actions_out = gr.HTML(value=render_todays_actions)
-            ai_rec_out         = gr.HTML(value=render_ai_recommendation)
-            risk_panel_out     = gr.HTML(value=render_risk_panel)
-            benchmark_out      = gr.HTML(value=render_benchmark_comparison)
-            whats_changed_out  = gr.HTML(value=render_whats_changed)
+            hero_out            = gr.HTML(value=render_portfolio_health_hero)
+            spy_banner_dash_out = gr.HTML(value=render_spy_banner)
+            market_mood_out     = gr.HTML(value=render_market_mood)
+            trade_freq_out      = gr.HTML(value=render_trade_frequency)
+            todays_actions_out  = gr.HTML(value=render_todays_actions)
+            ai_rec_out          = gr.HTML(value=render_ai_recommendation)
+            risk_panel_out      = gr.HTML(value=render_risk_panel)
+            benchmark_out       = gr.HTML(value=render_benchmark_comparison)
+            whats_changed_out   = gr.HTML(value=render_whats_changed)
             # ── Symbol drilldown ──────────────────────────────────────────────
             _initial_choices = _get_symbol_choices()
             _initial_sym     = _initial_choices[0] if _initial_choices else None
@@ -189,18 +190,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             news_out = gr.HTML(value=render_news_feed)
 
         with gr.TabItem("⚡ Signals"):
-            timeline_out  = gr.HTML(value=render_timeline)
-            signals_out   = gr.HTML(value=render_signals_tab)
+            timeline_out       = gr.HTML(value=render_timeline)
+            signals_out        = gr.HTML(value=render_signals_tab)
+            signal_history_out = gr.HTML(value=render_signal_history)
+            rec_history_sig_out = gr.HTML(value=render_recommendation_history)
             with gr.Row():
                 with gr.Column(scale=55):
                     mkt_intel_out = gr.HTML(value=render_market_intelligence)
                 with gr.Column(scale=45):
                     watchlist_out = gr.HTML(value=render_watchlist)
 
-        with gr.TabItem("🎯 Signal History"):
-            signal_history_out = gr.HTML(value=render_signal_history)
-
         with gr.TabItem("💼 Portfolio"):
+            spy_banner_port_out = gr.HTML(value=render_spy_banner)
             perf_tabs   = gr.Radio(
                 choices=_perf_choices(),
                 value=_perf_choices()[2],   # default: 1M
@@ -223,6 +224,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             trades_out        = gr.HTML(value=render_trades)
 
         with gr.TabItem("🔬 Models"):
+            spy_banner_mod_out = gr.HTML(value=render_spy_banner)
             scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
@@ -268,9 +270,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     # One shared timer &mdash; cache layer ensures a single DB+API refresh per tick
     timer = gr.Timer(value=60)
-    # Dashboard (5 panels)
+    # Dashboard tab
     timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
+    timer.tick(fn=render_spy_banner,            outputs=spy_banner_dash_out)
     timer.tick(fn=render_market_mood,           outputs=market_mood_out)
+    timer.tick(fn=render_trade_frequency,       outputs=trade_freq_out)
     timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
     timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
@@ -284,13 +288,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
     # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
     timer.tick(fn=render_news_feed, outputs=news_out)
-    # Signals tab
-    timer.tick(fn=render_timeline,              outputs=timeline_out)
-    timer.tick(fn=render_signals_tab,           outputs=signals_out)
-    timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
-    timer.tick(fn=render_watchlist,             outputs=watchlist_out)
-    # Signal History tab
-    timer.tick(fn=render_signal_history, outputs=signal_history_out)
+    # Signals tab (includes merged Signal History + Decision Log)
+    timer.tick(fn=render_timeline,               outputs=timeline_out)
+    timer.tick(fn=render_signals_tab,            outputs=signals_out)
+    timer.tick(fn=render_signal_history,         outputs=signal_history_out)
+    timer.tick(fn=render_recommendation_history, outputs=rec_history_sig_out)
+    timer.tick(fn=render_market_intelligence,    outputs=mkt_intel_out)
+    timer.tick(fn=render_watchlist,              outputs=watchlist_out)
     # Portfolio tab &mdash; use key state (not Radio value) to avoid stale-label validation errors
     def _refresh_perf_tabs(current_key):
         choices = _perf_choices()
@@ -299,6 +303,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         new_key = val.split()[0] if val else current_key
         html    = render_portfolio_performance(val or "1M  —")
         return gr.update(choices=choices, value=val), new_key, html
+    timer.tick(fn=render_spy_banner,            outputs=spy_banner_port_out)
     timer.tick(fn=_refresh_perf_tabs, inputs=[perf_key_state],
                outputs=[perf_tabs, perf_key_state, perf_out])
     timer.tick(fn=render_equity_chart,          outputs=eq_plot)
@@ -311,6 +316,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_positions,             outputs=pos_out)
     timer.tick(fn=render_trades,                outputs=trades_out)
     # Models tab
+    timer.tick(fn=render_spy_banner,               outputs=spy_banner_mod_out)
     timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
     timer.tick(fn=render_recommendation_history,   outputs=rec_history_out)
     timer.tick(fn=render_investor_view,            outputs=investor_out)

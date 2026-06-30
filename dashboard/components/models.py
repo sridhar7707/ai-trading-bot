@@ -299,26 +299,32 @@ def render_institutional_metrics() -> str:
     wr_c = GAIN if win_rate > 0.55 else (NEURAL if win_rate > 0.45 else LOSS)
 
     rows = (
-        _row("Sharpe Ratio",    f"{sharpe:.2f}",  sh_c, ">1.0 = good · >2.0 = excellent")
-        + _row("Sortino Ratio", f"{sortino:.2f}", so_c, "Like Sharpe but penalises only downside vol")
-        + _row("Max Drawdown",  f"{max_dd:.1%}",  dd_c, "Worst peak-to-trough in account history")
-        + _row("CAGR",          f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
-               "Compound Annual Growth Rate over tracked period")
-        + _row("Calmar Ratio",  f"{calmar:.2f}",  ca_c, "CAGR ÷ max drawdown &mdash; higher is better")
-        + _row("VaR (95%, 1d)", f"{var_95:.2%}",  vr_c, "Worst expected 1-day loss at 95% confidence")
-        + _row("Win Rate",      f"{win_rate:.1%}", wr_c, "% of closed trades that returned a profit")
+        _row("Risk-Adjusted Return",    f"{sharpe:.2f}",  sh_c,
+             "Sharpe ratio — how much return per unit of risk. >1.0 = good, >2.0 = excellent")
+        + _row("Return vs Downside Risk", f"{sortino:.2f}", so_c,
+               "Sortino ratio — like above but only penalises losing months, not winning volatility")
+        + _row("Worst Portfolio Dip",  f"{max_dd:.1%}",  dd_c,
+               "Max drawdown — biggest drop from peak to trough (e.g. 5% means portfolio fell 5% from its high)")
+        + _row("Yearly Growth Rate",   f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
+               "CAGR — what your average annual return would be if this pace continued all year")
+        + _row("Return vs Max Loss",   f"{calmar:.2f}",  ca_c,
+               "Calmar ratio — yearly growth divided by worst dip. Higher = better recovery from losses")
+        + _row("Worst Expected Daily Loss", f"{var_95:.2%}", vr_c,
+               "VaR 95% — on a bad day (1-in-20), this is the most you'd expect to lose")
+        + _row("Win Rate",             f"{win_rate:.1%}", wr_c,
+               "% of closed trades that made money (target: >55%)")
     )
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
-        f'Metrics computed from all trade history since launch. '
-        f'Short history (&lt;30 days) may produce unreliable Sharpe / Sortino estimates.'
+        f'All metrics computed from trade history since launch. '
+        f'Need at least 30 days of history for reliable estimates — early numbers will fluctuate.'
         f'</div>'
     )
     n_str = f"{n_days} days of history" if n_days > 0 else "&mdash;"
     table = _wrap(f'<table class="nt-tbl" style="width:100%">{rows}</table>' + help_block)
     return (f'<div class="nt nt-wrap">'
-            f'{_section("📐","Institutional Metrics", n_str)}{table}</div>')
+            f'{_section("📐","Performance Deep Dive", n_str)}{table}</div>')
 
 
 # ── Render: AI decision feed (trade timeline) ────────────────────────────────

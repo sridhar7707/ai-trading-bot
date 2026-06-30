@@ -16,7 +16,7 @@ from dashboard.design_system import (
     _action_row, _table, _sym, _badge, _num, _pnl, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
-from dashboard.data import get_data, _now_ct, _market_status, _next_market_open, get_next_buy_candidate
+from dashboard.data import get_data, _now_ct, _market_status, _next_market_open, get_next_buy_candidate, safe_query
 from dashboard.builders import build_health_vm
 from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
@@ -476,5 +476,146 @@ def render_benchmark_comparison() -> str:
         f'<div class="nt nt-wrap">'
         f'{_section("📈", "vs Benchmark", note)}'
         f'{_card(content)}'
+        f'</div>'
+    )
+
+
+# ── Render: trade frequency (weekly discipline card) ─────────────────────────
+@safe_render("Trade Frequency")
+def render_trade_frequency() -> str:
+    import datetime
+    today   = datetime.date.today()
+    monday  = today - datetime.timedelta(days=today.weekday())
+    sunday  = monday + datetime.timedelta(days=6)
+    mon_str = str(monday)
+    sun_str = str(sunday)
+
+    rows = safe_query(
+        "SELECT action, timestamp, pnl_pct FROM trades "
+        "WHERE date(timestamp) BETWEEN ? AND ? AND action != 'SELL_RECONCILE'",
+        (mon_str, sun_str), default=[]
+    )
+
+    buys  = sum(1 for r in (rows or []) if str(r[0] or "").startswith("BUY"))
+    sells = sum(1 for r in (rows or []) if str(r[0] or "").startswith("SELL"))
+
+    # Average hold time: for each sell this week, find matching buy to get duration
+    hold_days: list[float] = []
+    sell_rows = safe_query(
+        """SELECT t_sell.symbol, t_sell.timestamp AS sell_ts,
+                  MAX(t_buy.timestamp) AS buy_ts
+           FROM trades t_sell
+           JOIN trades t_buy ON t_buy.symbol = t_sell.symbol AND t_buy.action = 'BUY'
+                             AND t_buy.timestamp < t_sell.timestamp
+           WHERE date(t_sell.timestamp) BETWEEN ? AND ?
+             AND t_sell.action LIKE 'SELL%' AND t_sell.action != 'SELL_RECONCILE'
+           GROUP BY t_sell.symbol, t_sell.timestamp""",
+        (mon_str, sun_str), default=[]
+    )
+    for row in (sell_rows or []):
+        try:
+            from dashboard.data import _to_ct
+            sell_dt = _to_ct(row[1])
+            buy_dt  = _to_ct(row[2])
+            if sell_dt and buy_dt and len(sell_dt) >= 10 and len(buy_dt) >= 10:
+                import datetime as _dt
+                d1 = _dt.datetime.strptime(buy_dt[:10],  "%Y-%m-%d")
+                d2 = _dt.datetime.strptime(sell_dt[:10], "%Y-%m-%d")
+                delta = (d2 - d1).days
+                if delta >= 0:
+                    hold_days.append(float(delta))
+        except Exception:
+            pass
+
+    avg_hold = sum(hold_days) / len(hold_days) if hold_days else None
+
+    # Target: 2–3 buys/week
+    buys_c = GAIN if 2 <= buys <= 4 else (NEURAL if buys == 1 else (LOSS if buys > 6 else TEXT2))
+    sells_c = GAIN if sells >= 1 else TEXT2
+
+    hold_str = f"{avg_hold:.1f} days" if avg_hold is not None else "—"
+    hold_c   = GAIN if avg_hold is not None and 1 <= avg_hold <= 7 else (NEURAL if avg_hold else TEXT2)
+
+    week_label = f"{mon_str} – {sun_str}"
+    cards = (
+        f'<div class="nt-cards">'
+        + _stat_card("Buys This Week",  str(buys),  TEXT2, buys_c,
+                     "Target: 2–3 per week", 0.00)
+        + _stat_card("Sells This Week", str(sells), TEXT2, sells_c,
+                     "Exits closed this week", 0.06)
+        + _stat_card("Avg Hold Time",   hold_str,   TEXT2, hold_c,
+                     "Target: 1–7 days per trade", 0.12)
+        + f'</div>'
+    )
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("📅", "This Week" + chr(39) + "s Trading", week_label)}'
+        f'{cards}'
+        f'</div>'
+    )
+
+
+# ── Render: SPY outperformance banner ─────────────────────────────────────────
+@safe_render("SPY Banner")
+def render_spy_banner() -> str:
+    from database.services.analytics_service import analytics_service
+    from dashboard.data import get_data, get_db_conn, DB_PATH
+    import os
+
+    d = get_data()
+    pv = 0.0
+    try:
+        raw = d.get("portfolio", "—")
+        if raw not in ("—", "&mdash;"):
+            pv = float(raw.replace("$", "").replace(",", ""))
+    except (ValueError, TypeError):
+        pass
+
+    port_return = 0.0
+    if pv > 0:
+        try:
+            if os.path.exists(DB_PATH):
+                with get_db_conn() as _con:
+                    first_row = _con.execute(
+                        "SELECT portfolio_value FROM portfolio_snapshots "
+                        "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1"
+                    ).fetchone()
+                if first_row:
+                    first_val = float(first_row[0])
+                    if first_val > 0:
+                        port_return = (pv - first_val) / first_val * 100
+        except Exception:
+            pass
+
+    bm = analytics_service.get_benchmark_comparison(
+        portfolio_return_pct=port_return, period="YTD"
+    )
+
+    spy_ret = bm.get("spy_return", 0.0)
+    vs_spy  = bm.get("vs_spy",    0.0)
+
+    if vs_spy > 0:
+        verdict   = f"AHEAD of S&P 500 by {vs_spy:+.1f}pp"
+        bar_color = GAIN
+        icon      = "🟢"
+    elif vs_spy < 0:
+        verdict   = f"BEHIND S&P 500 by {abs(vs_spy):.1f}pp"
+        bar_color = LOSS
+        icon      = "🔴"
+    else:
+        verdict   = "IN LINE with S&P 500"
+        bar_color = NEURAL
+        icon      = "🟡"
+
+    return (
+        f'<div style="background:{bar_color}18;border:1px solid {bar_color}44;'
+        f'border-radius:8px;padding:10px 16px;margin-bottom:8px;'
+        f'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">YTD vs Market</span>'
+        f'<span style="font-weight:700;color:{bar_color};font-size:{FONT_VALUE};">'
+        f'{icon} {verdict}</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
+        f'You {port_return:+.1f}% &nbsp;·&nbsp; SPY {spy_ret:+.1f}%</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Goal: beat SPY by 10pp/year</span>'
         f'</div>'
     )

@@ -86,14 +86,25 @@ def render_signals_tab() -> str:
         conf    = float(sig.get("ensemble_score",  0.0) or 0.0)
         regime  = str(sig.get("regime") or "&mdash;").replace("_", " ").title()
         drv_raw = sig.get("feature_drivers")
+        _PLAIN = {
+            "rsi": "Momentum rising", "mfi": "Buyers stepping in",
+            "volume_ratio": "Unusual volume", "obv_chg_pct": "Net buying pressure",
+            "vol_ratio_trend": "Volume accelerating", "bb_width": "Volatility expanding",
+            "atr_pct": "Big moves expected", "bb_position": "Price near top of range",
+            "returns": "Recent price strength", "hl_ratio": "Wide intraday range",
+            "vwap_dev": "Above average price", "macd_diff_pct": "Trend flipping upward",
+            "ema_spread": "Short-term trend up", "ret_5d": "Strong past 5 days",
+            "ret_21d": "Strong past month", "high_52w_pct": "Near 52-week high",
+            "gap_overnight": "Gapped up at open", "rsi_divergence": "Momentum accelerating",
+            "macd_cross_up": "MACD just flipped positive",
+        }
         driver_text = "&mdash;"
         try:
             import json as _j
             ds = _j.loads(drv_raw) if isinstance(drv_raw, str) else (drv_raw or [])
-            parts = [
-                f"{_FI_LABELS.get(f, f)}{'↑' if float(v) > 0 else '↓'}"
-                for f, v in (ds or [])[:2]
-            ]
+            pos = [(f, float(v)) for f, v in (ds or []) if float(v) > 0]
+            pos.sort(key=lambda x: -x[1])
+            parts = [_PLAIN.get(f, _FI_LABELS.get(f, f)) for f, _ in pos[:2]]
             driver_text = " · ".join(parts) if parts else "&mdash;"
         except Exception as exc:
             logger.debug(f"parse_driver_text: {exc}")
@@ -113,21 +124,21 @@ def render_signals_tab() -> str:
             f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT2};">{driver_text}</span></td>'
             f'</tr>'
         )
-    note = f"last {len(shown)} signals · confidence = XGBoost + LSTM + sentiment ensemble"
+    note = f"last {len(shown)} signals · AI confidence = 3 models + news sentiment voted together"
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.7;">'
-        f'<b>Confidence</b> ≥75% strong · 60-75% moderate · &lt;60% weak &nbsp;·&nbsp;'
-        f'<b>Top Drivers</b> show which indicators pushed the AI to BUY &nbsp;·&nbsp;'
-        f'<b>Regime</b> = macro trend when signal fired'
+        f'<b>AI Confidence</b> ≥75% strong · 60–75% moderate · &lt;60% weak &nbsp;·&nbsp;'
+        f'<b>Why AI wanted to buy</b> = top signals that drove the decision &nbsp;·&nbsp;'
+        f'<b>Market Trend</b> = direction AI detected when signal fired'
         f'</div>'
     )
     table_inner = (
         f'<table class="nt-tbl"><thead><tr>'
         f'<th {TH}>Time (CT)</th><th {TH}>Symbol</th>'
-        f'<th {TH}>Signal</th><th {TH}>Entry</th>'
-        f'<th {TH}>Confidence</th><th {TH}>Regime</th>'
-        f'<th {TH}>Top Drivers</th>'
+        f'<th {TH}>Signal</th><th {TH}>Entry Price</th>'
+        f'<th {TH}>AI Confidence</th><th {TH}>Market Trend</th>'
+        f'<th {TH}>Why AI wanted to buy</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>' + help_block
     )
     return (f'<div class="nt nt-wrap">'
