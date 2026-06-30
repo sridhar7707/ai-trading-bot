@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from loguru import logger
 from dashboard.design_system import (
-    BG, BORDER,
-    GAIN, NEURAL, TEXT1, TEXT2, TEXT3,
+    BG, SURFACE, BORDER,
+    GAIN, LOSS, NEURAL, TEXT1, TEXT2, TEXT3,
     ACTION_SELL,
-    FONT_LABEL,
+    FONT_LABEL, FONT_VALUE, FONT_SECTION,
     _card, _action_badge, _symbol, _confidence_bar,
     _empty_state, _section, _wrap,
+    _sym, _badge,
     TH, TD, TD0,
 )
 from dashboard.data import safe_query
@@ -234,6 +235,168 @@ def render_recommendation_history() -> str:
     return (
         f'<div class="nt nt-wrap">'
         f'{_section("📋", "AI Decision Log", note)}'
+        f'{disclaimer}'
+        f'{table}'
+        f'</div>'
+    )
+
+
+@safe_render("Buy Candidates")
+def render_buy_candidates() -> str:
+    """Ranked list of stocks the AI wants to buy but hasn't yet — not in open positions."""
+    rows = safe_query("""
+        SELECT s.symbol, s.ensemble_score, s.xgb_prob, s.lstm_prob,
+               s.feature_drivers, s.regime, s.ensemble_action, s.timestamp
+        FROM signal_log s
+        INNER JOIN (
+            SELECT symbol, MAX(id) AS max_id
+            FROM signal_log
+            WHERE timestamp >= datetime('now', '-7 days')
+            GROUP BY symbol
+        ) latest ON s.id = latest.max_id
+        LEFT JOIN position_state ps ON ps.symbol = s.symbol
+        WHERE ps.symbol IS NULL
+          AND s.ensemble_score >= 0.50
+        ORDER BY s.ensemble_score DESC
+        LIMIT 15
+    """, default=[])
+
+    if not rows:
+        msg = (
+            f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_VALUE};">'
+            f'No candidates right now &mdash; either all high-scoring symbols are already held, '
+            f'or the AI hasn\'t fired signals above 50% in the last 7 days.</div>'
+        )
+        return (
+            f'<div class="nt nt-wrap">'
+            f'{_section("🎯", "Buy Candidates", "ranked by AI confidence")}'
+            f'{_card(msg)}'
+            f'</div>'
+        )
+
+    _regime_map = {
+        "bullish": "Rising market", "bull": "Rising market",
+        "bearish": "Falling market", "bear": "Falling market",
+        "ranging": "Sideways market", "range": "Sideways market",
+        "volatile": "Volatile market",
+    }
+
+    table_rows = ""
+    for rank, row in enumerate(rows, start=1):
+        symbol, score, xgb_prob, lstm_prob, feature_drivers, regime, action, ts = row
+        score    = float(score    or 0)
+        xgb      = float(xgb_prob  or 0)
+        lstm     = float(lstm_prob  or 0)
+        is_last  = rank == len(rows)
+        td       = TD0 if is_last else TD
+
+        # Priority badge
+        if score >= 0.75:
+            badge_bg, badge_fg, badge_lbl = "#0d3320", GAIN,   "STRONG BUY"
+        elif score >= 0.60:
+            badge_bg, badge_fg, badge_lbl = "#1a1a0d", NEURAL, "BUY"
+        else:
+            badge_bg, badge_fg, badge_lbl = "#1a1a1a", TEXT2,  "BUILDING"
+
+        priority_badge = (
+            f'<span style="background:{badge_bg};border:1px solid {badge_fg};color:{badge_fg};'
+            f'font-size:{FONT_LABEL};font-weight:700;padding:2px 7px;border-radius:4px;'
+            f'white-space:nowrap;">{badge_lbl}</span>'
+        )
+
+        # Rank number
+        rank_c = GAIN if rank == 1 else (NEURAL if rank <= 3 else TEXT2)
+        rank_html = (
+            f'<span style="font-size:{FONT_SECTION};font-weight:700;color:{rank_c};">#{rank}</span>'
+        )
+
+        # Confidence
+        score_c = GAIN if score >= 0.75 else (NEURAL if score >= 0.60 else TEXT2)
+        score_html = f'<span style="font-weight:700;color:{score_c};">{score*100:.0f}%</span>'
+
+        # Models breakdown
+        if xgb > 0 or lstm > 0:
+            xgb_c  = GAIN  if xgb  >= 0.70 else (NEURAL if xgb  >= 0.55 else TEXT2)
+            lstm_c = GAIN  if lstm >= 0.65 else (NEURAL if lstm >= 0.50 else TEXT2)
+            models_html = (
+                f'<span style="font-size:{FONT_LABEL};font-family:monospace;">'
+                f'<span style="color:{xgb_c};">XGB {xgb*100:.0f}%</span>'
+                f'<span style="color:{TEXT3};"> · </span>'
+                f'<span style="color:{lstm_c};">LSTM {lstm*100:.0f}%</span>'
+                f'</span>'
+            )
+        else:
+            models_html = f'<span style="color:{TEXT3};font-size:{FONT_LABEL};">&mdash;</span>'
+
+        # Plain-English "why" from top 2 positive feature drivers
+        driver_parts: list[str] = []
+        try:
+            ds = json.loads(feature_drivers) if isinstance(feature_drivers, str) else (feature_drivers or [])
+            pos = sorted([(f, float(v)) for f, v in (ds or []) if float(v) > 0], key=lambda x: -x[1])
+            for feat, _ in pos[:2]:
+                driver_parts.append(_PLAIN_WHY.get(feat, feat.replace("_", " ").title()))
+        except Exception as exc:
+            _logger.debug(f"buy_candidates driver parse: {exc}")
+        why_html = (
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
+            + (" · ".join(driver_parts) if driver_parts else "&mdash;")
+            + "</span>"
+        )
+
+        # Market trend
+        regime_clean = str(regime or "").lower().replace("_", " ").strip()
+        market = _regime_map.get(regime_clean, regime_clean.title() if regime_clean else "&mdash;")
+        market_html = f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{market}</span>'
+
+        # Last signal time
+        ts_short = str(ts or "")[:16].replace("T", " ")
+        ts_html  = f'<span style="font-size:{FONT_LABEL};color:{TEXT3};font-family:monospace;">{ts_short}</span>'
+
+        table_rows += (
+            f'<tr>'
+            f'<td {td}>{rank_html}</td>'
+            f'<td {td}>{_sym(str(symbol))}</td>'
+            f'<td {td}>{priority_badge}</td>'
+            f'<td {td}>{score_html}</td>'
+            f'<td {td}>{models_html}</td>'
+            f'<td {td}>{why_html}</td>'
+            f'<td {td}>{market_html}</td>'
+            f'<td {td}>{ts_html}</td>'
+            f'</tr>'
+        )
+
+    note = f"{len(rows)} candidate{'s' if len(rows) != 1 else ''} · not currently held · last 7 days"
+    disclaimer = (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};padding:8px 4px 10px;">'
+        f'These are stocks the AI scored highly but the bot hasn\'t bought yet &mdash; '
+        f'either the bot is at its position limit, cash is low, or the signal fired outside market hours. '
+        f'Higher rank = stronger AI conviction. Not a recommendation to trade manually.'
+        f'</div>'
+    )
+    help_block = (
+        f'<div style="background:{BG};border-top:1px solid {BORDER};'
+        f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.8;">'
+        f'<b>STRONG BUY</b> ≥75% &nbsp;·&nbsp; <b>BUY</b> 60–75% &nbsp;·&nbsp; '
+        f'<b>BUILDING</b> 50–60% (signal not strong enough to act yet) &nbsp;·&nbsp; '
+        f'<b>Why</b> = top signals driving the AI score'
+        f'</div>'
+    )
+    table = _wrap(
+        f'<table class="nt-tbl"><thead><tr>'
+        f'<th {TH}>Rank</th>'
+        f'<th {TH}>Symbol</th>'
+        f'<th {TH}>Priority</th>'
+        f'<th {TH}>AI Confidence</th>'
+        f'<th {TH}>Models</th>'
+        f'<th {TH}>Why the AI likes it</th>'
+        f'<th {TH}>Market Trend</th>'
+        f'<th {TH}>Last Signal</th>'
+        f'</tr></thead><tbody>{table_rows}</tbody></table>'
+        + help_block
+    )
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("🎯", "Buy Candidates", note)}'
         f'{disclaimer}'
         f'{table}'
         f'</div>'
