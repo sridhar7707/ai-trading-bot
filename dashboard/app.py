@@ -193,7 +193,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         with gr.TabItem("⚡ Signals"):
             buy_candidates_out  = gr.HTML(value=render_buy_candidates)
             timeline_out        = gr.HTML(value=render_timeline)
-            signals_out         = gr.HTML(value=render_signals_tab)
             signal_history_out  = gr.HTML(value=render_signal_history)
             rec_history_sig_out = gr.HTML(value=render_recommendation_history)
             with gr.Row():
@@ -233,7 +232,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                 value="📊 Investor View",
                 label="", container=False,
             )
-            rec_history_out = gr.HTML(value=render_recommendation_history)
             investor_out = gr.HTML(value=render_investor_view, visible=True)
             with gr.Column(visible=False) as dev_col:
                 metrics_out = gr.HTML(value=render_institutional_metrics)
@@ -291,10 +289,9 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
     # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
     timer.tick(fn=render_news_feed, outputs=news_out)
-    # Signals tab (includes merged Signal History + Decision Log + Buy Candidates)
+    # Signals tab
     timer.tick(fn=render_buy_candidates,         outputs=buy_candidates_out)
     timer.tick(fn=render_timeline,               outputs=timeline_out)
-    timer.tick(fn=render_signals_tab,            outputs=signals_out)
     timer.tick(fn=render_signal_history,         outputs=signal_history_out)
     timer.tick(fn=render_recommendation_history, outputs=rec_history_sig_out)
     timer.tick(fn=render_market_intelligence,    outputs=mkt_intel_out)
@@ -322,7 +319,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     # Models tab
     timer.tick(fn=render_spy_banner,               outputs=spy_banner_mod_out)
     timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
-    timer.tick(fn=render_recommendation_history,   outputs=rec_history_out)
     timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)

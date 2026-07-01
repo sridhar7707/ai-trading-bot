@@ -96,10 +96,17 @@ def render_decision_center() -> str:
 
     act_count = sum(1 for r in vm_rows if r.action not in ("HOLD", "WATCH"))
     note = f"{act_count} need action · {n} positions" if act_count else f"{n} positions · holding"
+    help_row = (
+        f'<tr><td colspan="6" style="padding:5px 16px 4px;background:{BG};'
+        f'font-size:{FONT_LABEL};color:{TEXT2};border-bottom:1px solid {BORDER};">'
+        f'<b>Exit Pressure</b>: 0 = keep holding · 100 = bot wants to exit &nbsp;·&nbsp; '
+        f'bar turns red when action is needed'
+        f'</td></tr>'
+    )
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Score</th>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Exit Pressure</th>'
         f'<th {TH}>Weight</th><th {TH}>Amount</th><th {TH}>Reasons</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table>'
+        f'</tr>{help_row}</thead><tbody>{rows}</tbody></table>'
     )
     return f'<div class="nt nt-wrap">{_section("🎯","Decision Center",note)}{table}</div>'
