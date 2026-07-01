@@ -98,6 +98,8 @@ from dashboard.components.rebalance import render_rebalance
 from dashboard.components.symbol_detail import (
     render_symbol_detail, _get_symbol_choices,
 )
+from dashboard.components.settings import render_settings_summary
+from database.user_settings import get_all_settings, save_setting
 
 # ── Recommendation engine (imported for components that need it at top-level) ─
 from bot.core.error_logger import safe_render, timed
@@ -239,6 +241,54 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                     with gr.Column(scale=35):
                         val_out = gr.HTML(value=render_validation_report)
 
+        with gr.TabItem("⚙️ Settings"):
+            _s0 = get_all_settings()
+            def _pct(key: str, default: str) -> float:
+                try:
+                    return round(float(_s0.get(key, default)) * 100, 1)
+                except (ValueError, TypeError):
+                    return float(default) * 100
+            with gr.Row():
+                with gr.Column(scale=1):
+                    _risk_radio = gr.Radio(
+                        choices=["Conservative", "Moderate", "Aggressive"],
+                        value=_s0.get("risk_tolerance", "Moderate"),
+                        label="Risk Tolerance",
+                    )
+                    _bench_radio = gr.Radio(
+                        choices=["SPY", "QQQ", "DIA"],
+                        value=_s0.get("benchmark", "SPY"),
+                        label="Benchmark",
+                    )
+                    _max_pos_sl = gr.Slider(
+                        minimum=5, maximum=50, step=1,
+                        value=_pct("max_position_pct", "0.20"),
+                        label="Max Position Size %",
+                    )
+                    _max_dd_sl = gr.Slider(
+                        minimum=5, maximum=30, step=1,
+                        value=_pct("max_drawdown_pct", "0.12"),
+                        label="Max Drawdown Threshold %",
+                    )
+                    _max_sec_sl = gr.Slider(
+                        minimum=10, maximum=60, step=5,
+                        value=_pct("max_sector_pct", "0.30"),
+                        label="Max Sector Allocation %",
+                    )
+                    _stop_sl = gr.Slider(
+                        minimum=1, maximum=15, step=0.5,
+                        value=_pct("stop_loss_pct", "0.04"),
+                        label="Stop-Loss Default %",
+                    )
+                    _notif_check = gr.Checkbox(
+                        value=_s0.get("notifications_enabled", "false") == "true",
+                        label="Enable Notifications",
+                    )
+                    _save_btn = gr.Button("💾 Save Settings", variant="primary")
+                    _save_status = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    settings_summary_out = gr.HTML(value=render_settings_summary)
+
     gr.HTML(value=FOOTER_HTML)
 
     # Models tab toggle
@@ -322,6 +372,32 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
     timer.tick(fn=render_validation_report,        outputs=val_out)
+    # Settings tab — timer keeps summary in sync if another session saved changes
+    timer.tick(fn=render_settings_summary, outputs=settings_summary_out)
+
+    def _save_settings(
+        risk_tol: str, benchmark: str,
+        max_pos: float, max_dd: float, max_sec: float, stop_loss: float,
+        notif: bool,
+    ) -> tuple[str, str]:
+        save_setting("risk_tolerance",        risk_tol)
+        save_setting("benchmark",             benchmark)
+        save_setting("max_position_pct",      str(round(max_pos   / 100, 4)))
+        save_setting("max_drawdown_pct",      str(round(max_dd    / 100, 4)))
+        save_setting("max_sector_pct",        str(round(max_sec   / 100, 4)))
+        save_setting("stop_loss_pct",         str(round(stop_loss / 100, 4)))
+        save_setting("notifications_enabled", "true" if notif else "false")
+        status = (
+            '<p style="color:#00c853;font-weight:600;margin:8px 0 0">'
+            '&#10003; Saved &mdash; active on next bot cycle</p>'
+        )
+        return render_settings_summary(), status
+
+    _save_btn.click(
+        fn=_save_settings,
+        inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _max_sec_sl, _stop_sl, _notif_check],
+        outputs=[settings_summary_out, _save_status],
+    )
 
 if __name__ == "__main__":
     demo.launch()

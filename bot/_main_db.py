@@ -61,6 +61,7 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
         "order_id TEXT DEFAULT NULL",
         "holding_days INTEGER DEFAULT 0",
         "feature_drivers TEXT DEFAULT NULL",
+        "ai_reasoning TEXT DEFAULT NULL",
     ):
         try:
             con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
@@ -167,6 +168,13 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS news_cache (
             symbol TEXT, fetch_date TEXT, headlines_json TEXT, cached_at TEXT,
             PRIMARY KEY (symbol, fetch_date)
+        )
+    """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
         )
     """)
     con.commit()

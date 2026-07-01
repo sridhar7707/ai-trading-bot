@@ -13,6 +13,15 @@ from config import (
 )
 
 
+def _live(config_val: float, key: str) -> float:
+    """Return the live setting from user_settings DB, falling back to config_val."""
+    try:
+        from database.user_settings import get_setting
+        return float(get_setting(key, default=str(config_val)))
+    except Exception:
+        return config_val
+
+
 def _business_days_between(d1: date, d2: date) -> int:
     """Count business days in [d1, d2) for FINRA's rolling 5-business-day PDT window.
     Calendar-day counting undercounts across weekends — a Monday trade expires from
@@ -116,7 +125,7 @@ class RiskManager:
         if self.portfolio_high is None or self.portfolio_high == 0.0:
             return True
         dd = (self.portfolio_high - current_value) / self.portfolio_high
-        if dd >= PORTFOLIO_DRAWDOWN_LIMIT_PCT:
+        if dd >= _live(PORTFOLIO_DRAWDOWN_LIMIT_PCT, "max_drawdown_pct"):
             logger.warning(
                 f"Portfolio drawdown limit: {dd:.1%} below all-time peak ${self.portfolio_high:.2f} "
                 f"— blocking new buys until recovery."
@@ -150,7 +159,7 @@ class RiskManager:
                     f"(entry=${entry_price:.2f}, ATR=${atr:.2f}, threshold={stop_pct:.1%})"
                 )
                 return True
-        elif pnl_pct is not None and pnl_pct <= -STOP_LOSS_PCT:
+        elif pnl_pct is not None and pnl_pct <= -_live(STOP_LOSS_PCT, "stop_loss_pct"):
             # Flat-percentage fallback (no ATR available)
             logger.warning(
                 f"Flat stop-loss triggered for {symbol}: pnl={pnl_pct:.1%} ≤ -{STOP_LOSS_PCT:.1%}"
@@ -243,7 +252,7 @@ class RiskManager:
             return False
         if not self.check_portfolio_drawdown(current_value):
             return False
-        max_notional = portfolio_value * MAX_POSITION_PCT
+        max_notional = portfolio_value * _live(MAX_POSITION_PCT, "max_position_pct")
         if notional > max_notional:
             logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
             return False
