@@ -16,7 +16,12 @@ from dashboard.design_system import (
     _action_row, _table, _sym, _badge, _num, _pnl, _section, _wrap,
     _stat_card, TH, TD, TD0,
 )
-from dashboard.data import get_data, _now_ct, _market_status, safe_query
+import os
+from database.services.analytics_service import analytics_service
+from dashboard.data import (
+    get_data, _now_ct, _market_status, _to_ct, safe_query,
+    get_db_conn, DB_PATH,
+)
 from dashboard.builders import build_health_vm
 from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
@@ -187,10 +192,6 @@ def render_portfolio_health_hero() -> str:
 @timed(_logger)
 @safe_render("Benchmark")
 def render_benchmark_comparison() -> str:
-    from database.services.analytics_service import analytics_service
-    from dashboard.data import get_data, get_db_conn, DB_PATH
-    import os
-
     d = get_data()
     pv = 0.0
     try:
@@ -254,7 +255,6 @@ def render_benchmark_comparison() -> str:
 # ── Render: trade frequency (weekly discipline card) ─────────────────────────
 @safe_render("Trade Frequency")
 def render_trade_frequency() -> str:
-    import datetime
     today   = datetime.date.today()
     monday  = today - datetime.timedelta(days=today.weekday())
     sunday  = monday + datetime.timedelta(days=6)
@@ -285,13 +285,11 @@ def render_trade_frequency() -> str:
     )
     for row in (sell_rows or []):
         try:
-            from dashboard.data import _to_ct
             sell_dt = _to_ct(row[1])
             buy_dt  = _to_ct(row[2])
             if sell_dt and buy_dt and len(sell_dt) >= 10 and len(buy_dt) >= 10:
-                import datetime as _dt
-                d1 = _dt.datetime.strptime(buy_dt[:10],  "%Y-%m-%d")
-                d2 = _dt.datetime.strptime(sell_dt[:10], "%Y-%m-%d")
+                d1 = datetime.datetime.strptime(buy_dt[:10],  "%Y-%m-%d")
+                d2 = datetime.datetime.strptime(sell_dt[:10], "%Y-%m-%d")
                 delta = (d2 - d1).days
                 if delta >= 0:
                     hold_days.append(float(delta))
@@ -329,10 +327,6 @@ def render_trade_frequency() -> str:
 # ── Render: SPY outperformance banner ─────────────────────────────────────────
 @safe_render("SPY Banner")
 def render_spy_banner() -> str:
-    from database.services.analytics_service import analytics_service
-    from dashboard.data import get_data, get_db_conn, DB_PATH
-    import os
-
     d = get_data()
     pv = 0.0
     try:

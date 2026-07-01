@@ -154,4 +154,4 @@ FEATURE_COLS_V3 = [
 
 # Activated 2026-06-30: short-term signals aligned with FORWARD_PERIODS=5 target.
 # Drops long-horizon features (ret_63d, ret_126d, mom_12_1) that noise the 1-week signal.
-FEATURE_COLS = FEATURE_COLS_V3
+FEATURE_COLS = list(FEATURE_COLS_V3)

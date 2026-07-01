@@ -17,6 +17,13 @@ from bot.core.error_logger import safe_render
 
 _logger = logger
 
+_REGIME_MAP: dict[str, str] = {
+    "bullish": "Rising market", "bull": "Rising market",
+    "bearish": "Falling market", "bear": "Falling market",
+    "ranging": "Sideways market", "range": "Sideways market",
+    "volatile": "Volatile market",
+}
+
 # Plain-English labels for end users — no jargon, no indicator names
 _PLAIN_WHY: dict[str, str] = {
     "rsi":             "Momentum rising",
@@ -90,13 +97,6 @@ def render_recommendation_history() -> str:
     n_changes = sum(1 for r in recs if r[4] and r[4] != r[2])
     note      = f"{n} signals · {n_changes} changes" if n_changes else f"{n} signals"
 
-    _regime_map = {
-        "bullish": "Rising market", "bull": "Rising market",
-        "bearish": "Falling market", "bear": "Falling market",
-        "ranging": "Sideways market", "range": "Sideways market",
-        "volatile": "Volatile market",
-    }
-
     def _sort_key(row):
         symbol, pred_date, rec = row[0], row[1], str(row[2] or "")
         date_str = str(pred_date)[:10]
@@ -131,7 +131,7 @@ def render_recommendation_history() -> str:
         )
 
         regime_clean = str(regime or "").lower().replace("_", " ").strip()
-        market_ctx   = _regime_map.get(regime_clean, regime_clean.title() if regime_clean else "")
+        market_ctx   = _REGIME_MAP.get(regime_clean, regime_clean.title() if regime_clean else "")
 
         # ── Priority dot ──────────────────────────────────────────────────────
         if rec == "BUY" and key in executed:
@@ -280,13 +280,6 @@ def render_buy_candidates() -> str:
             f'</div>'
         )
 
-    _regime_map = {
-        "bullish": "Rising market", "bull": "Rising market",
-        "bearish": "Falling market", "bear": "Falling market",
-        "ranging": "Sideways market", "range": "Sideways market",
-        "volatile": "Volatile market",
-    }
-
     table_rows = ""
     for rank, row in enumerate(rows, start=1):
         symbol, score, xgb_prob, lstm_prob, feature_drivers, regime, action, ts = row
@@ -351,7 +344,7 @@ def render_buy_candidates() -> str:
 
         # Market trend
         regime_clean = str(regime or "").lower().replace("_", " ").strip()
-        market = _regime_map.get(regime_clean, regime_clean.title() if regime_clean else "&mdash;")
+        market = _REGIME_MAP.get(regime_clean, regime_clean.title() if regime_clean else "&mdash;")
         market_html = f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{market}</span>'
 
         # Last signal time
