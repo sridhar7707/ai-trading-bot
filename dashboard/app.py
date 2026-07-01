@@ -190,6 +190,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                 elem_classes=["sym-selector"],
             )
             symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
+            _sym_state = gr.State(value=_initial_sym)   # tracks selection without self-reference
 
         with gr.TabItem("📰 News"):
             news_out = gr.HTML(value=render_news_feed)
@@ -258,11 +259,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         outputs=[perf_out, perf_key_state],
     )
 
-    # Symbol drilldown
+    # Symbol drilldown — single handler updates both the detail panel and the state
     symbol_selector.change(
-        fn=render_symbol_detail,
+        fn=lambda v: (render_symbol_detail(v), v),
         inputs=[symbol_selector],
-        outputs=[symbol_detail_out],
+        outputs=[symbol_detail_out, _sym_state],
     )
 
     # One shared timer &mdash; cache layer ensures a single DB+API refresh per tick
@@ -279,12 +280,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
     timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
     timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
-    def _refresh_symbol_choices(current_sel):
+    def _refresh_symbol_choices(sel):
         choices = _get_symbol_choices()
-        val = current_sel if current_sel in choices else (choices[0] if choices else None)
+        val = sel if sel in choices else (choices[0] if choices else None)
         return gr.update(choices=choices, value=val)
-    timer.tick(fn=_refresh_symbol_choices, inputs=[symbol_selector], outputs=symbol_selector)
-    timer.tick(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
+    # Use _sym_state as input so symbol_selector is never both input and output
+    timer.tick(fn=_refresh_symbol_choices, inputs=[_sym_state], outputs=symbol_selector)
+    timer.tick(fn=render_symbol_detail, inputs=[_sym_state], outputs=[symbol_detail_out])
     # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
     timer.tick(fn=render_news_feed, outputs=news_out)
     # Signals tab
@@ -294,6 +296,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_recommendation_history, outputs=rec_history_sig_out)
     # Portfolio tab &mdash; use key state (not Radio value) to avoid stale-label validation errors
     def _refresh_perf_tabs(current_key):
+        if not isinstance(current_key, str):
+            current_key = "1M"
         choices = _perf_choices()
         matched = next((c for c in choices if c.split()[0] == current_key), None)
         val     = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
