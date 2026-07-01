@@ -103,108 +103,89 @@ def render_rebalance() -> str:
     summary = (
         f'<div style="display:flex;gap:0;flex-direction:column;">'
         + _metric_row("Net to rebalance", net_str, TEXT1)
-        + _metric_row("Health score", f"{health_score}/100", ACTION_BUY if health_score >= 75 else (ACTION_TRIM if health_score >= 50 else ACTION_SELL), grade)
+        + _metric_row("Health score", f"{health_score}/100",
+                      ACTION_BUY if health_score >= 75 else (ACTION_TRIM if health_score >= 50 else ACTION_SELL),
+                      grade)
         + f'</div>'
     )
+
+    # ── Inline action plan (formerly render_rebalance_suggestions) ────────────
+    from config import SECTOR_MAP
+    reduces = [r for r in vm_rows if r.delta_dollars < -50]
+    adds    = [r for r in vm_rows if r.delta_dollars >  50]
+    action_html = ""
+    if reduces or adds:
+        cash_freed    = sum(abs(r.delta_dollars) for r in reduces)
+        cash_deployed = sum(r.delta_dollars      for r in adds)
+        net_cash      = cash_freed - cash_deployed
+        net_c = GAIN if net_cash > 0 else (LOSS if net_cash < -100 else TEXT2)
+
+        _sec_add: dict[str, float] = {}
+        _sec_red: dict[str, float] = {}
+        for r in adds:
+            s = SECTOR_MAP.get(r.symbol, "Other")
+            _sec_add[s] = _sec_add.get(s, 0.0) + r.delta_dollars
+        for r in reduces:
+            s = SECTOR_MAP.get(r.symbol, "Other")
+            _sec_red[s] = _sec_red.get(s, 0.0) + abs(r.delta_dollars)
+        top_add = max(_sec_add, key=_sec_add.get) if _sec_add else None
+        top_red = max(_sec_red, key=_sec_red.get) if _sec_red else None
+        shift_parts = []
+        if top_add: shift_parts.append(f'<span style="color:{GAIN};">↑ {top_add}</span>')
+        if top_red: shift_parts.append(f'<span style="color:{LOSS};">↓ {top_red}</span>')
+        sector_shift = " &nbsp;·&nbsp; ".join(shift_parts) if shift_parts else "&mdash;"
+
+        ap_rows = ""
+        action_rows = reduces + adds
+        for i, r in enumerate(action_rows):
+            t = TD0 if i == len(action_rows) - 1 else TD
+            amt   = f"${abs(r.delta_dollars):,.0f}"
+            badge = "TRIM" if r.delta_dollars < 0 else "ADD"
+            sec   = SECTOR_MAP.get(r.symbol, "&mdash;")
+            ap_rows += (
+                f'<tr>'
+                f'<td {t}>{_symbol(r.symbol)}</td>'
+                f'<td {t}>{_action_badge(badge, "small")}</td>'
+                f'<td {t}><span style="font-size:{FONT_LABEL};color:{r.delta_color};'
+                f'font-weight:{WEIGHT_BOLD};">{r.delta_weight:+.1f}%</span></td>'
+                f'<td {t}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
+                f'font-family:Courier New,monospace;">{amt}</span></td>'
+                f'<td {t}><span style="font-size:{FONT_LABEL};color:{TEXT3};">{sec}</span></td>'
+                f'</tr>'
+            )
+        ap_table = _wrap(
+            f'<table class="nt-tbl"><thead><tr>'
+            f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Shift</th>'
+            f'<th {TH}>Amount</th><th {TH}>Sector</th>'
+            f'</tr></thead><tbody>{ap_rows}</tbody></table>'
+        )
+        ap_summary = (
+            f'<div style="display:flex;gap:0;flex-direction:column;">'
+            + _metric_row("Cash freed", f"${cash_freed:,.0f}", GAIN if cash_freed > 0 else TEXT2)
+            + _metric_row("Cash deployed", f"${cash_deployed:,.0f}", LOSS if cash_deployed > 0 else TEXT2)
+            + _metric_row("Net cash", f"${net_cash:+,.0f}", net_c)
+            + _metric_row("Sector shift", sector_shift, TEXT1)
+            + f'</div>'
+        )
+        ap_note = f"{len(reduces)} reduce · {len(adds)} add"
+        action_html = (
+            f'<div style="margin-top:8px;">'
+            f'{_section("📋","Action Plan",ap_note)}'
+            f'{ap_table}{_card(ap_summary)}'
+            f'</div>'
+        )
+
     note = f"{n} positions · ~{net_str} to rebalance"
     return (
         f'<div class="nt nt-wrap">'
         f'{_section("⚖","Rebalance",note)}'
         f'{table}'
         f'{_card(summary)}'
+        f'{action_html}'
         f'</div>'
     )
 
 
-
-# ── PANEL: Rebalance Suggestions &mdash; grouped action plan ────────────────────────
-@safe_render("Rebalance Suggestions")
 def render_rebalance_suggestions() -> str:
-    vm_rows = build_rebalance_vm()
-
-    if not vm_rows:
-        return (
-            f'<div class="nt nt-wrap">'
-            f'{_section("📋", "Action Plan", "what to change and why")}'
-            f'{_card(_empty_state("✅", "No changes needed", "All positions are at target weight."))}'
-            f'</div>'
-        )
-
-    from config import SECTOR_MAP
-
-    reduces = [r for r in vm_rows if r.delta_dollars < -50]
-    adds    = [r for r in vm_rows if r.delta_dollars >  50]
-
-    if not reduces and not adds:
-        return (
-            f'<div class="nt nt-wrap">'
-            f'{_section("📋", "Action Plan", "near target weights")}'
-            f'{_card(_empty_state("✅", "Near target weights", "No material trades needed this cycle."))}'
-            f'</div>'
-        )
-
-    cash_freed    = sum(abs(r.delta_dollars) for r in reduces)
-    cash_deployed = sum(r.delta_dollars      for r in adds)
-    net_cash      = cash_freed - cash_deployed
-    net_c = GAIN if net_cash > 0 else (LOSS if net_cash < -100 else TEXT2)
-
-    # Dominant sectors gaining / losing weight
-    _sec_add: dict[str, float] = {}
-    _sec_red: dict[str, float] = {}
-    for r in adds:
-        s = SECTOR_MAP.get(r.symbol, "Other")
-        _sec_add[s] = _sec_add.get(s, 0.0) + r.delta_dollars
-    for r in reduces:
-        s = SECTOR_MAP.get(r.symbol, "Other")
-        _sec_red[s] = _sec_red.get(s, 0.0) + abs(r.delta_dollars)
-    top_add = max(_sec_add, key=_sec_add.get) if _sec_add else None
-    top_red = max(_sec_red, key=_sec_red.get) if _sec_red else None
-    shift_parts = []
-    if top_add:
-        shift_parts.append(f'<span style="color:{GAIN};">↑ {top_add}</span>')
-    if top_red:
-        shift_parts.append(f'<span style="color:{LOSS};">↓ {top_red}</span>')
-    sector_shift = " &nbsp;·&nbsp; ".join(shift_parts) if shift_parts else "&mdash;"
-
-    def _row(r, is_last: bool) -> str:
-        td  = TD0 if is_last else TD
-        amt = f"${abs(r.delta_dollars):,.0f}"
-        badge = "TRIM" if r.delta_dollars < 0 else "ADD"
-        sec   = SECTOR_MAP.get(r.symbol, "&mdash;")
-        return (
-            f'<tr>'
-            f'<td {td}>{_symbol(r.symbol)}</td>'
-            f'<td {td}>{_action_badge(badge, "small")}</td>'
-            f'<td {td}><span style="font-size:{FONT_LABEL};color:{r.delta_color};'
-            f'font-weight:{WEIGHT_BOLD};">{r.delta_weight:+.1f}%</span></td>'
-            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT1};'
-            f'font-family:Courier New,monospace;">{amt}</span></td>'
-            f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT3};">{sec}</span></td>'
-            f'</tr>'
-        )
-
-    action_rows = reduces + adds
-    n    = len(action_rows)
-    rows = "".join(_row(r, i == n - 1) for i, r in enumerate(action_rows))
-    table = _wrap(
-        f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Weight Shift</th>'
-        f'<th {TH}>Amount</th><th {TH}>Sector</th>'
-        f'</tr></thead><tbody>{rows}</tbody></table>'
-    )
-
-    summary = (
-        f'<div style="display:flex;gap:0;flex-direction:column;">'
-        + _metric_row("Cash freed (reduces)",  f"${cash_freed:,.0f}",    GAIN if cash_freed > 0 else TEXT2)
-        + _metric_row("Cash deployed (adds)",  f"${cash_deployed:,.0f}", LOSS if cash_deployed > 0 else TEXT2)
-        + _metric_row("Net cash change",       f"${net_cash:+,.0f}",     net_c)
-        + _metric_row("Sector shift",          sector_shift,             TEXT1)
-        + f'</div>'
-    )
-    note = f"{len(reduces)} reduce · {len(adds)} add"
-    return (
-        f'<div class="nt nt-wrap">'
-        f'{_section("📋", "Action Plan", note)}'
-        f'{table}{_card(summary)}'
-        f'</div>'
-    )
+    """Kept for backwards compatibility — now inlined into render_rebalance."""
+    return render_rebalance()

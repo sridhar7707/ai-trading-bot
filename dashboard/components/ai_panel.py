@@ -170,8 +170,8 @@ def render_ai_recommendation() -> str:
             f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid {BORDER};">'
             f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
             f'letter-spacing:.8px;margin-bottom:6px;">Signal breakdown</div>'
-            + _mini_bar("Breakout AI", xgb_p, xc)
-            + _mini_bar("Pattern AI", lstm_p, lc)
+            + _mini_bar("XGBoost", xgb_p, xc)
+            + _mini_bar("LSTM", lstm_p, lc)
             + f'<div style="display:flex;gap:8px;margin:4px 0;">'
             f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:68px;flex-shrink:0;">Sentiment</span>'
             f'<span style="font-size:{FONT_LABEL};color:{sc};">'

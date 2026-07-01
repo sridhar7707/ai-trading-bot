@@ -62,15 +62,27 @@ def build_positions_vm() -> list[PositionRow]:
     open_syms = d.get("open_pos", {})
     prices    = d.get("prices", {})
 
-    # Fetch opened_at per symbol from position_state for days-held calculation
-    _opened_at: dict[str, str] = {}
+    # Fetch opened_at, entry_price, high_water_mark, atr_at_entry from position_state
+    _opened_at:   dict[str, str]   = {}
+    _entry_price: dict[str, float] = {}
+    _hwm:         dict[str, float] = {}
+    _atr_entry:   dict[str, float] = {}
     try:
-        rows = safe_query("SELECT symbol, opened_at FROM position_state", default=[])
-        for sym, ts in (rows or []):
-            if ts:
-                _opened_at[sym] = str(ts)
+        rows = safe_query(
+            "SELECT symbol, opened_at, entry_price, high_water_mark, atr_at_entry "
+            "FROM position_state",
+            default=[],
+        )
+        for sym, ts, ep, hwm, atr in (rows or []):
+            if ts:  _opened_at[sym]   = str(ts)
+            if ep:  _entry_price[sym] = float(ep)
+            if hwm: _hwm[sym]         = float(hwm)
+            if atr: _atr_entry[sym]   = float(atr)
     except Exception:
         pass
+
+    _STOP_LOSS_PCT      = 0.04
+    _ATR_TRAIL_MULT     = 1.5
 
     _today = datetime.date.today()
     _pv = 0.0
@@ -115,6 +127,15 @@ def build_positions_vm() -> list[PositionRow]:
             except Exception:
                 pass
 
+        stop_price: Optional[float] = None
+        ep  = _entry_price.get(sym)
+        hwm = _hwm.get(sym)
+        atr = _atr_entry.get(sym)
+        if ep:
+            flat_stop  = ep * (1.0 - _STOP_LOSS_PCT)
+            trail_stop = (hwm - _ATR_TRAIL_MULT * atr) if (hwm and atr) else flat_stop
+            stop_price = max(flat_stop, trail_stop)
+
         rows.append(PositionRow(
             symbol=sym,
             shares=v["shares"],
@@ -132,6 +153,7 @@ def build_positions_vm() -> list[PositionRow]:
             sell_score=sell_score,
             score_color=_score_color(sell_score),
             days_held=days_held,
+            stop_price=stop_price,
         ))
     return rows
 

@@ -94,7 +94,7 @@ from dashboard.components.analysis import (
     render_sell_analysis, render_position_sizing_panel, render_position_sizing,
 )
 from dashboard.components.decision import render_decision_center
-from dashboard.components.rebalance import render_rebalance, render_rebalance_suggestions
+from dashboard.components.rebalance import render_rebalance
 from dashboard.components.symbol_detail import (
     render_symbol_detail, _get_symbol_choices,
 )
@@ -174,7 +174,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             trade_freq_out      = gr.HTML(value=render_trade_frequency)
             todays_actions_out  = gr.HTML(value=render_todays_actions)
             ai_rec_out          = gr.HTML(value=render_ai_recommendation)
-            risk_panel_out      = gr.HTML(value=render_risk_panel)
+            with gr.Row():
+                with gr.Column(scale=65):
+                    risk_panel_out   = gr.HTML(value=render_risk_panel)
+                with gr.Column(scale=35):
+                    mkt_intel_out    = gr.HTML(value=render_market_intelligence)
             whats_changed_out   = gr.HTML(value=render_whats_changed)
             # ── Symbol drilldown ──────────────────────────────────────────────
             _initial_choices = _get_symbol_choices()
@@ -195,11 +199,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             timeline_out        = gr.HTML(value=render_timeline)
             signal_history_out  = gr.HTML(value=render_signal_history)
             rec_history_sig_out = gr.HTML(value=render_recommendation_history)
-            with gr.Row():
-                with gr.Column(scale=55):
-                    mkt_intel_out = gr.HTML(value=render_market_intelligence)
-                with gr.Column(scale=45):
-                    watchlist_out = gr.HTML(value=render_watchlist)
 
         with gr.TabItem("💼 Portfolio"):
             perf_tabs   = gr.Radio(
@@ -218,10 +217,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             pnl_plot          = gr.Plot(value=render_pnl_chart, label="")
             committee_out     = gr.HTML(value=render_ai_committee)
             decision_center_out = gr.HTML(value=render_decision_center)
-            rebalance_out          = gr.HTML(value=render_rebalance)
-            rebalance_suggest_out  = gr.HTML(value=render_rebalance_suggestions)
-            pos_out           = gr.HTML(value=render_positions)
-            trades_out        = gr.HTML(value=render_trades)
+            rebalance_out       = gr.HTML(value=render_rebalance)
+            watchlist_out       = gr.HTML(value=render_watchlist)
+            pos_out             = gr.HTML(value=render_positions)
+            trades_out          = gr.HTML(value=render_trades)
 
         with gr.TabItem("📈 Performance"):
             scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
@@ -278,6 +277,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
     timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
     timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
+    timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
     timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
     def _refresh_symbol_choices(current_sel):
         choices = _get_symbol_choices()
@@ -292,8 +292,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_timeline,               outputs=timeline_out)
     timer.tick(fn=render_signal_history,         outputs=signal_history_out)
     timer.tick(fn=render_recommendation_history, outputs=rec_history_sig_out)
-    timer.tick(fn=render_market_intelligence,    outputs=mkt_intel_out)
-    timer.tick(fn=render_watchlist,              outputs=watchlist_out)
     # Portfolio tab &mdash; use key state (not Radio value) to avoid stale-label validation errors
     def _refresh_perf_tabs(current_key):
         choices = _perf_choices()
@@ -310,7 +308,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_ai_committee,          outputs=committee_out)
     timer.tick(fn=render_decision_center,       outputs=decision_center_out)
     timer.tick(fn=render_rebalance,             outputs=rebalance_out)
-    timer.tick(fn=render_rebalance_suggestions, outputs=rebalance_suggest_out)
+    timer.tick(fn=render_watchlist,             outputs=watchlist_out)
     timer.tick(fn=render_positions,             outputs=pos_out)
     timer.tick(fn=render_trades,                outputs=trades_out)
     # Performance tab

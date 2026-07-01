@@ -85,6 +85,8 @@ def render_positions() -> str:
         pnl_d_str = f'{r.pnl_dollar:+,.2f}' if r.pnl_dollar != 0 else '$0.00'
         days_str  = f'{r.days_held}d' if r.days_held > 0 else '—'
         days_c    = TEXT2 if r.days_held <= 7 else (NEURAL if r.days_held <= 14 else LOSS)
+        stop_str  = f'${r.stop_price:.2f}' if r.stop_price else '—'
+        stop_c    = LOSS
         row_htmls.append(
             f'<tr style="{row_bg}">'
             f'<td {td}>{_symbol(r.symbol)}</td>'
@@ -100,6 +102,8 @@ def render_positions() -> str:
             f'(${pnl_d_str})</span></td>'
             f'<td {td}><span style="font-size:{FONT_LABEL};color:{days_c};">'
             f'{days_str}</span></td>'
+            f'<td {td}><span style="font-size:{FONT_LABEL};color:{stop_c};">'
+            f'{stop_str}</span></td>'
             f'<td {td}><span style="font-size:{FONT_LABEL};color:{TEXT3};">'
             f'{reason[:50]}{"…" if len(reason) > 50 else ""}</span></td>'
             f'</tr>'
@@ -108,7 +112,7 @@ def render_positions() -> str:
     from dashboard.design_system import _table
     note  = f"{n} position{'s' if n != 1 else ''} · live price · 60s refresh"
     table = _table(
-        ["Symbol", "Action", "Weight", "Target", "Confidence", "P&L", "Held", "Reason"],
+        ["Symbol", "Action", "Weight", "Target", "Confidence", "P&L", "Held", "Stop at", "Reason"],
         row_htmls,
     )
     return (f'<div class="nt nt-wrap">'

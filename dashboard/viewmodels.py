@@ -23,6 +23,7 @@ class PositionRow:
     sell_score: int
     score_color: str
     days_held: int = 0
+    stop_price: Optional[float] = None
 
 
 @dataclass
