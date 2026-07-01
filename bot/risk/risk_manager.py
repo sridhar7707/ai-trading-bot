@@ -18,7 +18,8 @@ def _live(config_val: float, key: str) -> float:
     try:
         from database.user_settings import get_setting
         return float(get_setting(key, default=str(config_val)))
-    except Exception:
+    except Exception as _e:
+        logger.warning(f"_live({key!r}): invalid DB value — {_e}; using config default {config_val}")
         return config_val
 
 
@@ -159,12 +160,14 @@ class RiskManager:
                     f"(entry=${entry_price:.2f}, ATR=${atr:.2f}, threshold={stop_pct:.1%})"
                 )
                 return True
-        elif pnl_pct is not None and pnl_pct <= -_live(STOP_LOSS_PCT, "stop_loss_pct"):
-            # Flat-percentage fallback (no ATR available)
-            logger.warning(
-                f"Flat stop-loss triggered for {symbol}: pnl={pnl_pct:.1%} ≤ -{STOP_LOSS_PCT:.1%}"
-            )
-            return True
+        elif pnl_pct is not None:
+            live_stop = _live(STOP_LOSS_PCT, "stop_loss_pct")
+            if pnl_pct <= -live_stop:
+                # Flat-percentage fallback (no ATR available)
+                logger.warning(
+                    f"Flat stop-loss triggered for {symbol}: pnl={pnl_pct:.1%} ≤ -{live_stop:.1%}"
+                )
+                return True
         return False
 
     # ── Trailing stop: lock in gains ──────────────────────────────────────────

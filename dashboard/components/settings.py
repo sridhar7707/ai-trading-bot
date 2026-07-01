@@ -13,10 +13,9 @@ def render_settings_summary() -> str:
     try:
         max_pos = float(s.get("max_position_pct", "0.20")) * 100
         max_dd  = float(s.get("max_drawdown_pct", "0.12")) * 100
-        max_sec = float(s.get("max_sector_pct",   "0.30")) * 100
         stop    = float(s.get("stop_loss_pct",    "0.04")) * 100
     except (ValueError, TypeError):
-        max_pos, max_dd, max_sec, stop = 20.0, 12.0, 30.0, 4.0
+        max_pos, max_dd, stop = 20.0, 12.0, 4.0
 
     notif = s.get("notifications_enabled", "false").lower() == "true"
     rows = [
@@ -24,7 +23,6 @@ def render_settings_summary() -> str:
         ("Benchmark",         s.get("benchmark", "SPY")),
         ("Max Position Size", f"{max_pos:.0f}%"),
         ("Max Drawdown",      f"{max_dd:.0f}%"),
-        ("Max Sector Alloc.", f"{max_sec:.0f}%"),
         ("Stop-Loss Default", f"{stop:.1f}%"),
         ("Notifications",     "On" if notif else "Off"),
     ]

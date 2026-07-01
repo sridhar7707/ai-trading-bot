@@ -270,11 +270,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                         value=_pct("max_drawdown_pct", "0.12"),
                         label="Max Drawdown Threshold %",
                     )
-                    _max_sec_sl = gr.Slider(
-                        minimum=10, maximum=60, step=5,
-                        value=_pct("max_sector_pct", "0.30"),
-                        label="Max Sector Allocation %",
-                    )
                     _stop_sl = gr.Slider(
                         minimum=1, maximum=15, step=0.5,
                         value=_pct("stop_loss_pct", "0.04"),
@@ -377,25 +372,36 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     def _save_settings(
         risk_tol: str, benchmark: str,
-        max_pos: float, max_dd: float, max_sec: float, stop_loss: float,
+        max_pos: float, max_dd: float, stop_loss: float,
         notif: bool,
     ) -> tuple[str, str]:
-        save_setting("risk_tolerance",        risk_tol)
-        save_setting("benchmark",             benchmark)
-        save_setting("max_position_pct",      str(round(max_pos   / 100, 4)))
-        save_setting("max_drawdown_pct",      str(round(max_dd    / 100, 4)))
-        save_setting("max_sector_pct",        str(round(max_sec   / 100, 4)))
-        save_setting("stop_loss_pct",         str(round(stop_loss / 100, 4)))
-        save_setting("notifications_enabled", "true" if notif else "false")
-        status = (
-            '<p style="color:#00c853;font-weight:600;margin:8px 0 0">'
-            '&#10003; Saved &mdash; active on next bot cycle</p>'
-        )
+        # Server-side bounds — UI sliders are client-only guards
+        max_pos   = max(5.0,  min(50.0, max_pos))
+        max_dd    = max(5.0,  min(30.0, max_dd))
+        stop_loss = max(1.0,  min(15.0, stop_loss))
+        results = [
+            save_setting("risk_tolerance",        risk_tol),
+            save_setting("benchmark",             benchmark),
+            save_setting("max_position_pct",      str(round(max_pos   / 100, 4))),
+            save_setting("max_drawdown_pct",      str(round(max_dd    / 100, 4))),
+            save_setting("stop_loss_pct",         str(round(stop_loss / 100, 4))),
+            save_setting("notifications_enabled", "true" if notif else "false"),
+        ]
+        if all(results):
+            status = (
+                '<p style="color:#00c853;font-weight:600;margin:8px 0 0">'
+                '&#10003; Saved &mdash; active on next bot cycle</p>'
+            )
+        else:
+            status = (
+                '<p style="color:#ef4444;font-weight:600;margin:8px 0 0">'
+                '&#9888; Save failed &mdash; check application logs</p>'
+            )
         return render_settings_summary(), status
 
     _save_btn.click(
         fn=_save_settings,
-        inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _max_sec_sl, _stop_sl, _notif_check],
+        inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _stop_sl, _notif_check],
         outputs=[settings_summary_out, _save_status],
     )
 
