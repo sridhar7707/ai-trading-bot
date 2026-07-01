@@ -104,8 +104,8 @@ def render_metrics() -> str:
                 "Open trade gain/loss vs. cost basis",         0.00)
         + _stat_card("Total Invested",      invested_str,            TEXT2,     TEXT1,
                 "Capital currently deployed in open trades",   0.06)
-        + _stat_card("Market Regime",       d["regime_raw"].title(), TEXT2,     r_color,
-                "AI-detected trend &mdash; drives position sizing",  0.12)
+        + _stat_card("Market Trend",         d["regime_raw"].title(), TEXT2,     r_color,
+                "AI-detected market direction",                      0.12)
         + _stat_card("Market Session",      mkt_label,               TEXT2,     mkt_color,
                 "NYSE/NASDAQ open 9:30am-4pm ET, Mon-Fri",    0.18)
         + f'</div>'
@@ -370,13 +370,38 @@ def render_portfolio_health_hero() -> str:
     vix_str  = f"{vix:.1f}" if vix > 0 else "&mdash;"
     vix_c    = GAIN if vix < 15 else (NEURAL if vix < 25 else LOSS)
 
+    # Total realized gain from all closed trades
+    _realized = safe_query(
+        "SELECT SUM(pnl_pct * notional) FROM trades"
+        " WHERE action LIKE 'SELL%' AND action != 'SELL_RECONCILE'"
+        " AND pnl_pct IS NOT NULL AND notional IS NOT NULL",
+        default=[(None,)]
+    )
+    realized_gain  = float((_realized[0][0] or 0) if _realized else 0)
+    realized_str   = f"${realized_gain:+,.2f}" if realized_gain != 0 else "$0.00"
+    realized_c     = GAIN if realized_gain >= 0 else LOSS
+
+    # Bot status: Scanning / Idle / Market Closed
+    _last_scan = safe_query(
+        "SELECT MAX(timestamp) FROM signal_log"
+        " WHERE timestamp >= datetime('now','-90 minutes')",
+        default=[(None,)]
+    )
+    _has_recent = bool(_last_scan and _last_scan[0][0])
+    if "closed" in mkt_label.lower() or "pre" in mkt_label.lower() or "after" in mkt_label.lower():
+        bot_status, bot_c = "Market Closed", TEXT3
+    elif _has_recent:
+        bot_status, bot_c = "Scanning", GAIN
+    else:
+        bot_status, bot_c = "Waiting", NEURAL
+
     stats_row = (
         f'<div style="display:flex;flex-wrap:wrap;border-top:1px solid {BORDER};margin-top:10px;">'
         + _stat("Portfolio", d.get("portfolio", "&mdash;"), TEXT1)
-        + _stat("P&L", hero_chg, pnl_c)
+        + _stat("Open P&L", hero_chg, pnl_c)
+        + _stat("Realized Gain", realized_str, realized_c)
         + _stat("Positions", str(len(open_pos)), TEXT1)
-        + _stat("AI Conf.", conf_str, conf_c)
-        + _stat("VIX", vix_str, vix_c)
+        + _stat("Bot Status", bot_status, bot_c)
         + f'</div>'
     )
 
@@ -595,11 +620,11 @@ def render_spy_banner() -> str:
     vs_spy  = bm.get("vs_spy",    0.0)
 
     if vs_spy > 0:
-        verdict   = f"AHEAD of S&P 500 by {vs_spy:+.1f}pp"
+        verdict   = f"AHEAD of S&P 500 by {vs_spy:+.1f} pts"
         bar_color = GAIN
         icon      = "🟢"
     elif vs_spy < 0:
-        verdict   = f"BEHIND S&P 500 by {abs(vs_spy):.1f}pp"
+        verdict   = f"BEHIND S&P 500 by {abs(vs_spy):.1f} pts"
         bar_color = LOSS
         icon      = "🔴"
     else:
@@ -616,6 +641,6 @@ def render_spy_banner() -> str:
         f'{icon} {verdict}</span>'
         f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
         f'You {port_return:+.1f}% &nbsp;·&nbsp; SPY {spy_ret:+.1f}%</span>'
-        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Goal: beat SPY by 10pp/year</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Goal: beat S&P 500 by 10 pts/year</span>'
         f'</div>'
     )

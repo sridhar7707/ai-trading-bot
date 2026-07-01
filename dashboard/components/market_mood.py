@@ -198,7 +198,7 @@ def _generate_reasons(
                             "Historically precedes sharp reversals."))
         elif vix > 22:
             reasons.append(("⚠️", f"VIX {vix:.1f} &mdash; elevated fear. Market participants pricing in meaningful uncertainty. "
-                            "Bot macro cap remains 1.0× until VIX exceeds 28."))
+                            "Bot will reduce new buys if this stays elevated."))
         elif vix > 16:
             reasons.append(("📊", f"VIX {vix:.1f} &mdash; moderate concern (calm baseline is <15). "
                             "Some uncertainty priced in but not alarming."))

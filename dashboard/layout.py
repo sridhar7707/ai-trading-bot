@@ -350,7 +350,7 @@ HEADER_HTML = f"""{STYLES}
     <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;color:{TEXT1};">
       TradeGenius AI</div>
     <div style="font-size:11px;color:{TEXT2};margin-top:2px;">
-      XGBoost + SHAP &nbsp;·&nbsp; LSTM &nbsp;·&nbsp; FinBERT &nbsp;·&nbsp; Walk-Forward Validated
+      3-model AI &nbsp;·&nbsp; paper account &nbsp;·&nbsp; refreshes every 60s
     </div>
   </div>
   <div class="nt-badge" style="display:flex;gap:8px;align-items:center;">
@@ -367,6 +367,5 @@ HEADER_HTML = f"""{STYLES}
 FOOTER_HTML = f"""<div class="nt nt-wrap">
 <div style="text-align:center;color:{TEXT2} !important;font-size:11px;
   margin-top:8px;padding:14px;border-top:1px solid {BORDER};">
-  Refreshes every 60 s &nbsp;·&nbsp; Paper trading only &nbsp;·&nbsp;
-  Alpaca Markets &nbsp;·&nbsp; Stress-tested · Walk-forward validated &nbsp;·&nbsp; TradeGenius AI v2
+  Refreshes every 60 s &nbsp;·&nbsp; Paper trading only &mdash; no real money at risk &nbsp;·&nbsp; TradeGenius AI v2
 </div></div>"""

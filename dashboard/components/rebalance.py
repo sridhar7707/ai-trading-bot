@@ -188,7 +188,7 @@ def render_rebalance_suggestions() -> str:
     rows = "".join(_row(r, i == n - 1) for i, r in enumerate(action_rows))
     table = _wrap(
         f'<table class="nt-tbl"><thead><tr>'
-        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Wt Δ</th>'
+        f'<th {TH}>Symbol</th><th {TH}>Action</th><th {TH}>Weight Shift</th>'
         f'<th {TH}>Amount</th><th {TH}>Sector</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'
     )

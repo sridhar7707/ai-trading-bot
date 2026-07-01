@@ -109,7 +109,11 @@ def render_positions() -> str:
 @safe_render("Trades")
 def render_trades() -> str:
     d   = get_data()
-    vm_rows = build_trades_vm()
+    _BADGE_MAP = {
+        "SELL_STOP": "SELL", "SELL_TP": "SELL", "SELL_TRAIL": "SELL",
+        "SELL_ENSEMBLE": "SELL", "SELL_TIME": "SELL", "SELL_TRIM": "TRIM",
+    }
+    vm_rows = [r for r in build_trades_vm() if r.action != "SELL_RECONCILE"]
     total_trades = d.get("total_trades", 0)
 
     if not vm_rows:
@@ -133,23 +137,22 @@ def render_trades() -> str:
             f'<td {td}><span style="font-family:Courier New,monospace;font-size:{FONT_LABEL};'
             f'color:{TEXT2} !important;">{r.timestamp}</span></td>'
             f'<td {td}>{_sym(r.symbol)}</td>'
-            f'<td {td}>{_badge(r.action)}</td>'
+            f'<td {td}>{_badge(_BADGE_MAP.get(r.action, r.action))}</td>'
             f'<td {td}>{_num(qty_str)}</td>'
             f'<td {td}>{_num(px_str,bold=True)}</td>'
             f'<td {td}>{_num(val_str,bold=True)}</td>'
             f'<td {td}>{_pnl(pnl_str,big=True)}</td>'
             f'<td {td}><span style="font-size:12px;color:{TEXT2} !important;'
-            f'font-weight:600;">{r.regime}</span></td>'
+            f'font-weight:600;">{_SELL_REASON.get(r.action, r.regime) if r.action.startswith("SELL") else r.regime}</span></td>'
             f'</tr>'
         )
     legend_row = (
         f'<tr><td colspan="8" style="padding:6px 16px 4px;background:{BG};'
         f'font-size:{FONT_LABEL};color:{TEXT2};border-bottom:1px solid {BORDER};">'
         f'BUY = bot entered a position &nbsp;·&nbsp; '
-        f'SELL = normal exit (target hit or stop) &nbsp;·&nbsp; '
-        f'SELL_STOP = stop-loss triggered &nbsp;·&nbsp; '
-        f'P&amp;L shown on exit trades only &nbsp;·&nbsp; '
-        f'Regime = market trend at time of trade'
+        f'SELL = bot exited a position &nbsp;·&nbsp; '
+        f'TRIM = position reduced (too large) &nbsp;·&nbsp; '
+        f'P&amp;L shown on exits only'
         f'</td></tr>'
     )
     table = _wrap(
@@ -157,7 +160,7 @@ def render_trades() -> str:
         f'<th {TH}>Time (CT)</th><th {TH}>Symbol</th>'
         f'<th {TH}>Action</th><th {TH}>Qty</th>'
         f'<th {TH}>Price</th><th {TH}>Value</th>'
-        f'<th {TH}>P&amp;L</th><th {TH}>Regime</th>'
+        f'<th {TH}>P&amp;L</th><th {TH}>Context</th>'
         f'</tr>{legend_row}</thead><tbody>{rows}</tbody></table>'
     )
     return (f'<div class="nt nt-wrap">'

@@ -226,7 +226,7 @@ def render_recommendation_history() -> str:
         f'<th {TH}>Symbol</th>'
         f'<th {TH}>Date</th>'
         f'<th {TH}>Signal</th>'
-        f'<th {TH}>Conviction</th>'
+        f'<th {TH}>AI Strength</th>'
         f'<th {TH}>Models</th>'
         f'<th {TH}>Why</th>'
         f'</tr></thead><tbody>{rows}</tbody></table>'

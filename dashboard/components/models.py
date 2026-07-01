@@ -149,13 +149,13 @@ def render_paper_trading_scorecard() -> str:
     )
     row2 = (
         f'<div class="nt-cards">'
-        + _stat_card("Sharpe Ratio",    f"{sharpe:.2f}",   TEXT2, sh_c,
+        + _stat_card("Risk-Adjusted Return", f"{sharpe:.2f}", TEXT2, sh_c,
                      ">1.0 = good · >2.0 = excellent", 0.0)
-        + _stat_card("Max Drawdown",    f"{max_dd:.1%}",   TEXT2, dd_c,
-                     "worst peak-to-trough", 0.06)
-        + _stat_card("AI Follow Rate",
+        + _stat_card("Worst Portfolio Dip", f"{max_dd:.1%}", TEXT2, dd_c,
+                     "Biggest drop from peak to bottom", 0.06)
+        + _stat_card("Signals Executed",
                      f"{follow_rate:.0%}" if follow_rate is not None else "&mdash;",
-                     TEXT2, fr_c, "BUY signals executed (30d)", 0.12)
+                     TEXT2, fr_c, "% of buy signals the bot acted on (30d)", 0.12)
         + _stat_card("Days Running",    str(n_days),       TEXT2, TEXT2,
                      f"since {start_date}", 0.18)
         + f'</div>'

@@ -53,36 +53,36 @@ _COMPANY_NAMES: dict[str, str] = {
 # Plain-English reason map for AI recommendation card (feature → (title, detail))
 _WHY_MAP: dict[str, tuple[str, str]] = {
     # Momentum oscillators
-    "rsi":            ("RSI momentum building",    "Short-term price strength confirmed by RSI"),
-    "rsi_15m":        ("15-min RSI aligned",       "Shorter-term momentum reinforces the entry"),
-    "macd_diff_pct":  ("MACD bullish crossover",   "Trend indicator crossed into positive territory"),
-    "mfi":            ("Money Flow positive",      "Capital flowing into the stock"),
-    "stoch_k":        ("Stochastic momentum",      "Oscillator confirming continued upward momentum"),
+    "rsi":            ("Momentum building",        "Short-term price strength is rising"),
+    "rsi_15m":        ("Short-term momentum aligned", "Intraday momentum reinforces the entry"),
+    "macd_diff_pct":  ("Trend flipping upward",   "Trend indicator just crossed into positive territory"),
+    "mfi":            ("Buyers stepping in",       "Capital flowing into the stock"),
+    "stoch_k":        ("Momentum confirming up",   "Oscillator confirming continued upward movement"),
     # Volume
     "volume_ratio":   ("Unusual buying volume",    "Volume above recent average &mdash; signals conviction"),
-    "obv_chg_pct":    ("OBV flow positive",        "On-Balance Volume rising &mdash; buyers in control"),
+    "obv_chg_pct":    ("Net buying pressure",      "More shares being bought than sold"),
     "vol_ratio_trend":("Volume accelerating",      "Short-term volume trend outpacing the baseline"),
     # Volatility / range
-    "atr_pct":        ("Volatility confirmed",     "Position size validated against current ATR"),
-    "bb_width":       ("Volatility expanding",     "Bollinger Band breakout pattern forming"),
-    "bb_position":    ("Price in upper BB zone",   "Price in the upper half of the Bollinger Bands"),
-    "hl_ratio":       ("Strong intraday range",    "Wide intraday range signals trader conviction"),
+    "atr_pct":        ("Big moves expected",       "Stock is in an active trading phase"),
+    "bb_width":       ("Volatility expanding",     "Price range widening &mdash; breakout possible"),
+    "bb_position":    ("Price near top of range",  "Price in upper portion of its recent trading band"),
+    "hl_ratio":       ("Wide intraday range",      "Large high-low spread signals strong conviction"),
     # Price vs moving averages
-    "norm_close":     ("Closing near day's high",  "Price strength at close &mdash; bullish structure"),
-    "ema20_pct":      ("Above 20-period EMA",      "Short-term trend is pointing up"),
-    "ema50_pct":      ("Above 50-period EMA",      "Medium-term trend supports the trade"),
-    "sma20_pct":      ("Above 20-period SMA",      "Price holding above 20-day simple average"),
-    "ema_spread":     ("EMA trend spread positive","Fast EMA above slow EMA &mdash; uptrend confirmed"),
-    "vwap_dev":       ("Trading above VWAP",       "Price above today's volume-weighted average"),
-    # Multi-period momentum (Jegadeesh-Titman / AQR)
-    "ret_5d":         ("1-week price gain",        "Stock outperformed over the past week"),
-    "ret_21d":        ("1-month momentum",         "Positive 1-month return &mdash; intermediate trend intact"),
-    "ret_63d":        ("3-month momentum",         "3-month return positive &mdash; medium-term trend up"),
-    "ret_126d":       ("6-month momentum",         "6-month return positive &mdash; strong sustained trend"),
-    "mom_12_1":       ("12-1 month momentum",      "AQR-style factor: 12-month return minus reversal month"),
+    "norm_close":     ("Closing near day's high",  "Strong close &mdash; buyers held control all day"),
+    "ema20_pct":      ("Short-term trend up",      "Price above its short-term moving average"),
+    "ema50_pct":      ("Medium-term trend up",     "Price above its medium-term moving average"),
+    "sma20_pct":      ("Above 20-day average",     "Price holding above its 20-day average price"),
+    "ema_spread":     ("Short-term trend above long-term", "Short-term average crossed above long-term &mdash; uptrend"),
+    "vwap_dev":       ("Above average price",      "Trading above today's average transaction price"),
+    # Multi-period momentum
+    "ret_5d":         ("Strong past 5 days",       "Stock outperformed over the past week"),
+    "ret_21d":        ("Strong past month",        "Positive 1-month return &mdash; intermediate trend intact"),
+    "ret_63d":        ("Strong past quarter",      "3-month return positive &mdash; medium-term trend up"),
+    "ret_126d":       ("Strong 6-month run",       "6-month return positive &mdash; sustained trend"),
+    "mom_12_1":       ("12-month momentum",        "Strong 12-month return (excluding most recent month)"),
     "high_52w_pct":   ("Near 52-week high",        "Price close to its annual peak &mdash; breakout candidate"),
     # Raw return
-    "returns":        ("Recent return positive",   "Latest bar closed higher than the previous"),
+    "returns":        ("Recent price strength",    "Latest session closed higher than the previous"),
 }
 
 
@@ -143,8 +143,8 @@ def render_ai_recommendation() -> str:
         f'<div style="background:{conf_c};height:100%;width:{conf_w}%;border-radius:4px;"></div>'
         f'</div>'
         f'<div style="display:flex;justify-content:space-between;margin-top:8px;">'
-        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Ensemble: '
-        f'<span style="color:{agree_c};font-weight:700;">{agree_count}/5 models agree</span></span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Agreement: '
+        f'<span style="color:{agree_c};font-weight:700;">{agree_count}/5 signals aligned</span></span>'
         f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Entry: '
         f'<span style="color:{TEXT1};font-weight:700;">${entry:.2f}</span></span>'
         f'</div></div>'
@@ -169,9 +169,9 @@ def render_ai_recommendation() -> str:
         sub_scores = (
             f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid {BORDER};">'
             f'<div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;'
-            f'letter-spacing:.8px;margin-bottom:6px;">Model breakdown</div>'
-            + _mini_bar("XGBoost", xgb_p, xc)
-            + _mini_bar("LSTM", lstm_p, lc)
+            f'letter-spacing:.8px;margin-bottom:6px;">Signal breakdown</div>'
+            + _mini_bar("Breakout AI", xgb_p, xc)
+            + _mini_bar("Pattern AI", lstm_p, lc)
             + f'<div style="display:flex;gap:8px;margin:4px 0;">'
             f'<span style="font-size:{FONT_LABEL};color:{TEXT2};width:68px;flex-shrink:0;">Sentiment</span>'
             f'<span style="font-size:{FONT_LABEL};color:{sc};">'
