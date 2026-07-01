@@ -25,3 +25,6 @@ tests/req_snapshots/req_2*.json
 
 # DuckDB generated database file (created at runtime)
 database/duckdb/*.duckdb
+
+# HuggingFace model download cache (temp directory, not source-controlled)
+models/hf_fresh/
