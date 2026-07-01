@@ -30,6 +30,11 @@ _SELL_REASON: dict[str, str] = {
     "SELL_RECONCILE": "Reconciled on startup",
 }
 
+_BADGE_MAP: dict[str, str] = {
+    "SELL_STOP": "SELL", "SELL_TP": "SELL", "SELL_TRAIL": "SELL",
+    "SELL_ENSEMBLE": "SELL", "SELL_TIME": "SELL", "SELL_TRIM": "TRIM",
+}
+
 
 # ── Render: positions table ───────────────────────────────────────────────────
 @timed(_logger)
@@ -109,10 +114,6 @@ def render_positions() -> str:
 @safe_render("Trades")
 def render_trades() -> str:
     d   = get_data()
-    _BADGE_MAP = {
-        "SELL_STOP": "SELL", "SELL_TP": "SELL", "SELL_TRAIL": "SELL",
-        "SELL_ENSEMBLE": "SELL", "SELL_TIME": "SELL", "SELL_TRIM": "TRIM",
-    }
     vm_rows = [r for r in build_trades_vm() if r.action != "SELL_RECONCILE"]
     total_trades = d.get("total_trades", 0)
 

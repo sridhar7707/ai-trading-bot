@@ -96,8 +96,8 @@ def measure_render_functions() -> dict:
         return {"error": "trades.db not found --- skipping render benchmarks"}
 
     render_fns = [
-        ("dashboard.components.overview", "render_metrics"),
-        ("dashboard.components.history",  "render_portfolio_performance"),
+        ("dashboard.components.overview",  "render_portfolio_health_hero"),
+        ("dashboard.components.history",   "render_portfolio_performance"),
         ("dashboard.components.portfolio", "render_positions"),
     ]
 

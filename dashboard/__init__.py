@@ -1,7 +1,5 @@
 """TradeGenius dashboard package &mdash; re-exports all render functions."""
 from dashboard.components.overview import (
-    render_metrics,
-    render_dashboard_hero,
     render_portfolio_health_hero,
 )
 from dashboard.components.market_mood import render_market_mood
@@ -24,7 +22,6 @@ from dashboard.components.models import (
 )
 from dashboard.components.signals import (
     render_watchlist,
-    render_signals_tab,
     render_timeline,
 )
 from dashboard.components.history import (

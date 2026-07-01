@@ -49,14 +49,20 @@ def render_recommendation_history() -> str:
     recs = safe_query("""
         SELECT r.symbol, r.prediction_date, r.recommendation, r.confidence,
                r.prev_recommendation, r.price_at_recommendation,
-               sl.regime, sl.ensemble_score, sl.xgb_prob, sl.lstm_prob, sl.feature_drivers
+               sl.regime, sl.ensemble_score, sl.xgb_prob, sl.lstm_prob,
+               t.feature_drivers
         FROM recommendations r
         LEFT JOIN (
             SELECT symbol, date(timestamp) AS d,
-                   regime, ensemble_score, xgb_prob, lstm_prob, feature_drivers,
+                   regime, ensemble_score, xgb_prob, lstm_prob,
                    ROW_NUMBER() OVER (PARTITION BY symbol, date(timestamp) ORDER BY id DESC) AS rn
             FROM signal_log
         ) sl ON sl.symbol = r.symbol AND sl.d = r.prediction_date AND sl.rn = 1
+        LEFT JOIN (
+            SELECT symbol, date(timestamp) AS d, feature_drivers,
+                   ROW_NUMBER() OVER (PARTITION BY symbol, date(timestamp) ORDER BY id DESC) AS rn
+            FROM trades WHERE action = 'BUY' AND feature_drivers IS NOT NULL
+        ) t ON t.symbol = r.symbol AND t.d = r.prediction_date AND t.rn = 1
         WHERE r.prediction_date >= date('now', '-14 days')
         ORDER BY r.prediction_date DESC, r.symbol ASC
         LIMIT 200
@@ -246,7 +252,7 @@ def render_buy_candidates() -> str:
     """Ranked list of stocks the AI wants to buy but hasn't yet — not in open positions."""
     rows = safe_query("""
         SELECT s.symbol, s.ensemble_score, s.xgb_prob, s.lstm_prob,
-               s.feature_drivers, s.regime, s.ensemble_action, s.timestamp
+               NULL AS feature_drivers, s.regime, s.ensemble_action, s.timestamp
         FROM signal_log s
         INNER JOIN (
             SELECT symbol, MAX(id) AS max_id
@@ -408,7 +414,7 @@ def render_top_picks() -> str:
     """Compact ranked card: top 10 stocks the AI recommends buying right now."""
     rows = safe_query("""
         SELECT r.symbol, r.confidence,
-               sl.feature_drivers, sl.xgb_prob, sl.lstm_prob
+               NULL AS feature_drivers, sl.xgb_prob, sl.lstm_prob
         FROM recommendations r
         LEFT JOIN (
             SELECT symbol, MAX(id) AS max_id
