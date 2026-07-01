@@ -10,9 +10,9 @@ import pandas as pd
 from loguru import logger
 
 # Thresholds — stricter than the bot's internal BUY gates
-_HC_XGB_MIN     = 0.65   # vs bot's 0.50 secondary gate
+_HC_XGB_MIN     = 0.62   # vs bot's 0.50 secondary gate (lowered from 0.65: AUC 0.546 makes 3pt diff noise)
 _HC_LSTM_MIN    = 0.55   # LSTM must have directional conviction
-_HC_VOL_RATIO   = 1.5    # volume 1.5× 20-day average
+_HC_VOL_RATIO   = 1.0    # volume at/above 20-day average (lowered from 1.5: bot runs pre-peak-volume)
 _HC_MACRO_MIN   = 0.50   # macro at least neutral
 _STOP_PCT       = 0.04   # 4% stop distance (matches bot's STOP_LOSS_PCT)
 _RR_MIN         = 2.0    # minimum risk/reward ratio
@@ -78,11 +78,12 @@ def check_signal_gate(
         reasons.append(f"SPY negative today ({spy_today_pct:+.2%})")
 
     # ⑥ Risk/reward: target must be at least 2× the stop distance away
-    # Target = 2× stop distance above entry (gives R:R = 2.0 by construction),
-    # then cap at 52-week high × 1.01 so we never target beyond proven resistance.
+    # Target = 2× stop distance above entry (gives R:R = 2.0 by construction).
+    # Cap at 52-week high × 1.10 — stocks regularly break to new highs, so
+    # 1.01 was incorrectly collapsing targets for stocks already near their highs.
     target_base = round(entry * (1 + 2 * _STOP_PCT), 2)
     if high_52w > entry:
-        target = round(min(high_52w * 1.01, target_base), 2)
+        target = round(min(high_52w * 1.10, target_base), 2)
     else:
         target = target_base
     rr_ratio = round((target - entry) / (entry - stop), 2) if entry > stop else 0.0
