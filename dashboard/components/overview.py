@@ -22,9 +22,70 @@ from dashboard.data import (
     get_data, _now_ct, _market_status, _to_ct, safe_query,
     get_db_conn, DB_PATH,
 )
-from dashboard.builders import build_health_vm
+from dashboard.builders import build_health_vm, build_actions_vm
 from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
+
+
+# ── PANEL 0: Daily Headline ───────────────────────────────────────────────────
+@safe_render("Daily Headline")
+def render_daily_headline() -> str:
+    """Pinned one-liner: today's P&L, trade count, alert count."""
+    d         = get_data()
+    today_str = str(datetime.date.today())
+    yest_str  = str(datetime.date.today() - datetime.timedelta(days=1))
+
+    yest_snap = safe_query(
+        "SELECT portfolio_value FROM portfolio_snapshots "
+        "WHERE date(timestamp) = ? ORDER BY timestamp DESC LIMIT 1",
+        (yest_str,), default=[],
+    )
+    today_snap = safe_query(
+        "SELECT portfolio_value FROM portfolio_snapshots "
+        "WHERE date(timestamp) = ? ORDER BY timestamp DESC LIMIT 1",
+        (today_str,), default=[],
+    )
+    yest_val  = float(yest_snap[0][0])  if yest_snap  else None
+    today_val = float(today_snap[0][0]) if today_snap else None
+
+    if yest_val and today_val and yest_val > 0:
+        delta_d   = today_val - yest_val
+        delta_pct = delta_d / yest_val * 100
+        pnl_c     = GAIN if delta_d >= 0 else LOSS
+        arrow     = "↑" if delta_d >= 0 else "↓"
+        sign      = "+" if delta_d >= 0 else ""
+        delta_str = f"{arrow} {sign}${abs(delta_d):,.0f} ({delta_pct:+.2f}%)"
+    else:
+        delta_d   = None
+        delta_pct = None
+        pnl_c     = TEXT2
+        delta_str = "—"
+
+    trade_count = safe_query(
+        "SELECT COUNT(*) FROM trades "
+        "WHERE date(timestamp) = ? AND action != 'SELL_RECONCILE'",
+        (today_str,), default=[(0,)],
+    )
+    n_trades = int(trade_count[0][0]) if trade_count else 0
+    trade_str = f"{n_trades} trade{'s' if n_trades != 1 else ''} today" if n_trades else "no trades today"
+
+    n_alerts = sum(1 for a in build_actions_vm() if a.urgency == "high")
+    alert_str = (
+        f'&nbsp;·&nbsp;<span style="color:{LOSS};font-weight:700;">'
+        f'{n_alerts} alert{"s" if n_alerts != 1 else ""}</span>'
+        if n_alerts else ""
+    )
+
+    return (
+        f'<div style="background:{pnl_c}11;border-left:3px solid {pnl_c};'
+        f'border-radius:0 8px 8px 0;padding:10px 18px;margin-bottom:4px;'
+        f'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+        f'<span style="font-weight:700;color:{pnl_c};font-size:{FONT_VALUE};">'
+        f'Today &nbsp; {delta_str}</span>'
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
+        f'{trade_str}{alert_str}</span>'
+        f'</div>'
+    )
 
 
 # ── PANEL 1: Portfolio Health Hero ────────────────────────────────────────────
@@ -132,17 +193,29 @@ def render_portfolio_health_hero() -> str:
     realized_str   = f"${realized_gain:+,.2f}" if realized_gain != 0 else "$0.00"
     realized_c     = GAIN if realized_gain >= 0 else LOSS
 
-    # Bot status: Scanning / Idle / Market Closed
+    # Bot status: show exact last-run time
     _last_scan = safe_query(
-        "SELECT MAX(timestamp) FROM signal_log"
-        " WHERE timestamp >= datetime('now','-90 minutes')",
+        "SELECT MAX(timestamp) FROM signal_log",
         default=[(None,)]
     )
-    _has_recent = bool(_last_scan and _last_scan[0][0])
+    _last_ts_raw = _last_scan[0][0] if _last_scan else None
+    _last_ts_ct  = _to_ct(_last_ts_raw) if _last_ts_raw else None
+    _has_recent = False
+    if _last_ts_raw:
+        try:
+            import datetime as _dt2
+            _last_naive = _dt2.datetime.strptime(str(_last_ts_raw)[:19], "%Y-%m-%d %H:%M:%S")
+            _age_mins   = (_dt2.datetime.utcnow() - _last_naive).total_seconds() / 60
+            _has_recent = _age_mins <= 90
+        except Exception:
+            pass
     if "closed" in mkt_label.lower() or "pre" in mkt_label.lower() or "after" in mkt_label.lower():
         bot_status, bot_c = "Market Closed", TEXT3
-    elif _has_recent:
-        bot_status, bot_c = "Scanning", GAIN
+    elif _last_ts_ct:
+        _time_label = _last_ts_ct[11:16] if len(_last_ts_ct) >= 16 else _last_ts_ct
+        _tz_label   = _last_ts_ct[17:19] if len(_last_ts_ct) >= 19 else "CT"
+        bot_status  = f"Last run {_time_label} {_tz_label}"
+        bot_c       = GAIN if _has_recent else NEURAL
     else:
         bot_status, bot_c = "Waiting", NEURAL
 

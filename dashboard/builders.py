@@ -11,7 +11,8 @@ from dashboard.design_system import (
     GAIN, LOSS, NEURAL,
     SURFACE2,
 )
-from dashboard.data import get_data, _to_ct
+import datetime
+from dashboard.data import get_data, _to_ct, safe_query
 from dashboard.viewmodels import (
     PositionRow, TradeRow, HealthComponent, HealthViewModel,
     ActionRow, DecisionRow, RebalanceRow,
@@ -60,6 +61,18 @@ def build_positions_vm() -> list[PositionRow]:
     d         = get_data()
     open_syms = d.get("open_pos", {})
     prices    = d.get("prices", {})
+
+    # Fetch opened_at per symbol from position_state for days-held calculation
+    _opened_at: dict[str, str] = {}
+    try:
+        rows = safe_query("SELECT symbol, opened_at FROM position_state", default=[])
+        for sym, ts in (rows or []):
+            if ts:
+                _opened_at[sym] = str(ts)
+    except Exception:
+        pass
+
+    _today = datetime.date.today()
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "&mdash;") != "&mdash;" else 0.0
@@ -93,6 +106,15 @@ def build_positions_vm() -> list[PositionRow]:
             "small"
         )
 
+        days_held = 0
+        opened_ts = _opened_at.get(sym)
+        if opened_ts:
+            try:
+                opened_date = datetime.date.fromisoformat(str(opened_ts)[:10])
+                days_held = (_today - opened_date).days
+            except Exception:
+                pass
+
         rows.append(PositionRow(
             symbol=sym,
             shares=v["shares"],
@@ -109,6 +131,7 @@ def build_positions_vm() -> list[PositionRow]:
             reason=reason,
             sell_score=sell_score,
             score_color=_score_color(sell_score),
+            days_held=days_held,
         ))
     return rows
 

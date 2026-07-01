@@ -22,6 +22,7 @@ class PositionRow:
     reason: str
     sell_score: int
     score_color: str
+    days_held: int = 0
 
 
 @dataclass
