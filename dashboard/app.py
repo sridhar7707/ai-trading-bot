@@ -283,9 +283,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     def _refresh_symbol_choices(sel):
         choices = _get_symbol_choices()
         val = sel if sel in choices else (choices[0] if choices else None)
-        return gr.update(choices=choices, value=val)
-    # Use _sym_state as input so symbol_selector is never both input and output
-    timer.tick(fn=_refresh_symbol_choices, inputs=[_sym_state], outputs=symbol_selector)
+        return gr.update(choices=choices, value=val), val   # val heals _sym_state on fallback
+    # Use _sym_state as input so symbol_selector is never both input and output;
+    # also write val back to _sym_state so it stays in sync when timer changes the selection
+    timer.tick(fn=_refresh_symbol_choices, inputs=[_sym_state], outputs=[symbol_selector, _sym_state])
     timer.tick(fn=render_symbol_detail, inputs=[_sym_state], outputs=[symbol_detail_out])
     # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
     timer.tick(fn=render_news_feed, outputs=news_out)
