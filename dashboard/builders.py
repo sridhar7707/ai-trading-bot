@@ -12,6 +12,7 @@ from dashboard.design_system import (
     SURFACE2,
 )
 import datetime
+from config import STOP_LOSS_PCT as _STOP_LOSS_PCT, ATR_TRAIL_MULTIPLIER as _ATR_TRAIL_MULT
 from dashboard.data import get_data, _to_ct, safe_query
 from dashboard.viewmodels import (
     PositionRow, TradeRow, HealthComponent, HealthViewModel,
@@ -80,9 +81,6 @@ def build_positions_vm() -> list[PositionRow]:
             if atr: _atr_entry[sym]   = float(atr)
     except Exception:
         pass
-
-    _STOP_LOSS_PCT      = 0.04
-    _ATR_TRAIL_MULT     = 1.5
 
     _today = datetime.date.today()
     _pv = 0.0

@@ -113,8 +113,15 @@ def render_rebalance() -> str:
     from config import SECTOR_MAP
     reduces = [r for r in vm_rows if r.delta_dollars < -50]
     adds    = [r for r in vm_rows if r.delta_dollars >  50]
-    action_html = ""
-    if reduces or adds:
+    if not reduces and not adds:
+        action_html = (
+            f'<div style="margin-top:8px;">'
+            f'{_section("📋","Action Plan","all positions at target weight")}'
+            f'{_card(_empty_state("✅", "No changes needed", "All positions are within $50 of target allocation."))}'
+            f'</div>'
+        )
+    else:
+        action_html = ""
         cash_freed    = sum(abs(r.delta_dollars) for r in reduces)
         cash_deployed = sum(r.delta_dollars      for r in adds)
         net_cash      = cash_freed - cash_deployed

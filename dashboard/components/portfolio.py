@@ -82,7 +82,7 @@ def render_positions() -> str:
 
         td  = TD if i < n - 1 else TD0
         reason = r.reason
-        pnl_d_str = f'{r.pnl_dollar:+,.2f}' if r.pnl_dollar != 0 else '$0.00'
+        pnl_d_str = f'{r.pnl_dollar:+,.2f}' if r.pnl_dollar != 0 else '0.00'
         days_str  = f'{r.days_held}d' if r.days_held > 0 else '—'
         days_c    = TEXT2 if r.days_held <= 7 else (NEURAL if r.days_held <= 14 else LOSS)
         stop_str  = f'${r.stop_price:.2f}' if r.stop_price else '—'

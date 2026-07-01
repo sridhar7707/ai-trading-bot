@@ -22,7 +22,7 @@ from dashboard.data import (
     get_data, _now_ct, _market_status, _to_ct, safe_query,
     get_db_conn, DB_PATH,
 )
-from dashboard.builders import build_health_vm, build_actions_vm
+from dashboard.builders import build_health_vm
 from bot.core.error_logger import safe_render, timed, log_exception
 _logger = logger
 
@@ -69,13 +69,6 @@ def render_daily_headline() -> str:
     n_trades = int(trade_count[0][0]) if trade_count else 0
     trade_str = f"{n_trades} trade{'s' if n_trades != 1 else ''} today" if n_trades else "no trades today"
 
-    n_alerts = sum(1 for a in build_actions_vm() if a.urgency == "high")
-    alert_str = (
-        f'&nbsp;·&nbsp;<span style="color:{LOSS};font-weight:700;">'
-        f'{n_alerts} alert{"s" if n_alerts != 1 else ""}</span>'
-        if n_alerts else ""
-    )
-
     return (
         f'<div style="background:{pnl_c}11;border-left:3px solid {pnl_c};'
         f'border-radius:0 8px 8px 0;padding:10px 18px;margin-bottom:4px;'
@@ -83,7 +76,7 @@ def render_daily_headline() -> str:
         f'<span style="font-weight:700;color:{pnl_c};font-size:{FONT_VALUE};">'
         f'Today &nbsp; {delta_str}</span>'
         f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">'
-        f'{trade_str}{alert_str}</span>'
+        f'{trade_str}</span>'
         f'</div>'
     )
 
@@ -213,7 +206,7 @@ def render_portfolio_health_hero() -> str:
         bot_status, bot_c = "Market Closed", TEXT3
     elif _last_ts_ct:
         _time_label = _last_ts_ct[11:16] if len(_last_ts_ct) >= 16 else _last_ts_ct
-        _tz_label   = _last_ts_ct[17:19] if len(_last_ts_ct) >= 19 else "CT"
+        _tz_label   = _last_ts_ct[17:].strip() if len(_last_ts_ct) > 17 else "CT"
         bot_status  = f"Last run {_time_label} {_tz_label}"
         bot_c       = GAIN if _has_recent else NEURAL
     else:

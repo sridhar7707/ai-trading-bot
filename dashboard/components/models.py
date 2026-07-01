@@ -19,7 +19,7 @@ from dashboard.data import get_data, _to_ct
 from dashboard.charts import _FI_LABELS
 from dashboard.components.ai_panel import _WHY_MAP
 from bot.core.error_logger import safe_render
-from bot.monitor._dashboard_html import _SELL_REASON
+from dashboard.components.portfolio import _SELL_REASON
 import os
 import time as _time
 from dashboard.data import get_db_conn

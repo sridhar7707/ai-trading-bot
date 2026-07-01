@@ -72,7 +72,7 @@ from dashboard.components.risk import (
     _risk_level, _SECTOR_MAP,
 )
 from dashboard.components.portfolio import (
-    render_positions, render_trades, _SELL_REASON,
+    render_positions, render_trades,
 )
 from dashboard.components.models import (
     render_validation_report, render_institutional_metrics, render_investor_view,
