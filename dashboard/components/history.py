@@ -25,7 +25,7 @@ def render_whats_changed() -> str:
     def _empty(msg: str) -> str:
         inner = (f'<div style="color:{TEXT2};text-align:center;padding:24px;font-size:{FONT_LABEL};">{msg}</div>')
         return (f'<div class="nt nt-wrap">'
-                f'{_section("ðŸ“…", "Since Yesterday", date_label)}'
+                f'{_section("&#x1F4C5;", "Since Yesterday", date_label)}'
                 f'{_wrap(inner)}</div>')
 
     if not os.path.exists(DB_PATH):
@@ -86,7 +86,7 @@ def render_whats_changed() -> str:
         delta = cur_v - start_v
         pct   = delta / start_v * 100
         d_c   = GAIN if delta >= 0 else LOSS
-        icon  = "ðŸ“ˆ" if delta >= 0 else "ðŸ“‰"
+        icon  = "&#x1F4C8;" if delta >= 0 else "&#x1F4C9;"
         word  = "up" if delta >= 0 else "down"
 
         d_data   = get_data()
@@ -125,7 +125,7 @@ def render_whats_changed() -> str:
         _today_title = "Today's Progress"
         return (
             f'<div class="nt nt-wrap">'
-            f'{_section("ðŸ“…", _today_title, date_label)}'
+            f'{_section("&#x1F4C5;", _today_title, date_label)}'
             f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
             f'{pv_html}{pos_rows}</div></div>'
         )
@@ -144,7 +144,7 @@ def render_whats_changed() -> str:
             delta = tv - yv
             pct   = delta / yv * 100
             d_c   = GAIN if delta >= 0 else LOSS
-            icon  = "ðŸ“ˆ" if delta >= 0 else "ðŸ“‰"
+            icon  = "&#x1F4C8;" if delta >= 0 else "&#x1F4C9;"
             word  = "up" if delta >= 0 else "down"
             pv_html = (
                 f'<div style="background:{BG};border:1px solid {d_c}33;border-radius:6px;'
@@ -219,7 +219,7 @@ def render_whats_changed() -> str:
 
     return (
         f'<div class="nt nt-wrap">'
-        f'{_section("ðŸ“…", "Since Yesterday", date_label)}'
+        f'{_section("&#x1F4C5;", "Since Yesterday", date_label)}'
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:8px;padding:14px 16px;">'
         f'{pv_html}{rows_html}'
         f'</div></div>'
