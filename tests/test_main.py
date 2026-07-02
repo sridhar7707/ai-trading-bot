@@ -31,7 +31,11 @@ def db():
             realized_pnl REAL DEFAULT 0.0,
             order_id TEXT DEFAULT NULL,
             holding_days INTEGER DEFAULT 0,
-            feature_drivers TEXT DEFAULT NULL
+            feature_drivers TEXT DEFAULT NULL,
+            ai_reasoning TEXT DEFAULT NULL,
+            stop_loss REAL DEFAULT NULL,
+            take_profit REAL DEFAULT NULL,
+            risk_reward_ratio REAL DEFAULT NULL
         )
     """)
     con.execute("""

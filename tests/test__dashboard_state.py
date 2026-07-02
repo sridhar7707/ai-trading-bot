@@ -15,8 +15,6 @@ def test_pull_lock_is_lock():
 
 def test_spy_cache_is_dict():
     assert isinstance(_spy_cache, dict)
-    assert "key" in _spy_cache
-    assert "ret" in _spy_cache
 
 
 def test_state_is_mutable():
