@@ -55,6 +55,7 @@ from dashboard.data import (
 from dashboard.charts import (
     render_equity_chart, render_allocation_chart,
     render_pnl_chart, render_feature_importance_chart,
+    render_returns_histogram, render_winloss_chart,
     _get_sym_hist, _sym_perf, _sparkline, _FI_LABELS,
 )
 
@@ -227,6 +228,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
         with gr.TabItem("📈 Performance"):
             scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
+            metrics_out   = gr.HTML(value=render_institutional_metrics)
+            with gr.Row():
+                returns_hist_plot = gr.Plot(value=render_returns_histogram, label="")
+                winloss_plot      = gr.Plot(value=render_winloss_chart,     label="")
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View",
@@ -234,7 +239,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             )
             investor_out = gr.HTML(value=render_investor_view, visible=True)
             with gr.Column(visible=False) as dev_col:
-                metrics_out = gr.HTML(value=render_institutional_metrics)
                 with gr.Row():
                     with gr.Column(scale=65):
                         fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
@@ -363,8 +367,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_trades,                outputs=trades_out)
     # Performance tab
     timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
-    timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
+    timer.tick(fn=render_returns_histogram,        outputs=returns_hist_plot)
+    timer.tick(fn=render_winloss_chart,            outputs=winloss_plot)
+    timer.tick(fn=render_investor_view,            outputs=investor_out)
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
     timer.tick(fn=render_validation_report,        outputs=val_out)
     # Settings tab — timer keeps summary in sync if another session saved changes

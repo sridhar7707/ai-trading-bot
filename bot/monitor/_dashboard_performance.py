@@ -85,23 +85,27 @@ def get_performance_metrics(days: int = 60) -> dict:
     win_rate = len(wins_pnl) / closed if closed else 0.0
     avg_win  = float(np.mean(wins_pnl))   if wins_pnl   else 0.0
     avg_loss = float(np.mean(losses_pnl)) if losses_pnl else 0.0
+    gross_w  = sum(wins_pnl)
+    gross_l  = abs(sum(losses_pnl))
+    profit_factor = round(gross_w / gross_l, 2) if gross_l > 0 else None
     since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     # Lazy import avoids circular dependency — dashboard_data is loaded before this is called
     from bot.monitor.dashboard_data import spy_return_since as _spy_return_since
     spy_ret  = _spy_return_since(since_day)
     alpha    = round(total_return - spy_ret, 4) if spy_ret is not None else None
     return {
-        "sharpe":        round(sharpe, 2) if sharpe is not None else None,
-        "sortino":       round(sortino, 2) if sortino is not None else None,
-        "win_rate":      round(win_rate, 4),
-        "avg_win":       round(avg_win, 4),
-        "avg_loss":      round(avg_loss, 4),
-        "max_drawdown":  round(max_dd, 4),
-        "calmar":        calmar,
-        "alpha":         alpha,
-        "total_return":  round(total_return, 4),
-        "trade_count":   trade_count,
-        "closed_trades": closed,
+        "sharpe":         round(sharpe, 2) if sharpe is not None else None,
+        "sortino":        round(sortino, 2) if sortino is not None else None,
+        "win_rate":       round(win_rate, 4),
+        "avg_win":        round(avg_win, 4),
+        "avg_loss":       round(avg_loss, 4),
+        "max_drawdown":   round(max_dd, 4),
+        "calmar":         calmar,
+        "alpha":          alpha,
+        "profit_factor":  profit_factor,
+        "total_return":   round(total_return, 4),
+        "trade_count":    trade_count,
+        "closed_trades":  closed,
     }
 
 

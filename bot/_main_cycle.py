@@ -433,13 +433,22 @@ def _handle_entry(
                          sector=_sym_sector_tg,
                          sector_pct_after=_sect_pct_tg,
                          cash_pct_after=_cash_pct_tg)
+            _ai_rsn = (
+                f"Bought {symbol} at ${fill_price:.2f}. "
+                f"XGB: {xgb_prob:.0%}, LSTM: {lstm_prob:.0%}, regime: {regime_name}. "
+                f"Stop: {stop_pct:.1%}, target: {tp_target_pct:.1%}, R:R: {rr_ratio:.2f}x."
+            )
             log_trade(con, symbol, "BUY", fill_shares,
                       fill_price, notional, regime_name, portfolio_value, 0,
                       xgb_prob=xgb_prob, lstm_prob=lstm_prob,
                       sentiment_score=sentiments.get(symbol, 0.0),
                       macro_score=macro_score,
                       order_id=result.get("order_id"),
-                      feature_drivers=json.dumps(_drivers) if _drivers is not None else None)
+                      feature_drivers=json.dumps(_drivers) if _drivers is not None else None,
+                      ai_reasoning=_ai_rsn,
+                      stop_loss=round(fill_price * (1 - stop_pct), 4),
+                      take_profit=round(fill_price * (1 + tp_target_pct), 4),
+                      risk_reward_ratio=round(rr_ratio, 4))
             _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)
             available_cash -= notional
             buy_order_syms.discard(symbol)  # order is now filled, not pending

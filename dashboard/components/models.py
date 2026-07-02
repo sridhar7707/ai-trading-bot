@@ -235,7 +235,7 @@ def render_institutional_metrics() -> str:
 
     if df.empty or "portfolio_value" not in df.columns:
         msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_LABEL};">No trade history yet.</div>'
-        return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
+        return f'<div class="nt nt-wrap">{_section("📐","Performance Deep Dive")}{_wrap(msg)}</div>'
 
     daily = (df.dropna(subset=["portfolio_value"])
                .groupby("date")["portfolio_value"].last()
@@ -245,40 +245,45 @@ def render_institutional_metrics() -> str:
 
     if len(daily) < 3:
         msg = f'<div style="color:{TEXT2};text-align:center;padding:28px;font-size:{FONT_LABEL};">Need ≥ 3 days of history.</div>'
-        return f'<div class="nt nt-wrap">{_section("📐","Institutional Metrics")}{_wrap(msg)}</div>'
+        return f'<div class="nt nt-wrap">{_section("📐","Performance Deep Dive")}{_wrap(msg)}</div>'
 
     rets   = daily["value"].pct_change().dropna()
     mean_r = float(rets.mean())
     std_r  = float(rets.std())
 
-    # Sharpe (annualised, 252 trading days)
     sharpe = (mean_r / std_r * (252 ** 0.5)) if std_r > 0 else 0.0
 
-    # Sortino (downside std only)
     neg_rets = rets[rets < 0]
     down_std = float(neg_rets.std()) if len(neg_rets) > 1 else std_r
     sortino  = (mean_r / down_std * (252 ** 0.5)) if down_std > 0 else 0.0
 
-    # Max drawdown
     vals  = daily["value"]
     peak  = vals.cummax()
     max_dd = float(((peak - vals) / peak.replace(0, float("nan"))).max())
 
-    # CAGR
     n_days  = (pd.to_datetime(daily["date"].iloc[-1]) - pd.to_datetime(daily["date"].iloc[0])).days
     start_v = float(daily["value"].iloc[0])
     end_v   = float(daily["value"].iloc[-1])
     cagr    = ((end_v / start_v) ** (365.0 / n_days) - 1) if n_days > 0 and start_v > 0 else 0.0
+    calmar  = (cagr / max_dd) if max_dd > 0 else 0.0
 
-    # Calmar
-    calmar = (cagr / max_dd) if max_dd > 0 else 0.0
-
-    # VaR 95% (1-day)
-    var_95 = float(rets.quantile(0.05)) if len(rets) >= 5 else 0.0
-
-    # Win rate
     sells    = df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")]
-    win_rate = float((sells["pnl_pct"] > 0).sum() / len(sells)) if len(sells) > 0 else 0.0
+    n_s      = len(sells)
+    win_rate = float((sells["pnl_pct"] > 0).sum() / n_s) if n_s > 0 else 0.0
+    pnl_vals = [float(p) for p in sells["pnl_pct"].dropna()] if n_s > 0 else []
+    gross_w  = sum(p for p in pnl_vals if p > 0)
+    gross_l  = abs(sum(p for p in pnl_vals if p < 0))
+    profit_factor: float | None = round(gross_w / gross_l, 2) if gross_l > 0 else None
+
+    total_return = (end_v - start_v) / start_v if start_v > 0 else 0.0
+    alpha: float | None = None
+    try:
+        from bot.monitor.dashboard_data import spy_return_since as _spy_rs
+        _spy = _spy_rs(str(daily["date"].iloc[0]))
+        if _spy is not None:
+            alpha = round(total_return - _spy, 4)
+    except Exception:
+        pass
 
     def _row(label, val_str, color, desc):
         return (
@@ -295,30 +300,36 @@ def render_institutional_metrics() -> str:
     so_c = GAIN if sortino > 1.5 else (NEURAL if sortino > 0.8 else LOSS)
     dd_c = GAIN if max_dd < 0.05 else (NEURAL if max_dd < 0.12 else LOSS)
     ca_c = GAIN if calmar > 2 else (NEURAL if calmar > 1 else LOSS)
-    vr_c = GAIN if var_95 > -0.02 else (NEURAL if var_95 > -0.04 else LOSS)
     wr_c = GAIN if win_rate > 0.55 else (NEURAL if win_rate > 0.45 else LOSS)
+    pf_c = (GAIN if profit_factor is not None and profit_factor > 1.5
+            else (NEURAL if profit_factor is not None and profit_factor > 1.0 else LOSS))
+    al_c = (GAIN if alpha is not None and alpha > 0
+            else (NEURAL if alpha is not None and alpha > -0.02 else LOSS))
+
+    pf_str = f"{profit_factor:.2f}" if profit_factor is not None else "n/a"
+    al_str = f"{alpha:+.2%}" if alpha is not None else "n/a (no benchmark data)"
 
     rows = (
-        _row("Risk-Adjusted Return",    f"{sharpe:.2f}",  sh_c,
-             "Sharpe ratio — how much return per unit of risk. >1.0 = good, >2.0 = excellent")
-        + _row("Return vs Downside Risk", f"{sortino:.2f}", so_c,
-               "Sortino ratio — like above but only penalises losing months, not winning volatility")
-        + _row("Worst Portfolio Dip",  f"{max_dd:.1%}",  dd_c,
-               "Max drawdown — biggest drop from peak to trough (e.g. 5% means portfolio fell 5% from its high)")
-        + _row("Yearly Growth Rate",   f"{cagr:.1%}",    (GAIN if cagr > 0.15 else (NEURAL if cagr > 0 else LOSS)),
-               "CAGR — what your average annual return would be if this pace continued all year")
-        + _row("Return vs Max Loss",   f"{calmar:.2f}",  ca_c,
-               "Calmar ratio — yearly growth divided by worst dip. Higher = better recovery from losses")
-        + _row("Worst Expected Daily Loss", f"{var_95:.2%}", vr_c,
-               "VaR 95% — on a bad day (1-in-20), this is the most you'd expect to lose")
-        + _row("Win Rate",             f"{win_rate:.1%}", wr_c,
-               "% of closed trades that made money (target: >55%)")
+        _row("Return quality vs. risk taken", f"{sharpe:.2f}", sh_c,
+             "Sharpe ratio &mdash; how much return per unit of total risk. &gt;1.0 = good, &gt;2.0 = excellent")
+        + _row("How well losses are controlled", f"{sortino:.2f}", so_c,
+               "Sortino ratio &mdash; like Sharpe but only penalises losing months, not winning volatility")
+        + _row("Worst drop from peak", f"{max_dd:.1%}", dd_c,
+               "Max drawdown &mdash; biggest drop from peak to trough")
+        + _row("Return vs. worst-case loss", f"{calmar:.2f}", ca_c,
+               "Calmar ratio &mdash; annualised return divided by max drawdown. Higher = better recovery")
+        + _row("Trades that made money", f"{win_rate:.1%}", wr_c,
+               "Win rate &mdash; % of closed trades that were profitable (target: &gt;55%)")
+        + _row("Gross wins &divide; gross losses", pf_str, pf_c,
+               "Profit factor &mdash; total gains divided by total losses. &gt;1.5 = good, &gt;2.0 = excellent")
+        + _row("Outperformance vs. S&amp;P 500", al_str, al_c,
+               "Alpha &mdash; how much the bot returned above the S&amp;P 500 over the same period")
     )
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:8px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'All metrics computed from trade history since launch. '
-        f'Need at least 30 days of history for reliable estimates — early numbers will fluctuate.'
+        f'Need at least 30 days of history for reliable estimates &mdash; early numbers will fluctuate.'
         f'</div>'
     )
     n_str = f"{n_days} days of history" if n_days > 0 else "&mdash;"

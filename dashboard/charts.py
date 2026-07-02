@@ -114,6 +114,23 @@ def render_equity_chart() -> Any:
                     text=f"Peak ${daily.loc[peak_idx,'value']:,.0f}",
                     showarrow=True, arrowhead=2, arrowcolor=GAIN,
                     font=dict(color=GAIN, size=10), bgcolor=GAIN_BG, bordercolor=GAIN_BD)
+                try:
+                    import yfinance as _yf
+                    _start = str(daily["date"].min().date() if hasattr(daily["date"].min(), "date") else daily["date"].min())
+                    _spy_raw = _yf.download("SPY", start=_start, progress=False, auto_adjust=True)
+                    if not _spy_raw.empty:
+                        _spy_close = (_spy_raw["Close"].squeeze().dropna())
+                        _spy_norm = _spy_close / float(_spy_close.iloc[0]) * float(daily["value"].iloc[0])
+                        _spy_dates = pd.to_datetime(_spy_close.index)
+                        fig.add_trace(go.Scatter(
+                            x=_spy_dates, y=_spy_norm,
+                            line=dict(color=TEXT2, width=1.5, dash="dot"),
+                            mode="lines", opacity=0.6,
+                            hovertemplate="<b>SPY %{x|%b %d}</b><br>$%{y:,.2f}<extra></extra>",
+                            name="SPY (scaled)",
+                        ))
+                except Exception:
+                    pass
 
         fig.update_layout(
             title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>&mdash; end-of-day snapshots, includes cash + open positions</span>",
@@ -325,6 +342,91 @@ def _sparkline(symbol: str) -> str:
         f'<circle cx="{lx:.1f}" cy="{ly:.1f}" r="2" fill="{color}"/>'
         f'</svg>'
     )
+
+
+def render_returns_histogram() -> Any:
+    try:
+        import plotly.graph_objects as go
+        df    = get_data()["trades_df"]
+        fig   = go.Figure()
+        sells = (df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")].copy()
+                 if not df.empty else pd.DataFrame())
+        if sells.empty or "pnl_pct" not in sells.columns or sells["pnl_pct"].isna().all():
+            fig.add_annotation(
+                text="Return distribution appears here after the first closed trade.",
+                xref="paper", yref="paper", x=0.5, y=0.5,
+                showarrow=False, font=dict(color=TEXT2, size=12))
+        else:
+            pnl = sells["pnl_pct"].dropna() * 100
+            fig.add_trace(go.Histogram(
+                x=pnl, nbinsx=20,
+                marker_color=PRIMARY, marker_line=dict(width=0),
+                opacity=0.8,
+                hovertemplate="Return: %{x:.1f}%<br>Count: %{y}<extra></extra>",
+                name="Return %",
+            ))
+            fig.add_vline(x=0, line_width=1, line_color=TEXT2, opacity=0.5)
+        fig.update_layout(
+            title=dict(text="Return Distribution  <span style='font-size:11px;'>&mdash; each bar = a closed trade</span>",
+                       font=dict(color=TEXT1, size=13), x=0.01),
+            xaxis=dict(title="Return %", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
+            yaxis=dict(title="Count", **PLOTLY_LAYOUT["yaxis"], tickfont=dict(color=TEXT2)),
+            **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
+            height=280,
+        )
+        return fig
+    except Exception as e:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.update_layout(**{k: v for k, v in PLOTLY_LAYOUT.items()
+                             if k not in ("xaxis", "yaxis")}, height=280)
+        fig.add_annotation(text=f"Chart error: {e}", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=LOSS))
+        return fig
+
+
+def render_winloss_chart() -> Any:
+    try:
+        import plotly.graph_objects as go
+        df    = get_data()["trades_df"]
+        fig   = go.Figure()
+        sells = (df[df["action"].str.startswith("SELL") & (df["action"] != "SELL_RECONCILE")].copy()
+                 if not df.empty else pd.DataFrame())
+        if sells.empty or "pnl_pct" not in sells.columns or sells["pnl_pct"].isna().all():
+            fig.add_annotation(
+                text="Win/loss breakdown appears here after the first closed trade.",
+                xref="paper", yref="paper", x=0.5, y=0.5,
+                showarrow=False, font=dict(color=TEXT2, size=12))
+        else:
+            wins   = int((sells["pnl_pct"] > 0).sum())
+            losses = int((sells["pnl_pct"] <= 0).sum())
+            fig.add_trace(go.Bar(
+                x=["Winning Trades", "Losing Trades"],
+                y=[wins, losses],
+                marker_color=[GAIN, LOSS], marker_line=dict(width=0),
+                text=[str(wins), str(losses)],
+                textposition="outside",
+                textfont=dict(color=TEXT1, size=13),
+                hovertemplate="%{x}: %{y}<extra></extra>",
+                name="Trades",
+            ))
+        fig.update_layout(
+            title=dict(text="Win / Loss Breakdown",
+                       font=dict(color=TEXT1, size=13), x=0.01),
+            xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT1)),
+            yaxis=dict(title="Trade Count", **PLOTLY_LAYOUT["yaxis"], tickfont=dict(color=TEXT2)),
+            **{k: v for k, v in PLOTLY_LAYOUT.items() if k not in ("xaxis", "yaxis")},
+            height=280,
+        )
+        return fig
+    except Exception as e:
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.update_layout(**{k: v for k, v in PLOTLY_LAYOUT.items()
+                             if k not in ("xaxis", "yaxis")}, height=280)
+        fig.add_annotation(text=f"Chart error: {e}", xref="paper", yref="paper",
+                           x=0.5, y=0.5, showarrow=False, font=dict(color=LOSS))
+        return fig
 
 
 def render_feature_importance_chart() -> Any:

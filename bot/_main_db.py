@@ -62,6 +62,9 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
         "holding_days INTEGER DEFAULT 0",
         "feature_drivers TEXT DEFAULT NULL",
         "ai_reasoning TEXT DEFAULT NULL",
+        "stop_loss REAL DEFAULT NULL",
+        "take_profit REAL DEFAULT NULL",
+        "risk_reward_ratio REAL DEFAULT NULL",
     ):
         try:
             con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
@@ -324,6 +327,10 @@ def log_trade(
     order_id: str | None = None,
     holding_days: int = 0,
     feature_drivers: str | None = None,
+    ai_reasoning: str | None = None,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    risk_reward_ratio: float | None = None,
 ) -> None:
     sentiment_norm  = (sentiment_score + 1.0) / 2.0
     ensemble_score  = (WEIGHTS["xgb"]  * xgb_prob + WEIGHTS["lstm"] * lstm_prob
@@ -333,12 +340,12 @@ def log_trade(
         """INSERT INTO trades
            (timestamp, symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
             xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
-            order_id, holding_days, feature_drivers)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            order_id, holding_days, feature_drivers, ai_reasoning, stop_loss, take_profit, risk_reward_ratio)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (datetime.now(timezone.utc).isoformat(),
          symbol, action, shares, price, notional, regime, portfolio_value, pnl_pct,
          xgb_prob, lstm_prob, sentiment_score, macro_score, ensemble_score, realized_pnl,
-         order_id, holding_days, feature_drivers),
+         order_id, holding_days, feature_drivers, ai_reasoning, stop_loss, take_profit, risk_reward_ratio),
     )
     con.commit()
 
