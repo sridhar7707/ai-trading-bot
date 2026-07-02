@@ -21,7 +21,7 @@ def compute_metrics(portfolio_values: List[float], trades: list, initial_balance
 
     sell_trades  = [t for t in trades if "SELL" in t.get("action", "")]
     win_trades   = [t for t in sell_trades if t.get("pnl_pct", 0) > 0]
-    loss_trades  = [t for t in sell_trades if t.get("pnl_pct", 0) <= 0]
+    loss_trades  = [t for t in sell_trades if t.get("pnl_pct", 0) < 0]
     win_rate     = len(win_trades) / len(sell_trades) if sell_trades else 0.0
     gross_profit = sum(t["pnl_pct"] for t in win_trades)
     gross_loss   = abs(sum(t["pnl_pct"] for t in loss_trades))

@@ -284,11 +284,11 @@ def render_institutional_metrics() -> str:
         _spy = _spy_rs(str(daily["date"].iloc[0]))
         if _spy is not None:
             alpha_inc = round(total_return - _spy, 4)
-        _s60 = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime("%Y-%m-%d")
+        _s60 = datetime.date.today() - datetime.timedelta(days=60)
         _d60 = daily[daily["date"] >= _s60]
         if len(_d60) >= 2:
             _r60 = float(_d60["value"].iloc[-1]) / float(_d60["value"].iloc[0]) - 1
-            _spy60 = _spy_rs(_s60)
+            _spy60 = _spy_rs(_s60.isoformat())
             if _spy60 is not None:
                 alpha_60d = round(_r60 - _spy60, 4)
     except Exception:

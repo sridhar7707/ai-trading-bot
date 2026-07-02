@@ -4,4 +4,4 @@ import threading
 
 _last_sync: dict = {"ok": None, "ts": None, "err": ""}
 _pull_lock = threading.Lock()
-_spy_cache: dict = {"key": None, "ret": None}
+_spy_cache: dict = {}   # {start_iso: (today_str, ret)} — multi-slot, one entry per lookback date

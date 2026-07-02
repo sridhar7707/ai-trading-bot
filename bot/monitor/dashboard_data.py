@@ -151,15 +151,14 @@ def spy_return_since(start_iso: str | None) -> float | None:
     if not start_iso or not os.environ.get("SPACE_ID"):
         return None
     today = date.today().isoformat()
-    key = (today, start_iso)
-    if _spy_cache.get("key") == key:
-        return _spy_cache.get("ret")
+    cached = _spy_cache.get(start_iso)
+    if cached is not None and cached[0] == today:
+        return cached[1]
     start_day = start_iso[:10]
     ret = _spy_return_alpaca(start_day)
     if ret is None:
         ret = _spy_return_yfinance(start_day)
-    _spy_cache["key"] = key
-    _spy_cache["ret"] = ret
+    _spy_cache[start_iso] = (today, ret)
     return ret
 
 
