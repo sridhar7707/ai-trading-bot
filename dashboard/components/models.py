@@ -199,7 +199,7 @@ def render_validation_report() -> str:
         )
 
     rows = (
-        _vr("XGB Val AUC",    f"{auc:.3f}",                    auc_c)
+        _vr("XGBoost Val AUC", f"{auc:.3f}",                    auc_c)
         + _vr("LSTM Val Loss",f"{val_loss:.4f}",               loss_c)
         + _vr("Train Rows",   f"{r.get('training_rows',0):,}")
         + _vr("Symbols",      str(r.get("training_symbols","&mdash;")))
@@ -212,7 +212,7 @@ def render_validation_report() -> str:
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
         f'padding:10px 14px;font-size:{FONT_LABEL};color:{TEXT2};line-height:1.6;">'
         f'<strong style="color:{TEXT1};">How to read this:</strong><br>'
-        f'<b>XGB Val AUC</b> &mdash; How well XGBoost predicts the right direction on data it '
+        f'<b>XGBoost Val AUC</b> &mdash; How well XGBoost predicts the right direction on data it '
         f'<em>never trained on</em>. 0.50 = random guessing. 0.60+ = meaningfully predictive. '
         f'1.0 = perfect (never achieved in practice).<br>'
         f'<b>LSTM Val Loss</b> &mdash; Prediction error on unseen data. Lower is better. '
@@ -381,7 +381,7 @@ def _model_quality_fallback() -> str:
                 TEXT2, TEXT2, "appears after first closed trade", 0.0)
         + _stat_card("Avg Winning Trade", "&mdash;",
                 TEXT2, TEXT2, "appears after first closed trade", 0.06)
-        + _stat_card("XGB Model AUC",     f"{auc:.3f}",
+        + _stat_card("XGBoost AUC",        f"{auc:.3f}",
                 TEXT2, auc_c, "≥0.60 = good · 0.50 = random", 0.12)
         + _stat_card("LSTM Val Loss",     f"{val_loss:.4f}",
                 TEXT2, loss_c, "≤0.65 = well-trained · 0.69 = random", 0.18)
