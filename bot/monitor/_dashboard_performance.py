@@ -29,7 +29,8 @@ def get_performance_metrics(days: int = 60) -> dict:
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     _empty = {"sharpe": None, "sortino": None, "win_rate": 0.0, "max_drawdown": 0.0,
               "total_return": 0.0, "trade_count": 0, "closed_trades": 0,
-              "avg_win": 0.0, "avg_loss": 0.0, "calmar": None, "alpha": None}
+              "avg_win": 0.0, "avg_loss": 0.0, "calmar": None, "alpha": None,
+              "profit_factor": None, "scratch_count": 0}
 
     try:
         pv_rows = con.execute(
@@ -46,7 +47,9 @@ def get_performance_metrics(days: int = 60) -> dict:
         ).fetchall()
 
     sells = con.execute(
-        "SELECT pnl_pct FROM trades WHERE action LIKE 'SELL%' AND timestamp >= ?", (since,)
+        "SELECT pnl_pct FROM trades WHERE action LIKE 'SELL%' AND action != 'SELL_RECONCILE'"
+        " AND timestamp >= ?",
+        (since,),
     ).fetchall()
     trade_count = con.execute(
         "SELECT COUNT(*) FROM trades WHERE timestamp >= ?", (since,)
@@ -80,7 +83,7 @@ def get_performance_metrics(days: int = 60) -> dict:
     calmar = round(ann_return / (max_dd + 1e-8), 2) if max_dd > 0 else None
     pnl_values = [r[0] for r in sells if r[0] is not None]
     wins_pnl   = [p for p in pnl_values if p > 0]
-    losses_pnl = [p for p in pnl_values if p <= 0]
+    losses_pnl = [p for p in pnl_values if p < 0]
     closed   = len(sells)
     win_rate = len(wins_pnl) / closed if closed else 0.0
     avg_win  = float(np.mean(wins_pnl))   if wins_pnl   else 0.0
@@ -88,6 +91,7 @@ def get_performance_metrics(days: int = 60) -> dict:
     gross_w  = sum(wins_pnl)
     gross_l  = abs(sum(losses_pnl))
     profit_factor = round(gross_w / gross_l, 2) if gross_l > 0 else None
+    scratch_count = sum(1 for p in pnl_values if p == 0)
     since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     # Lazy import avoids circular dependency — dashboard_data is loaded before this is called
     from bot.monitor.dashboard_data import spy_return_since as _spy_return_since
@@ -103,6 +107,7 @@ def get_performance_metrics(days: int = 60) -> dict:
         "calmar":         calmar,
         "alpha":          alpha,
         "profit_factor":  profit_factor,
+        "scratch_count":  scratch_count,
         "total_return":   round(total_return, 4),
         "trade_count":    trade_count,
         "closed_trades":  closed,

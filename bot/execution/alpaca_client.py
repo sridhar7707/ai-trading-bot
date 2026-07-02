@@ -220,7 +220,7 @@ class AlpacaClient:
         try:
             order = self._r(self.api.get_order, order_id, _label="get_fill_price")
             filled_avg = getattr(order, "filled_avg_price", None)
-            if filled_avg:
+            if filled_avg and float(filled_avg) > 0:
                 return float(filled_avg)
         except Exception as e:
             logger.debug(f"Could not get fill price for {order_id}: {e}")

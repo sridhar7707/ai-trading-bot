@@ -276,12 +276,21 @@ def render_institutional_metrics() -> str:
     profit_factor: float | None = round(gross_w / gross_l, 2) if gross_l > 0 else None
 
     total_return = (end_v - start_v) / start_v if start_v > 0 else 0.0
-    alpha: float | None = None
+    scratch_count = sum(1 for p in pnl_vals if p == 0)
+    alpha_inc: float | None = None
+    alpha_60d: float | None = None
     try:
         from bot.monitor.dashboard_data import spy_return_since as _spy_rs
         _spy = _spy_rs(str(daily["date"].iloc[0]))
         if _spy is not None:
-            alpha = round(total_return - _spy, 4)
+            alpha_inc = round(total_return - _spy, 4)
+        _s60 = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime("%Y-%m-%d")
+        _d60 = daily[daily["date"] >= _s60]
+        if len(_d60) >= 2:
+            _r60 = float(_d60["value"].iloc[-1]) / float(_d60["value"].iloc[0]) - 1
+            _spy60 = _spy_rs(_s60)
+            if _spy60 is not None:
+                alpha_60d = round(_r60 - _spy60, 4)
     except Exception:
         pass
 
@@ -301,13 +310,13 @@ def render_institutional_metrics() -> str:
     dd_c = GAIN if max_dd < 0.05 else (NEURAL if max_dd < 0.12 else LOSS)
     ca_c = GAIN if calmar > 2 else (NEURAL if calmar > 1 else LOSS)
     wr_c = GAIN if win_rate > 0.55 else (NEURAL if win_rate > 0.45 else LOSS)
-    pf_c = (GAIN if profit_factor is not None and profit_factor > 1.5
-            else (NEURAL if profit_factor is not None and profit_factor > 1.0 else LOSS))
-    al_c = (GAIN if alpha is not None and alpha > 0
-            else (NEURAL if alpha is not None and alpha > -0.02 else LOSS))
+    pf_c     = GAIN if profit_factor is not None and profit_factor > 1.5 else (NEURAL if profit_factor is not None and profit_factor > 1.0 else LOSS)
+    al_inc_c = GAIN if alpha_inc is not None and alpha_inc > 0 else (NEURAL if alpha_inc is not None and alpha_inc > -0.02 else LOSS)
+    al60_c   = GAIN if alpha_60d is not None and alpha_60d > 0 else (NEURAL if alpha_60d is not None and alpha_60d > -0.02 else LOSS)
 
-    pf_str = f"{profit_factor:.2f}" if profit_factor is not None else "n/a"
-    al_str = f"{alpha:+.2%}" if alpha is not None else "n/a (no benchmark data)"
+    pf_str     = f"{profit_factor:.2f}" if profit_factor is not None else "n/a"
+    al_inc_str = f"{alpha_inc:+.2%}" if alpha_inc is not None else "n/a"
+    al60_str   = f"{alpha_60d:+.2%}" if alpha_60d is not None else "n/a"
 
     rows = (
         _row("Return quality vs. risk taken", f"{sharpe:.2f}", sh_c,
@@ -321,9 +330,11 @@ def render_institutional_metrics() -> str:
         + _row("Trades that made money", f"{win_rate:.1%}", wr_c,
                "Win rate &mdash; % of closed trades that were profitable (target: &gt;55%)")
         + _row("Gross wins &divide; gross losses", pf_str, pf_c,
-               "Profit factor &mdash; total gains divided by total losses. &gt;1.5 = good, &gt;2.0 = excellent")
-        + _row("Outperformance vs. S&amp;P 500", al_str, al_c,
-               "Alpha &mdash; how much the bot returned above the S&amp;P 500 over the same period")
+               f"Profit factor &mdash; total gains &divide; total losses. &gt;1.5 = good ({scratch_count} scratch)")
+        + _row("Alpha vs. S&amp;P 500 (since launch)", al_inc_str, al_inc_c,
+               "Inception-to-date outperformance vs. the S&amp;P 500 benchmark")
+        + _row("Alpha vs. S&amp;P 500 (rolling 60d)", al60_str, al60_c,
+               "Rolling 60-day alpha &mdash; validates whether win rate is beating the market now")
     )
     help_block = (
         f'<div style="background:{BG};border-top:1px solid {BORDER};'
@@ -338,7 +349,6 @@ def render_institutional_metrics() -> str:
             f'{_section("📐","Performance Deep Dive", n_str)}{table}</div>')
 
 
-# ── Render: AI decision feed (trade timeline) ────────────────────────────────
 # ── Render: investor view (plain-language Models tab) ────────────────────────
 def _model_quality_fallback() -> str:
     """Return a model-quality card when no closed trades exist yet."""

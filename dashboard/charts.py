@@ -114,23 +114,20 @@ def render_equity_chart() -> Any:
                     text=f"Peak ${daily.loc[peak_idx,'value']:,.0f}",
                     showarrow=True, arrowhead=2, arrowcolor=GAIN,
                     font=dict(color=GAIN, size=10), bgcolor=GAIN_BG, bordercolor=GAIN_BD)
-                try:
-                    import yfinance as _yf
-                    _start = str(daily["date"].min().date() if hasattr(daily["date"].min(), "date") else daily["date"].min())
-                    _spy_raw = _yf.download("SPY", start=_start, progress=False, auto_adjust=True)
-                    if not _spy_raw.empty:
-                        _spy_close = (_spy_raw["Close"].squeeze().dropna())
-                        _spy_norm = _spy_close / float(_spy_close.iloc[0]) * float(daily["value"].iloc[0])
-                        _spy_dates = pd.to_datetime(_spy_close.index)
+                _spy_hist = _get_sym_hist("SPY")
+                if _spy_hist is not None and not _spy_hist.empty and "Close" in _spy_hist.columns:
+                    _spy_c = _spy_hist["Close"].dropna()
+                    _s0    = daily["date"].min().strftime("%Y-%m-%d")
+                    _spy_c = _spy_c[[str(d)[:10] >= _s0 for d in _spy_c.index]]
+                    if not _spy_c.empty:
+                        _spy_norm = _spy_c / float(_spy_c.iloc[0]) * float(daily["value"].iloc[0])
                         fig.add_trace(go.Scatter(
-                            x=_spy_dates, y=_spy_norm,
+                            x=_spy_c.index, y=_spy_norm,
                             line=dict(color=TEXT2, width=1.5, dash="dot"),
                             mode="lines", opacity=0.6,
                             hovertemplate="<b>SPY %{x|%b %d}</b><br>$%{y:,.2f}<extra></extra>",
                             name="SPY (scaled)",
                         ))
-                except Exception:
-                    pass
 
         fig.update_layout(
             title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>&mdash; end-of-day snapshots, includes cash + open positions</span>",
