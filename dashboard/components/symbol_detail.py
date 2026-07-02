@@ -25,6 +25,101 @@ from bot.core.recommendation_engine import (
 )
 _logger = logger
 
+
+def _explain_every_dollar(symbol: str, d: dict, pos: dict | None,
+                           conf: float, entry: float) -> str:
+    """Generate 'Why do I own {symbol}?' card (req 11.7)."""
+    if not pos:
+        return ""
+    prices = d.get("prices", {})
+    cur    = prices.get(symbol, 0.0)
+    pv     = 0.0
+    try:
+        pv = float(d.get("portfolio", "0").replace("$", "").replace(",", ""))
+    except Exception:
+        pass
+
+    # Portfolio weight
+    cur_val = pos["shares"] * cur if cur > 0 else pos["invested"]
+    weight  = (cur_val / pv * 100) if pv > 0 else 0.0
+
+    # Expected return: proxy from conviction → assumed hold target
+    conf_pct = int(conf * 100)
+    if conf >= 0.80:
+        exp_ret, risk_lvl, hold_period = 18, "Medium", "3–6 months"
+    elif conf >= 0.70:
+        exp_ret, risk_lvl, hold_period = 12, "Medium", "1–3 months"
+    elif conf >= 0.60:
+        exp_ret, risk_lvl, hold_period = 8,  "Medium", "1–2 months"
+    else:
+        exp_ret, risk_lvl, hold_period = 5,  "High",   "0–1 month"
+
+    risk_c = {"Low": GAIN, "Medium": NEURAL, "High": LOSS}.get(risk_lvl, TEXT2)
+
+    # Positive/negative factors from recommendation engine
+    try:
+        _pa  = get_portfolio_action(symbol, d)
+        _exp = get_recommendation_explanation(symbol, d, portfolio_action=_pa)
+        pos_factors  = _exp.get("bullish", [])[:4]
+        neg_factors  = _exp.get("bearish", [])[:4]
+    except Exception:
+        pos_factors, neg_factors = [], []
+
+    def _factor_list(items: list, color: str, icon: str) -> str:
+        if not items:
+            return ""
+        return "".join(
+            f'<div style="display:flex;gap:8px;padding:4px 0;'
+            f'border-bottom:1px solid {BORDER};">'
+            f'<span style="color:{color};font-weight:700;flex-shrink:0;">{icon}</span>'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{item}</span>'
+            f'</div>'
+            for item in items
+        )
+
+    pos_html = _factor_list(pos_factors, GAIN,  "✓")
+    neg_html = _factor_list(neg_factors, "#f59e0b", "⚠")
+    factors_html = ""
+    if pos_html:
+        factors_html += (
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};font-weight:700;'
+            f'margin:10px 0 4px;">Reasons</div>{pos_html}'
+        )
+    if neg_html:
+        factors_html += (
+            f'<div style="font-size:{FONT_LABEL};color:{TEXT2};font-weight:700;'
+            f'margin:10px 0 4px;">Concerns</div>{neg_html}'
+        )
+
+    def _row(label: str, val: str, color: str = TEXT1) -> str:
+        return (
+            f'<div style="display:flex;justify-content:space-between;align-items:baseline;'
+            f'padding:6px 0;border-bottom:1px solid {BORDER};">'
+            f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">{label}</span>'
+            f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{color};">{val}</span>'
+            f'</div>'
+        )
+
+    metrics = (
+        _row("Expected Return",   f"+{exp_ret}%",      GAIN)
+        + _row("Risk Level",      risk_lvl,             risk_c)
+        + _row("Portfolio Weight", f"{weight:.1f}%",    TEXT1)
+        + _row("Holding Period",  hold_period,          TEXT2)
+        + _row("AI Confidence",   f"{conf_pct}%",
+               GAIN if conf_pct >= 75 else (NEURAL if conf_pct >= 60 else TEXT2))
+    )
+
+    return (
+        f'<div style="background:{SURFACE2};border:1px solid {BORDER};'
+        f'border-left:3px solid {PRIMARY};border-radius:0 6px 6px 0;'
+        f'padding:14px 16px;margin-bottom:14px;">'
+        f'<div style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};margin-bottom:10px;">'
+        f'Why do I own {symbol}?</div>'
+        f'{metrics}{factors_html}'
+        f'</div>'
+    )
+
+
 # ── Symbol choices + detail drilldown ─────────────────────────────────────────
 def _get_symbol_choices() -> list[str]:
     from config import SYMBOLS
@@ -271,6 +366,8 @@ def render_symbol_detail(symbol: str) -> str:
             f'</div>'
         )
 
+    eed_html = _explain_every_dollar(symbol, d, pos, conf, entry)
+
     card = (
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-top:3px solid {PRIMARY};border-radius:8px;padding:20px;">'
         f'<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;">'
@@ -278,7 +375,7 @@ def render_symbol_detail(symbol: str) -> str:
         f'<span style="background:{SURFACE2};border:1px solid {status_c};color:{status_c};'
         f'padding:2px 10px;border-radius:4px;font-size:{FONT_LABEL};font-weight:700;letter-spacing:.5px;">{status_lbl}</span>'
         f'</div>'
-        f'{action_card_html}{stat_g}{pos_g}'
+        f'{eed_html}{action_card_html}{stat_g}{pos_g}'
         f'<div class="nt-ai-split">'
         f'<div><div style="font-size:{FONT_LABEL};color:{TEXT2};text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;">Why the AI entered</div>'
         f'{why_html}{model_html}</div>'

@@ -99,7 +99,11 @@ from dashboard.components.rebalance import render_rebalance
 from dashboard.components.symbol_detail import (
     render_symbol_detail, _get_symbol_choices,
 )
-from dashboard.components.settings import render_settings_summary
+from dashboard.components.settings import render_settings_summary, render_investor_profile
+from dashboard.components.brief import render_morning_brief
+from dashboard.components.thesis import render_thesis_tracker
+from dashboard.components.simulator import render_portfolio_simulator
+from dashboard.components.timeline import render_all_timelines
 from database.user_settings import get_all_settings, save_setting
 
 # ── Recommendation engine (imported for components that need it at top-level) ─
@@ -169,6 +173,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
+            morning_brief_out   = gr.HTML(value=render_morning_brief)
             daily_headline_out  = gr.HTML(value=render_daily_headline)
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
             spy_banner_dash_out = gr.HTML(value=render_spy_banner)
@@ -225,6 +230,16 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
             watchlist_out       = gr.HTML(value=render_watchlist)
             pos_out             = gr.HTML(value=render_positions)
             trades_out          = gr.HTML(value=render_trades)
+            thesis_out          = gr.HTML(value=render_thesis_tracker)
+            timeline_out_port   = gr.HTML(value=render_all_timelines)
+            sim_sym_dd = gr.Dropdown(
+                choices=[], label="🔬 Simulate: Symbol", container=True,
+            )
+            sim_amt_sl = gr.Slider(
+                minimum=100, maximum=10000, value=500, step=100,
+                label="Amount ($)", container=True,
+            )
+            simulator_out = gr.HTML(value=render_portfolio_simulator)
 
         with gr.TabItem("📈 Performance"):
             scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
@@ -287,6 +302,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
                     _save_status = gr.HTML(value="")
                 with gr.Column(scale=1):
                     settings_summary_out = gr.HTML(value=render_settings_summary)
+            investor_profile_out = gr.HTML(value=render_investor_profile)
 
     gr.HTML(value=FOOTER_HTML)
 
@@ -365,6 +381,15 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_watchlist,             outputs=watchlist_out)
     timer.tick(fn=render_positions,             outputs=pos_out)
     timer.tick(fn=render_trades,                outputs=trades_out)
+    timer.tick(fn=render_thesis_tracker,        outputs=thesis_out)
+    timer.tick(fn=render_all_timelines,         outputs=timeline_out_port)
+    # Portfolio simulator — update symbol choices on timer tick
+    def _refresh_sim_choices():
+        from dashboard.data import get_data as _gd
+        _d = _gd()
+        choices = sorted(_d.get("prices", {}).keys()) or []
+        return gr.update(choices=choices)
+    timer.tick(fn=_refresh_sim_choices,         outputs=sim_sym_dd)
     # Performance tab
     timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
     timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
@@ -374,7 +399,16 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
     timer.tick(fn=render_validation_report,        outputs=val_out)
     # Settings tab — timer keeps summary in sync if another session saved changes
-    timer.tick(fn=render_settings_summary, outputs=settings_summary_out)
+    timer.tick(fn=render_settings_summary,   outputs=settings_summary_out)
+    timer.tick(fn=render_investor_profile,   outputs=investor_profile_out)
+    # Dashboard tab — morning brief refreshes each tick
+    timer.tick(fn=render_morning_brief,      outputs=morning_brief_out)
+
+    # Simulator: update when symbol or amount changes
+    def _run_sim(sym, amt):
+        return render_portfolio_simulator(sym, float(amt) if amt else 500.0)
+    sim_sym_dd.change(fn=_run_sim, inputs=[sim_sym_dd, sim_amt_sl], outputs=simulator_out)
+    sim_amt_sl.change(fn=_run_sim, inputs=[sim_sym_dd, sim_amt_sl], outputs=simulator_out)
 
     def _save_settings(
         risk_tol: str, benchmark: str,
