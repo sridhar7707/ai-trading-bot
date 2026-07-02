@@ -62,6 +62,10 @@ def save_thesis(symbol: str, thesis_text: str, price_target: float,
                 invalidation: str, review_trigger: str = "quarterly",
                 confidence: int = 75) -> bool:
     """Upsert investment thesis for a symbol."""
+    if not symbol or not symbol.strip():
+        return False
+    price_target = max(0.0, float(price_target or 0.0))
+    confidence = max(0, min(100, int(confidence or 75)))
     if not os.path.exists(DB_PATH):
         return False
     today = datetime.date.today().isoformat()
@@ -91,6 +95,7 @@ def save_thesis(symbol: str, thesis_text: str, price_target: float,
                     (symbol, thesis_text, price_target, invalidation,
                      review_trigger, review_date, confidence, today)
                 )
+            con.commit()
         return True
     except Exception as exc:
         log_exception(_logger, "save_thesis", exc, {"symbol": symbol})

@@ -49,6 +49,7 @@ def log_decision(symbol: str, decision_type: str, price: float,
                 (symbol, today, decision_type.lower(), price,
                  quantity, reasoning, confidence, portfolio_value, triggered_by)
             )
+            con.commit()
         return True
     except Exception as exc:
         log_exception(_logger, "log_decision", exc, {"symbol": symbol})
@@ -82,8 +83,13 @@ def _sync_from_trades(symbol: str | None = None) -> None:
         return
     try:
         with get_db_conn() as con:
-            # Check if already populated
-            count = con.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0]
+            # Per-symbol check when a symbol is given; global check for full backfill
+            if symbol:
+                count = con.execute(
+                    "SELECT COUNT(*) FROM decision_log WHERE symbol=?", (symbol,)
+                ).fetchone()[0]
+            else:
+                count = con.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0]
             if count > 0:
                 return
             where = "WHERE symbol=?" if symbol else ""
@@ -109,6 +115,7 @@ def _sync_from_trades(symbol: str | None = None) -> None:
                     "portfolio_value_at_time, triggered_by) VALUES (?,?,?,?,?,?,?,?,?)",
                     (sym, dt_str, dtype, price, shares, note, conf, pv, "ai")
                 )
+            con.commit()
     except Exception as exc:
         log_exception(_logger, "_sync_from_trades", exc)
 

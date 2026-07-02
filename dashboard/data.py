@@ -30,7 +30,7 @@ _PRICE_CACHE_TTL: float = 3600.0
 
 _EMPTY_CACHE: dict = {
     "open_pos": {}, "prices": {}, "trades_df": pd.DataFrame(),
-    "portfolio": "&mdash;", "regime_raw": "Unknown",
+    "portfolio": "&mdash;", "cash": 0.0, "regime_raw": "Unknown",
     "total_trades": 0, "buy_count": 0, "sell_count": 0, "win_count": 0,
     "recent_trades": [],
     "vix": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
@@ -251,6 +251,13 @@ def _refresh_cache() -> dict:
     all_prices = _current_prices(fetch_syms)
     result["prices"] = {k: v for k, v in all_prices.items() if k != "^VIX"}
     result["vix"]    = all_prices.get("^VIX", 0.0)
+
+    pv_raw = float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
+    equity = sum(
+        pos["shares"] * result["prices"].get(sym, 0.0) or pos["invested"]
+        for sym, pos in result["open_pos"].items()
+    )
+    result["cash"] = max(0.0, pv_raw - equity)
 
     buys_df = df[df["action"] == "BUY"]
     if not buys_df.empty:

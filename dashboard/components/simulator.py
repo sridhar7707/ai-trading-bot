@@ -12,21 +12,9 @@ from dashboard.design_system import (
 from dashboard.data import get_data
 from bot.core.error_logger import safe_render, timed
 from database.user_settings import get_setting
+from config import SECTOR_MAP as _SECTOR_MAP
 
 _logger = logger
-
-_SECTOR_MAP: dict[str, str] = {
-    "NVDA": "Technology", "AAPL": "Technology", "MSFT": "Technology",
-    "GOOGL": "Technology", "META": "Technology", "AMZN": "Consumer Cyclical",
-    "TSLA": "Consumer Cyclical", "AMD": "Technology", "INTC": "Technology",
-    "NFLX": "Communication", "DIS": "Communication", "CRM": "Technology",
-    "ADBE": "Technology", "PYPL": "Technology", "SHOP": "Technology",
-    "JPM": "Financials", "BAC": "Financials", "GS": "Financials",
-    "V": "Financials", "MA": "Financials",
-    "JNJ": "Healthcare", "PFE": "Healthcare", "UNH": "Healthcare",
-    "CVX": "Energy", "XOM": "Energy",
-    "WMT": "Consumer Staples", "PG": "Consumer Staples", "KO": "Consumer Staples",
-}
 
 
 def _sector(sym: str) -> str:
@@ -54,8 +42,10 @@ def simulate_buy(symbol: str, dollar_amount: float, d: dict) -> dict:
     prices   = d.get("prices", {})
     pv = 0.0
     try:
-        pv = float(d.get("portfolio", "0").replace("$", "").replace(",", ""))
-    except Exception:
+        raw = d.get("portfolio", "0") or "0"
+        if raw.startswith("$"):
+            pv = float(raw.replace("$", "").replace(",", ""))
+    except (ValueError, AttributeError):
         pass
     cash = d.get("cash", 0.0)
     cur_price = prices.get(symbol, 0.0)
@@ -81,25 +71,28 @@ def simulate_buy(symbol: str, dollar_amount: float, d: dict) -> dict:
     sec = _sector(symbol)
     after_sectors[sec] = after_sectors.get(sec, 0.0) + (dollar_amount / pv * 100 if pv > 0 else 0.0)
 
-    # Health score delta (simplified: penalise concentration)
+    # Health score: use real engine for 'before'; estimate delta for 'after'
     max_pos_limit = float(get_setting("max_position_pct", "0.20")) * 100
     max_sec_limit = 25.0
-    before_health = 100
-    after_health  = 100
-    for w in before_weight.values():
-        if w > max_pos_limit:
-            before_health -= 5
+    try:
+        from bot.core.recommendation_engine import get_portfolio_health
+        before_health = int(get_portfolio_health(d).get("total", 0))
+    except Exception:
+        before_health = 0
+    delta = 0
     for w in after_weight.values():
         if w > max_pos_limit:
-            after_health -= 5
-    for s, w in before_sectors.items():
+            delta -= 5
+    for w in before_weight.values():
+        if w > max_pos_limit:
+            delta += 5
+    for _sec, w in after_sectors.items():
         if w > max_sec_limit:
-            before_health -= 3
-    for s, w in after_sectors.items():
-        if w > max_sec_limit:
-            after_health -= 3
-    before_health = max(0, before_health)
-    after_health  = max(0, after_health)
+            delta -= 3
+    for _sec, w in before_sectors.items():
+        if _sec in after_sectors and after_sectors[_sec] > max_sec_limit:
+            delta += 3
+    after_health = max(0, min(100, before_health + delta))
 
     warnings: list[str] = []
     sym_after_w = after_weight.get(symbol, 0.0)
