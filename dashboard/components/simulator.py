@@ -90,7 +90,7 @@ def simulate_buy(symbol: str, dollar_amount: float, d: dict) -> dict:
         if w > max_sec_limit:
             delta -= 3
     for _sec, w in before_sectors.items():
-        if _sec in after_sectors and after_sectors[_sec] > max_sec_limit:
+        if w > max_sec_limit:
             delta += 3
     after_health = max(0, min(100, before_health + delta))
 

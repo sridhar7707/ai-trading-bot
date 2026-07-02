@@ -64,6 +64,8 @@ def save_thesis(symbol: str, thesis_text: str, price_target: float,
     """Upsert investment thesis for a symbol."""
     if not symbol or not symbol.strip():
         return False
+    if review_trigger not in ("weekly", "monthly", "quarterly"):
+        review_trigger = "quarterly"
     price_target = max(0.0, float(price_target or 0.0))
     confidence = max(0, min(100, int(confidence or 75)))
     if not os.path.exists(DB_PATH):

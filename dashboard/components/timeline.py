@@ -36,6 +36,10 @@ def log_decision(symbol: str, decision_type: str, price: float,
                  portfolio_value: float | None = None,
                  triggered_by: str = "ai") -> bool:
     """Insert a decision_log entry. Safe to call from trading engine."""
+    if not symbol or not str(symbol).strip():
+        return False
+    if confidence is not None:
+        confidence = max(0, min(100, int(confidence)))
     if not os.path.exists(DB_PATH):
         return False
     today = datetime.date.today().isoformat()

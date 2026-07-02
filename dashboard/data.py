@@ -254,8 +254,9 @@ def _refresh_cache() -> dict:
 
     pv_raw = float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
     equity = sum(
-        pos["shares"] * result["prices"].get(sym, 0.0) or pos["invested"]
+        pos["shares"] * cur if cur > 0 else pos["invested"]
         for sym, pos in result["open_pos"].items()
+        for cur in (result["prices"].get(sym, 0.0),)
     )
     result["cash"] = max(0.0, pv_raw - equity)
 

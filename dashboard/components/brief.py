@@ -66,7 +66,7 @@ def _opportunity_and_risk() -> tuple[str, str]:
     d = get_data()
     open_pos = d.get("open_pos", {})
     if not open_pos:
-        return "—", "—"
+        return "&mdash;", "&mdash;"
 
     # Best opportunity: highest ensemble score in recent signals
     scores: dict[str, float] = {}
@@ -97,10 +97,10 @@ def _opportunity_and_risk() -> tuple[str, str]:
     if scores:
         best_sym = max(scores, key=lambda s: scores[s])
     else:
-        best_sym = max(pnls, key=lambda s: pnls[s]) if pnls else "—"
+        best_sym = max(pnls, key=lambda s: pnls[s]) if pnls else "&mdash;"
 
     # Highest risk: worst pnl or sell analysis
-    worst_sym = min(pnls, key=lambda s: pnls[s]) if pnls else "—"
+    worst_sym = min(pnls, key=lambda s: pnls[s]) if pnls else "&mdash;"
     return best_sym, worst_sym
 
 
