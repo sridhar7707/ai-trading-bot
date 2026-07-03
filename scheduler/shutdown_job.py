@@ -37,7 +37,7 @@ def run(session: Session) -> ShutdownResult:
             logger.warning(f"shutdown_job step '{name}' failed: {exc}")
             failed.append(name)
 
-    result.success = len(failed) < len(steps)
+    result.success = len(failed) <= 2  # tolerate ≤2 step failures; ≥3 is a broken shutdown
     if failed:
         result.exception = f"steps failed: {', '.join(failed)}"
     logger.info(f"shutdown_job: complete — {len(steps) - len(failed)}/{len(steps)} steps ok")

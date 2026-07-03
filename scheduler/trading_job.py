@@ -38,12 +38,13 @@ def run(session: Session) -> TradingResult:
     def _timeout_handler(signum, frame):
         raise TimeoutError(f"trading_job exceeded {_TIMEOUT_SECS}s")
 
-    # SIGALRM is Unix-only; on Windows we skip the hard timeout
+    # SIGALRM is Unix-only; also only works in the main thread.
+    # ValueError is raised when called from a non-main thread (Gradio thread pool).
     try:
         _signal.signal(_signal.SIGALRM, _timeout_handler)
         _signal.alarm(_TIMEOUT_SECS)
-    except (AttributeError, OSError):
-        pass  # Windows — no SIGALRM
+    except (AttributeError, OSError, ValueError):
+        pass  # Windows (AttributeError) or non-main thread (ValueError)
 
     try:
         trades_before = _count_trades_today()
@@ -63,7 +64,7 @@ def run(session: Session) -> TradingResult:
     finally:
         try:
             _signal.alarm(0)
-        except (AttributeError, OSError):
+        except (AttributeError, OSError, ValueError):
             pass
 
     return result
@@ -78,10 +79,11 @@ def _run_cycle() -> None:
 def _count_trades_today() -> int:
     """Count trades placed so far today (used to diff before/after cycle)."""
     from dashboard.data import get_db_conn, DB_PATH
+    from zoneinfo import ZoneInfo
     import os
     if not os.path.exists(DB_PATH):
         return 0
-    today = datetime.date.today().isoformat()
+    today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     try:
         with get_db_conn() as con:
             return con.execute(

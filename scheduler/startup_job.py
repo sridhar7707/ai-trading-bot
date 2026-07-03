@@ -74,8 +74,12 @@ def _prefetch_market_data() -> None:
     import yfinance as yf
     syms = list(SYMBOLS)[:20]  # prefetch top-20 to cap startup time
     df = yf.download(" ".join(syms), period="2d", progress=False, auto_adjust=True)
-    loaded = len([s for s in syms if s in (df.columns.get_level_values(1)
-                                            if hasattr(df.columns, "levels") else [])])
+    if df.empty:
+        loaded = 0
+    elif hasattr(df.columns, "levels"):
+        loaded = len(set(df.columns.get_level_values(1)) & set(syms))
+    else:
+        loaded = len(syms)  # single-symbol flat DataFrame — all loaded
     logger.info(f"startup_job: prefetched {loaded}/{len(syms)} symbols")
 
 

@@ -299,7 +299,11 @@ def render_scheduler_status() -> str:
         dot_color   = TEXT2
         status_text = "Market Closed &mdash; No Trading Today"
         session_state = "HOLIDAY" if today_et.weekday() < 5 else "WEEKEND"
-    elif health is None or health.cron_status == "Down":
+    elif health is None or health.cron_status == "Unknown":
+        dot_color   = TEXT2
+        status_text = "Pending First Run"
+        session_state = session.state if session else "UNKNOWN"
+    elif health.cron_status == "Down":
         dot_color   = LOSS
         status_text = "Down"
         session_state = session.state if session else "UNKNOWN"

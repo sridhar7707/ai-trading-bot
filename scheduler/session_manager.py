@@ -76,7 +76,8 @@ def _row_to_session(row: sqlite3.Row) -> Session:
 
 def get_today_session(portfolio_id: int = 1, db_path: str = TRADE_DB_PATH) -> Optional[Session]:
     _ensure_table(db_path)
-    today = datetime.date.today().isoformat()
+    from zoneinfo import ZoneInfo
+    today = datetime.datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     con = _conn(db_path)
     row = con.execute(
         "SELECT * FROM trading_sessions WHERE portfolio_id=? AND session_date=?",

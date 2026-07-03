@@ -31,7 +31,7 @@ class HealthSummary:
     last_success_time: Optional[datetime.datetime] = None
     consecutive_failures: int = 0
     avg_execution_time_ms: float = 0.0
-    cron_status: str = "Down"
+    cron_status: str = "Unknown"  # "Unknown" until first run; avoids false "Down" on new install
 
 
 def _conn(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
@@ -40,73 +40,87 @@ def _conn(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
     return con
 
 
+_TABLE_ENSURED: set = set()  # skip DDL after first successful call per db_path
+
+
 def _ensure_table(db_path: str = TRADE_DB_PATH) -> None:
+    if db_path in _TABLE_ENSURED:
+        return
     con = _conn(db_path)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS execution_log (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id INTEGER,
-            portfolio_id INTEGER DEFAULT 1,
-            started_at TEXT NOT NULL,
-            finished_at TEXT,
-            execution_time_ms INTEGER DEFAULT 0,
-            job_executed TEXT DEFAULT 'skip',
-            success INTEGER DEFAULT 0,
-            exception TEXT,
-            trades_executed INTEGER DEFAULT 0,
-            orders_submitted INTEGER DEFAULT 0,
-            orders_filled INTEGER DEFAULT 0,
-            market_state_at_execution TEXT DEFAULT 'CLOSED'
-        )
-    """)
-    con.commit()
-    con.close()
+    try:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS execution_log (
+                log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER,
+                portfolio_id INTEGER DEFAULT 1,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                execution_time_ms INTEGER DEFAULT 0,
+                job_executed TEXT DEFAULT 'skip',
+                success INTEGER DEFAULT 0,
+                exception TEXT,
+                trades_executed INTEGER DEFAULT 0,
+                orders_submitted INTEGER DEFAULT 0,
+                orders_filled INTEGER DEFAULT 0,
+                market_state_at_execution TEXT DEFAULT 'CLOSED'
+            )
+        """)
+        con.commit()
+        _TABLE_ENSURED.add(db_path)
+    finally:
+        con.close()
 
 
 def save(log: ExecutionLog, db_path: str = TRADE_DB_PATH) -> None:
     _ensure_table(db_path)
     con = _conn(db_path)
-    con.execute(
-        "INSERT INTO execution_log (session_id, portfolio_id, started_at, finished_at,"
-        " execution_time_ms, job_executed, success, exception,"
-        " trades_executed, orders_submitted, orders_filled, market_state_at_execution)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-        (
-            log.session_id, log.portfolio_id,
-            log.started_at.isoformat() if log.started_at else None,
-            log.finished_at.isoformat() if log.finished_at else None,
-            log.execution_time_ms, log.job_executed,
-            int(log.success), log.exception,
-            log.trades_executed, log.orders_submitted,
-            log.orders_filled, log.market_state_at_execution,
-        ),
-    )
-    con.commit()
-    con.close()
+    try:
+        con.execute(
+            "INSERT INTO execution_log (session_id, portfolio_id, started_at, finished_at,"
+            " execution_time_ms, job_executed, success, exception,"
+            " trades_executed, orders_submitted, orders_filled, market_state_at_execution)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                log.session_id, log.portfolio_id,
+                log.started_at.isoformat() if log.started_at else None,
+                log.finished_at.isoformat() if log.finished_at else None,
+                log.execution_time_ms, log.job_executed,
+                int(log.success), log.exception,
+                log.trades_executed, log.orders_submitted,
+                log.orders_filled, log.market_state_at_execution,
+            ),
+        )
+        con.commit()
+    finally:
+        con.close()
 
 
 def get_recent_executions(n: int = 20, db_path: str = TRADE_DB_PATH) -> list[dict]:
     _ensure_table(db_path)
     con = _conn(db_path)
-    rows = con.execute(
-        "SELECT * FROM execution_log ORDER BY log_id DESC LIMIT ?", (n,)
-    ).fetchall()
-    con.close()
+    try:
+        rows = con.execute(
+            "SELECT * FROM execution_log ORDER BY log_id DESC LIMIT ?", (n,)
+        ).fetchall()
+    finally:
+        con.close()
     return [dict(r) for r in rows]
 
 
 def get_health_summary(db_path: str = TRADE_DB_PATH) -> HealthSummary:
     _ensure_table(db_path)
     con = _conn(db_path)
-    rows = con.execute(
-        "SELECT started_at, success, execution_time_ms FROM execution_log"
-        " ORDER BY log_id DESC LIMIT 20"
-    ).fetchall()
-    con.close()
+    try:
+        rows = con.execute(
+            "SELECT started_at, success, execution_time_ms FROM execution_log"
+            " ORDER BY log_id DESC LIMIT 20"
+        ).fetchall()
+    finally:
+        con.close()
 
     summary = HealthSummary()
     if not rows:
-        return summary
+        return summary  # cron_status stays "Unknown" — correct for a fresh install
 
     # Last execution time
     try:
