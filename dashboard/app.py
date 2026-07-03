@@ -447,5 +447,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
         outputs=[settings_summary_out, _save_status],
     )
 
+
+# ── Cron HTTP endpoint ────────────────────────────────────────────────────────
+# cron-job.org GETs /run/cron every 5 min (market hours).
+# Dispatcher runs in a daemon thread so the HTTP response returns immediately.
+@demo.app.get("/run/cron")
+async def _cron_endpoint():
+    import threading
+    from fastapi.responses import JSONResponse
+    from scheduler.dispatcher import main as _dispatch
+    threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
+    return JSONResponse({"status": "accepted"})
+
+
 if __name__ == "__main__":
     demo.launch()
