@@ -357,8 +357,11 @@ def render_scheduler_status() -> str:
             f'</span>'
         )
 
+    now_et_str = now_et().strftime("%I:%M %p ET")
+
     chips = (
         f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">'
+        + _chip("Now (ET)", now_et_str, TEXT2)
         + _chip("Session", session_state, PRIMARY)
         + _chip("Cron", cron_lbl, cron_color)
         + _chip("Last Cycle", last_cycle)
