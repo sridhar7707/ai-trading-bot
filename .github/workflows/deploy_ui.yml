@@ -37,7 +37,7 @@ jobs:
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Manual dispatch — deploying."
           elif git diff --name-only HEAD~1 HEAD \
-                | grep -Eq '^(dashboard/|database/|bot/|requirements_space\.txt|config\.py)'; then
+                | grep -Eq '^(dashboard/|database/|bot/|scheduler/|requirements_space\.txt|config\.py)'; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Dashboard/requirements/config changed — deploying."
           else
@@ -97,6 +97,10 @@ jobs:
 
           # Full bot package (dashboard imports from many submodules)
           shutil.copytree("bot", staging / "bot",
+                          ignore=shutil.ignore_patterns("__pycache__"))
+
+          # Scheduler package (dispatcher, health_monitor, session_manager, jobs)
+          shutil.copytree("scheduler", staging / "scheduler",
                           ignore=shutil.ignore_patterns("__pycache__"))
 
           # config.py + minimal Space-only requirements (no ML/trading packages)
