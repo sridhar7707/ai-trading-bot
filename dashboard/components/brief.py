@@ -146,9 +146,11 @@ def render_morning_brief() -> str:
     no_action = _no_action_count(action_items)
 
     # ── Greeting ──────────────────────────────────────────────────────────────
-    hour = datetime.datetime.now().hour
+    from zoneinfo import ZoneInfo
+    _now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+    hour     = _now_et.hour
     greeting = "Good Morning" if hour < 12 else ("Good Afternoon" if hour < 17 else "Good Evening")
-    date_str = datetime.date.today().strftime("%B %d, %Y")
+    date_str = _now_et.strftime("%B %d, %Y")
 
     mkt_closed = "closed" in mkt_label.lower() or "pre" in mkt_label.lower()
     closed_badge = (
