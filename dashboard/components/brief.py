@@ -14,6 +14,8 @@ from bot.core.error_logger import safe_render, timed, log_exception
 from bot.core.recommendation_engine import get_portfolio_health, get_sell_analysis
 import os
 
+_CRON_INTERVAL_MINS = 5  # expected cron cadence
+
 _logger = logger
 
 
@@ -266,3 +268,113 @@ def render_morning_brief() -> str:
         + timestamp
     )
     return f'<div class="nt nt-wrap">{inner}</div>'
+
+
+@timed(_logger)
+@safe_render("Scheduler Status")
+def render_scheduler_status() -> str:
+    """Operational status panel — always visible, above the morning brief."""
+    from scheduler.health_monitor import get_health_summary
+    from scheduler.session_manager import get_today_session
+    from scheduler.market_calendar import is_trading_day, now_et
+
+    mkt_label, mkt_color = _market_status()
+    today_et = now_et().date()
+    is_trading = is_trading_day(today_et)
+
+    # Load health summary from execution_log
+    try:
+        health = get_health_summary()
+    except Exception:
+        health = None
+
+    # Load today's session
+    try:
+        session = get_today_session()
+    except Exception:
+        session = None
+
+    # ── Status dot + label ────────────────────────────────────────────────────
+    if not is_trading:
+        dot_color   = TEXT2
+        status_text = "Market Closed &mdash; No Trading Today"
+        session_state = "HOLIDAY" if today_et.weekday() < 5 else "WEEKEND"
+    elif health is None or health.cron_status == "Down":
+        dot_color   = LOSS
+        status_text = "Down"
+        session_state = session.state if session else "UNKNOWN"
+    elif health.cron_status == "Degraded":
+        dot_color   = NEURAL
+        status_text = "Degraded"
+        session_state = session.state if session else "UNKNOWN"
+    else:
+        dot_color   = GAIN
+        status_text = "Running"
+        session_state = session.state if session else "UNKNOWN"
+
+    def _et_label(iso: str | None) -> str:
+        """Convert UTC ISO string to ET display."""
+        if not iso:
+            return "&mdash;"
+        try:
+            from zoneinfo import ZoneInfo
+            dt = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            et = dt.astimezone(ZoneInfo("America/New_York"))
+            return et.strftime("%I:%M %p ET")
+        except Exception:
+            return str(iso)[:16]
+
+    last_cycle  = _et_label(health.last_execution_time.isoformat() if health and health.last_execution_time else None)
+    next_cycle  = "&mdash;"
+    if health and health.last_execution_time:
+        try:
+            nxt = health.last_execution_time + datetime.timedelta(minutes=_CRON_INTERVAL_MINS)
+            next_cycle = _et_label(nxt.isoformat())
+        except Exception:
+            pass
+
+    trades_today = session.trades_today if session else 0
+    avg_ms       = int(health.avg_execution_time_ms) if health else 0
+    cron_lbl     = health.cron_status if health else "Unknown"
+    cron_color   = GAIN if cron_lbl == "Healthy" else (NEURAL if cron_lbl == "Degraded" else LOSS)
+
+    def _chip(label: str, val: str, val_color: str = TEXT1) -> str:
+        return (
+            f'<span style="display:inline-flex;flex-direction:column;align-items:center;'
+            f'gap:1px;padding:6px 14px;background:{SURFACE2};border-radius:6px;'
+            f'border:1px solid {BORDER};min-width:90px;">'
+            f'<span style="font-size:10px;color:{TEXT3};text-transform:uppercase;'
+            f'letter-spacing:.6px;">{label}</span>'
+            f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{val_color};">{val}</span>'
+            f'</span>'
+        )
+
+    chips = (
+        f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">'
+        + _chip("Session", session_state, PRIMARY)
+        + _chip("Cron", cron_lbl, cron_color)
+        + _chip("Last Cycle", last_cycle)
+        + _chip("Next ~", next_cycle)
+        + _chip("Trades Today", str(trades_today), GAIN if trades_today else TEXT2)
+        + _chip("Avg Run", f"{avg_ms}ms" if avg_ms else "&mdash;")
+        + f'</div>'
+    )
+
+    header_row = (
+        f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+        f'<span style="width:10px;height:10px;border-radius:50%;background:{dot_color};'
+        f'display:inline-block;flex-shrink:0;"></span>'
+        f'<span style="font-weight:700;font-size:{FONT_VALUE};color:{TEXT1};">{status_text}</span>'
+        f'<span style="margin-left:auto;font-size:{FONT_LABEL};color:{mkt_color};">'
+        f'{mkt_label}</span>'
+        f'</div>'
+    )
+
+    body = (
+        f'<div class="nt-card" style="padding:14px 18px;">'
+        f'{header_row}{chips}'
+        f'</div>'
+    )
+    return f'<div class="nt nt-wrap">{body}</div>'

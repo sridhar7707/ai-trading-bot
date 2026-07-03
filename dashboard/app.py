@@ -100,7 +100,7 @@ from dashboard.components.symbol_detail import (
     render_symbol_detail, _get_symbol_choices,
 )
 from dashboard.components.settings import render_settings_summary, render_investor_profile
-from dashboard.components.brief import render_morning_brief
+from dashboard.components.brief import render_morning_brief, render_scheduler_status
 from dashboard.components.thesis import render_thesis_tracker
 from dashboard.components.simulator import render_portfolio_simulator
 from dashboard.components.timeline import render_all_timelines
@@ -173,6 +173,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
     with gr.Tabs():
         with gr.TabItem("📊 Dashboard"):
+            scheduler_status_out = gr.HTML(value=render_scheduler_status)
             morning_brief_out   = gr.HTML(value=render_morning_brief)
             daily_headline_out  = gr.HTML(value=render_daily_headline)
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
@@ -402,6 +403,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
     timer.tick(fn=render_settings_summary,   outputs=settings_summary_out)
     timer.tick(fn=render_investor_profile,   outputs=investor_profile_out)
     # Dashboard tab — morning brief refreshes each tick
+    timer.tick(fn=render_scheduler_status,   outputs=scheduler_status_out)
     timer.tick(fn=render_morning_brief,      outputs=morning_brief_out)
 
     # Simulator: update when symbol or amount changes
