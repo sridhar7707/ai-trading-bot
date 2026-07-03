@@ -136,7 +136,7 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
-with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
+with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     gr.HTML(HEADER_HTML)
     gr.HTML("""
     <script>
@@ -467,8 +467,8 @@ async def _cron_endpoint():
     return JSONResponse({"status": "accepted"})
 
 
-# app is the combined ASGI app HF Spaces serves; demo.launch() is for local dev.
-app = gr.mount_gradio_app(_api, demo, path="/")
+# app is the FastAPI app HF Spaces serves (no "demo" variable → HF uses "app").
+app = gr.mount_gradio_app(_api, _demo, path="/")
 
 if __name__ == "__main__":
     import uvicorn
