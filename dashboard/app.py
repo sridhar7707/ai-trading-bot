@@ -449,16 +449,27 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as demo:
 
 
 # ── Cron HTTP endpoint ────────────────────────────────────────────────────────
-# cron-job.org GETs /run/cron every 5 min (market hours).
-# Dispatcher runs in a daemon thread so the HTTP response returns immediately.
-@demo.app.get("/run/cron")
+# Register /run/cron on a plain FastAPI app BEFORE mounting Gradio.
+# Gradio's SPA catch-all is added during gr.Blocks() — any route added to
+# demo.app afterwards loses to the catch-all. Mounting Gradio onto _api ensures
+# our explicit route is checked first by FastAPI's router.
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+_api = FastAPI()
+
+
+@_api.get("/run/cron")
 async def _cron_endpoint():
     import threading
-    from fastapi.responses import JSONResponse
     from scheduler.dispatcher import main as _dispatch
     threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
     return JSONResponse({"status": "accepted"})
 
 
+# app is the combined ASGI app HF Spaces serves; demo.launch() is for local dev.
+app = gr.mount_gradio_app(_api, demo, path="/")
+
 if __name__ == "__main__":
-    demo.launch()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)
