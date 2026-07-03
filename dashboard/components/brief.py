@@ -1,6 +1,7 @@
 """Morning Executive Brief — daily portfolio summary panel (req 11.1)."""
 from __future__ import annotations
 import datetime
+import time
 from loguru import logger
 from dashboard.design_system import (
     BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
@@ -17,6 +18,28 @@ import os
 _CRON_INTERVAL_MINS = 5  # expected cron cadence
 
 _logger = logger
+
+# ── SPY daily % change with 5-min cache ───────────────────────────────────────
+_spy_cache: dict = {"pct": 0.0, "ts": 0.0}
+
+
+def _spy_pct_today() -> float:
+    now = time.time()
+    if now - _spy_cache["ts"] < 300:
+        return _spy_cache["pct"]
+    try:
+        import yfinance as yf
+        df = yf.download("SPY", period="5d", progress=False, auto_adjust=True)
+        if len(df) >= 2:
+            _spy_cache["pct"] = float(
+                (df["Close"].iloc[-1] / df["Close"].iloc[-2] - 1) * 100
+            )
+        else:
+            _spy_cache["pct"] = 0.0
+    except Exception:
+        pass
+    _spy_cache["ts"] = now
+    return _spy_cache["pct"]
 
 
 def _portfolio_health_score() -> tuple[int, str]:
@@ -129,6 +152,53 @@ def _no_action_count(action_items: list[str]) -> int:
     d = get_data()
     total = len(d.get("open_pos", {}))
     return max(0, total - len(action_items))
+
+
+@timed(_logger)
+@safe_render("Three-Question Summary")
+def render_three_question_summary() -> str:
+    """Three cards: Portfolio Health · Today's Action · Benchmark (req 2.1)."""
+    health_score, health_label = _portfolio_health_score()
+    action_items = _action_items()
+    spy_pct = _spy_pct_today()
+
+    health_color = GAIN if health_score >= 80 else (NEURAL if health_score >= 60 else LOSS)
+
+    if not action_items:
+        action_val, action_sub, action_color = "No Action Needed", "Portfolio on track", GAIN
+    elif len(action_items) == 1:
+        action_val, action_sub, action_color = action_items[0], "1 action", LOSS
+    else:
+        action_val = f"{len(action_items)} actions"
+        action_sub, action_color = "Tap to review", NEURAL
+
+    sign = "+" if spy_pct >= 0 else ""
+    spy_color = GAIN if spy_pct >= 0 else LOSS
+
+    def _q_card(label: str, val: str, color: str, sub: str = "") -> str:
+        sub_html = (
+            f'<div style="font-size:11px;color:{TEXT3};margin-top:4px;">{sub}</div>'
+            if sub else ""
+        )
+        return (
+            f'<div style="flex:1;text-align:center;padding:18px 12px;'
+            f'background:{SURFACE};border-radius:10px;border:1px solid {BORDER};'
+            f'min-width:140px;">'
+            f'<div style="font-size:10px;color:{TEXT3};text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-bottom:8px;">{label}</div>'
+            f'<div style="font-size:{FONT_SECTION};font-weight:800;color:{color};">{val}</div>'
+            f'{sub_html}'
+            f'</div>'
+        )
+
+    row = (
+        f'<div style="display:flex;gap:10px;flex-wrap:wrap;padding:4px 0;">'
+        + _q_card("Portfolio Health", f"{health_score}/100", health_color, health_label)
+        + _q_card("Today's Action", action_val, action_color, action_sub)
+        + _q_card("Benchmark", f"SPY {sign}{spy_pct:.1f}%", spy_color, "Today vs SPY")
+        + f'</div>'
+    )
+    return f'<div class="nt nt-wrap" style="padding:0;">{row}</div>'
 
 
 @timed(_logger)

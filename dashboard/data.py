@@ -92,15 +92,32 @@ def safe_execute(sql: str, params: tuple = (), db_path: str | None = None) -> bo
 
 
 def _init_db() -> None:
-    """Enable WAL mode on the dashboard DB so readers don't block the bot writer."""
+    """Enable WAL mode and create dashboard-managed tables."""
     if not os.path.exists(DB_PATH):
         return
     try:
         with get_db_conn() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS daily_actions (
+                    action_id        INTEGER PRIMARY KEY,
+                    portfolio_id     INTEGER,
+                    session_date     DATE NOT NULL,
+                    action_type      TEXT NOT NULL,
+                    symbol           TEXT,
+                    reasoning        TEXT,
+                    confidence       INTEGER DEFAULT 0,
+                    estimated_minutes INTEGER DEFAULT 2,
+                    status           TEXT DEFAULT 'pending',
+                    created_at       DATETIME DEFAULT (datetime('now')),
+                    resolved_at      DATETIME,
+                    triggered_by     TEXT DEFAULT 'ai_scheduled'
+                )
+            """)
+            conn.commit()
     except Exception as exc:
-        logger.warning(f"_init_db WAL: {exc}")
+        logger.warning(f"_init_db: {exc}")
 
 
 _init_db()

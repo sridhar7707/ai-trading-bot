@@ -21,17 +21,15 @@ _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)
 import gradio as gr
 from loguru import logger
 
-# ── Design system constants ───────────────────────────────────────────────────
+# ── Design system ─────────────────────────────────────────────────────────────
 from dashboard.design_system import (
-    BG, SURFACE, SURFACE2, BORDER,
-    TEXT1, TEXT2, TEXT3,
+    BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
     ACTION_BUY, ACTION_SELL, ACTION_TRIM, ACTION_HOLD, ACTION_WATCH,
-    ACTION_ADD, ACTION_EXIT,
     ACTION_BUY_BG, ACTION_SELL_BG, ACTION_TRIM_BG,
     ACTION_HOLD_BG, ACTION_WATCH_BG, ACTION_ADD_BG, ACTION_EXIT_BG,
     PRIMARY, GAIN, LOSS, NEURAL,
     PRIMARY_BG, GAIN_BG, LOSS_BG, NEURAL_BG,
-    GAIN_BD, LOSS_BD, NEURAL_BD,
+    GAIN_BD, LOSS_BD, NEURAL_BD, ACTION_ADD, ACTION_EXIT,
     FONT_HERO, FONT_SECTION, FONT_VALUE, FONT_LABEL,
     WEIGHT_BOLD, WEIGHT_MEDIUM, WEIGHT_NORMAL,
     CARD_PADDING, CARD_RADIUS, ROW_PADDING, SECTION_GAP, INNER_GAP,
@@ -42,84 +40,62 @@ from dashboard.design_system import (
     _sym, _badge, _num, _pnl, _section, _wrap, _stat_card,
     TH, TD, TD0,
 )
-# ── Layout constants (CSS + static HTML) ─────────────────────────────────────
 from dashboard.layout import GRADIO_CSS, STYLES, LOGO, HEADER_HTML, FOOTER_HTML
-
-# ── Data layer ────────────────────────────────────────────────────────────────
 from dashboard.data import (
     get_data, DB_PATH, HF_TOKEN, HF_REPO_ID,
     _now_ct, _to_ct, _market_status,
 )
-
-# ── Chart render functions ────────────────────────────────────────────────────
 from dashboard.charts import (
     render_equity_chart, render_allocation_chart,
     render_pnl_chart, render_feature_importance_chart,
     render_returns_histogram, render_winloss_chart,
     _get_sym_hist, _sym_perf, _sparkline, _FI_LABELS,
 )
-
-# ── Component render functions ────────────────────────────────────────────────
 from dashboard.components.overview import (
     render_daily_headline, render_portfolio_health_hero,
     render_trade_frequency, render_spy_banner,
 )
 from dashboard.components.market_mood import render_market_mood
-from dashboard.components.ai_panel import (
-    render_ai_recommendation, render_ai_committee, _WHY_MAP,
-)
-from dashboard.components.risk import (
-    render_risk_panel, render_market_intelligence,
-    _risk_level, _SECTOR_MAP,
-)
-from dashboard.components.portfolio import (
-    render_positions, render_trades,
-)
+from dashboard.components.ai_panel import render_ai_recommendation, render_ai_committee, _WHY_MAP
+from dashboard.components.risk import render_risk_panel, render_market_intelligence, _risk_level, _SECTOR_MAP
+from dashboard.components.portfolio import render_positions, render_trades
 from dashboard.components.models import (
-    render_validation_report, render_institutional_metrics, render_investor_view,
-    render_paper_trading_scorecard,
+    render_validation_report, render_institutional_metrics,
+    render_investor_view, render_paper_trading_scorecard,
 )
-from dashboard.components.signals import (
-    render_watchlist, render_timeline,
+from dashboard.components.signals import render_watchlist, render_timeline
+from dashboard.components.history import render_whats_changed, render_portfolio_performance, _perf_choices
+from dashboard.components.recommendation_history import (
+    render_recommendation_history, render_buy_candidates, render_top_picks,
 )
-from dashboard.components.history import (
-    render_whats_changed, render_portfolio_performance, _perf_choices,
-)
-from dashboard.components.recommendation_history import render_recommendation_history, render_buy_candidates, render_top_picks
 from dashboard.components.news import render_news_feed
 from dashboard.components.signal_history import render_signal_history
-from dashboard.components.actions import (
-    render_todays_actions, render_portfolio_actions,
-)
-from dashboard.components.analysis import (
-    render_sell_analysis, render_position_sizing_panel, render_position_sizing,
-)
+from dashboard.components.actions import render_todays_actions, render_portfolio_actions
+from dashboard.components.analysis import render_sell_analysis, render_position_sizing_panel, render_position_sizing
 from dashboard.components.decision import render_decision_center
 from dashboard.components.rebalance import render_rebalance
-from dashboard.components.symbol_detail import (
-    render_symbol_detail, _get_symbol_choices,
-)
+from dashboard.components.symbol_detail import render_symbol_detail, _get_symbol_choices
 from dashboard.components.settings import render_settings_summary, render_investor_profile
-from dashboard.components.brief import render_morning_brief, render_scheduler_status
+from dashboard.components.brief import render_morning_brief, render_scheduler_status, render_three_question_summary
 from dashboard.components.thesis import render_thesis_tracker
 from dashboard.components.simulator import render_portfolio_simulator
 from dashboard.components.timeline import render_all_timelines
-from database.user_settings import get_all_settings, save_setting
-
-# ── Recommendation engine (imported for components that need it at top-level) ─
+from dashboard.components.executive_summary import render_executive_summary
+from dashboard.components.decision_bar import render_decision_bar
+from dashboard.components.capital import (
+    render_capital_overview, render_capital_chart,
+    render_profit_breakdown, save_reinvestment_mode,
+)
+from dashboard.timers import register_all_timers
+from database.user_settings import get_all_settings, save_setting, get_setting
 from bot.core.error_logger import safe_render, timed
 from bot.core.recommendation_engine import (
-    get_portfolio_action,
-    get_position_sizing,
-    get_sell_analysis,
-    get_recommendation_explanation,
-    get_portfolio_health,
+    get_portfolio_action, get_position_sizing,
+    get_sell_analysis, get_recommendation_explanation, get_portfolio_health,
 )
 
 _logger = logger
 
-# ── Gradio layout &mdash; 4-tab design ──────────────────────────────────────────────
-# Gradio 5 removed every= from components. Use gr.Timer + .tick() instead.
 _theme = gr.themes.Base(
     primary_hue=gr.themes.colors.green,
     neutral_hue=gr.themes.colors.slate,
@@ -162,108 +138,123 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
         btn.style.setProperty('opacity', isSelected ? '1' : '0.6', 'important');
         if (!btn._tgListeners) {
           btn._tgListeners = true;
-          btn.addEventListener('mouseenter', () => {
-            btn.style.setProperty('opacity', '1', 'important');
-          });
+          btn.addEventListener('mouseenter', () => btn.style.setProperty('opacity', '1', 'important'));
           btn.addEventListener('mouseleave', () => {
-            if (!btn.classList.contains('selected')) {
+            if (!btn.classList.contains('selected'))
               btn.style.setProperty('opacity', '0.6', 'important');
-            }
           });
         }
       });
     }
     const observer = new MutationObserver(enforceTabStyles);
-    observer.observe(document.body, {
-      subtree: true, attributes: true, attributeFilter: ['class']
-    });
+    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
     setTimeout(enforceTabStyles, 300);
     setTimeout(enforceTabStyles, 800);
     setTimeout(enforceTabStyles, 2000);
     </script>
     """)
 
+    # Executive Summary Card — sticky above all tabs
+    exec_summary_out = gr.HTML(value=render_executive_summary)
+
     with gr.Tabs():
-        with gr.TabItem("📊 Dashboard"):
+        # ── Tab 1: Brief ──────────────────────────────────────────────────────
+        with gr.TabItem("📋 Brief"):
+            three_q_out          = gr.HTML(value=render_three_question_summary)
+            decision_bar_out     = gr.HTML(value=render_decision_bar)
             scheduler_status_out = gr.HTML(value=render_scheduler_status)
-            morning_brief_out   = gr.HTML(value=render_morning_brief)
+            morning_brief_out    = gr.HTML(value=render_morning_brief)
+            pos_brief_out        = gr.HTML(value=render_positions)
+            with gr.Accordion("What Changed Today", open=False):
+                whats_changed_out = gr.HTML(value=render_whats_changed)
+            with gr.Accordion("Market Mood", open=False):
+                market_mood_out   = gr.HTML(value=render_market_mood)
+            with gr.Accordion("AI Committee", open=False):
+                ai_rec_brief_out  = gr.HTML(value=render_ai_recommendation)
+            with gr.Accordion("Risk Panel", open=False):
+                risk_panel_out    = gr.HTML(value=render_risk_panel)
+                mkt_intel_out     = gr.HTML(value=render_market_intelligence)
+            with gr.Accordion("News", open=False):
+                news_out          = gr.HTML(value=render_news_feed)
+            with gr.Accordion("Decision Timeline", open=False):
+                timeline_brief_out = gr.HTML(value=render_all_timelines)
+
+        # ── Tab 2: Portfolio ──────────────────────────────────────────────────
+        with gr.TabItem("💼 Portfolio"):
             daily_headline_out  = gr.HTML(value=render_daily_headline)
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
-            spy_banner_dash_out = gr.HTML(value=render_spy_banner)
-            top_picks_out       = gr.HTML(value=render_top_picks)
-            market_mood_out     = gr.HTML(value=render_market_mood)
-            trade_freq_out      = gr.HTML(value=render_trade_frequency)
-            todays_actions_out  = gr.HTML(value=render_todays_actions)
-            ai_rec_out          = gr.HTML(value=render_ai_recommendation)
-            with gr.Row():
-                with gr.Column(scale=65):
-                    risk_panel_out   = gr.HTML(value=render_risk_panel)
-                with gr.Column(scale=35):
-                    mkt_intel_out    = gr.HTML(value=render_market_intelligence)
-            whats_changed_out   = gr.HTML(value=render_whats_changed)
-            # ── Symbol drilldown ──────────────────────────────────────────────
-            _initial_choices = _get_symbol_choices()
-            _initial_sym     = _initial_choices[0] if _initial_choices else None
-            symbol_selector = gr.Dropdown(
-                choices=_initial_choices,
-                label="🔍 Symbol Detail",
-                value=_initial_sym, container=True,
-                elem_classes=["sym-selector"],
+            spy_banner_out      = gr.HTML(value=render_spy_banner)
+            perf_tabs           = gr.Radio(
+                choices=_perf_choices(), value=_perf_choices()[2],
+                label="", container=False, elem_classes=["perf-tabs"],
             )
-            symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
-            _sym_state = gr.State(value=_initial_sym)   # tracks selection without self-reference
-
-        with gr.TabItem("📰 News"):
-            news_out = gr.HTML(value=render_news_feed)
-
-        with gr.TabItem("⚡ Signals"):
-            buy_candidates_out  = gr.HTML(value=render_buy_candidates)
-            timeline_out        = gr.HTML(value=render_timeline)
-            signal_history_out  = gr.HTML(value=render_signal_history)
-            rec_history_sig_out = gr.HTML(value=render_recommendation_history)
-
-        with gr.TabItem("💼 Portfolio"):
-            perf_tabs   = gr.Radio(
-                choices=_perf_choices(),
-                value=_perf_choices()[2],   # default: 1M
-                label="", container=False,
-                elem_classes=["perf-tabs"],
-            )
-            perf_key_state = gr.State(value="1M")   # tracks period key independent of label
-            perf_out    = gr.HTML(value=render_portfolio_performance)
+            perf_key_state = gr.State(value="1M")
+            perf_out       = gr.HTML(value=render_portfolio_performance)
             with gr.Row():
                 with gr.Column(scale=65):
                     eq_plot    = gr.Plot(value=render_equity_chart, label="")
                 with gr.Column(scale=35):
                     alloc_plot = gr.Plot(value=render_allocation_chart, label="")
-            pnl_plot          = gr.Plot(value=render_pnl_chart, label="")
-            committee_out     = gr.HTML(value=render_ai_committee)
+            pnl_plot            = gr.Plot(value=render_pnl_chart, label="")
+            committee_out       = gr.HTML(value=render_ai_committee)
             decision_center_out = gr.HTML(value=render_decision_center)
             rebalance_out       = gr.HTML(value=render_rebalance)
             watchlist_out       = gr.HTML(value=render_watchlist)
             pos_out             = gr.HTML(value=render_positions)
             trades_out          = gr.HTML(value=render_trades)
             thesis_out          = gr.HTML(value=render_thesis_tracker)
-            timeline_out_port   = gr.HTML(value=render_all_timelines)
-            sim_sym_dd = gr.Dropdown(
-                choices=[], label="🔬 Simulate: Symbol", container=True,
+            _initial_choices = _get_symbol_choices()
+            _initial_sym     = _initial_choices[0] if _initial_choices else None
+            symbol_selector  = gr.Dropdown(
+                choices=_initial_choices, label="🔍 Symbol Detail",
+                value=_initial_sym, container=True, elem_classes=["sym-selector"],
             )
-            sim_amt_sl = gr.Slider(
-                minimum=100, maximum=10000, value=500, step=100,
-                label="Amount ($)", container=True,
-            )
+            symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
+            _sym_state        = gr.State(value=_initial_sym)
+            sim_sym_dd = gr.Dropdown(choices=[], label="🔬 Simulate: Symbol", container=True)
+            sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
+                                   label="Amount ($)", container=True)
             simulator_out = gr.HTML(value=render_portfolio_simulator)
 
-        with gr.TabItem("📈 Performance"):
+        # ── Tab 3: Capital ────────────────────────────────────────────────────
+        with gr.TabItem("💰 Capital"):
+            capital_overview_out  = gr.HTML(value=render_capital_overview)
+            capital_chart_out     = gr.Plot(value=render_capital_chart, label="Capital Growth")
+            profit_breakdown_out  = gr.HTML(value=render_profit_breakdown)
+            _cur_reinvest = get_setting("reinvest_profits_only", "false")
+            reinvest_radio = gr.Radio(
+                choices=[
+                    "Reinvest everything (profits + initial deposit)",
+                    "Reinvest profits only (protect initial deposit)",
+                ],
+                value=(
+                    "Reinvest profits only (protect initial deposit)"
+                    if _cur_reinvest == "true"
+                    else "Reinvest everything (profits + initial deposit)"
+                ),
+                label="Reinvestment Mode",
+            )
+            reinvest_status = gr.HTML(value="")
+
+        # ── Tab 4: Trades ─────────────────────────────────────────────────────
+        with gr.TabItem("📈 Trades"):
+            top_picks_out       = gr.HTML(value=render_top_picks)
+            trade_freq_out      = gr.HTML(value=render_trade_frequency)
+            buy_candidates_out  = gr.HTML(value=render_buy_candidates)
+            signal_history_out  = gr.HTML(value=render_signal_history)
+            rec_history_out     = gr.HTML(value=render_recommendation_history)
+            timeline_trades_out = gr.HTML(value=render_timeline)
+
+        # ── Tab 5: Performance ────────────────────────────────────────────────
+        with gr.TabItem("📊 Performance"):
             scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
             metrics_out   = gr.HTML(value=render_institutional_metrics)
             with gr.Row():
                 returns_hist_plot = gr.Plot(value=render_returns_histogram, label="")
-                winloss_plot      = gr.Plot(value=render_winloss_chart,     label="")
+                winloss_plot      = gr.Plot(value=render_winloss_chart, label="")
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
-                value="📊 Investor View",
-                label="", container=False,
+                value="📊 Investor View", label="", container=False,
             )
             investor_out = gr.HTML(value=render_investor_view, visible=True)
             with gr.Column(visible=False) as dev_col:
@@ -273,6 +264,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
                     with gr.Column(scale=35):
                         val_out = gr.HTML(value=render_validation_report)
 
+        # ── Tab 6: Settings ───────────────────────────────────────────────────
         with gr.TabItem("⚙️ Settings"):
             _s0 = get_all_settings()
             def _pct(key: str, default: str) -> float:
@@ -284,34 +276,26 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
                 with gr.Column(scale=1):
                     _risk_radio = gr.Radio(
                         choices=["Conservative", "Moderate", "Aggressive"],
-                        value=_s0.get("risk_tolerance", "Moderate"),
-                        label="Risk Tolerance",
+                        value=_s0.get("risk_tolerance", "Moderate"), label="Risk Tolerance",
                     )
                     _bench_radio = gr.Radio(
                         choices=["SPY", "QQQ", "DIA"],
-                        value=_s0.get("benchmark", "SPY"),
-                        label="Benchmark",
+                        value=_s0.get("benchmark", "SPY"), label="Benchmark",
                     )
-                    _max_pos_sl = gr.Slider(
-                        minimum=5, maximum=50, step=1,
-                        value=_pct("max_position_pct", "0.20"),
-                        label="Max Position Size %",
-                    )
-                    _max_dd_sl = gr.Slider(
-                        minimum=5, maximum=30, step=1,
-                        value=_pct("max_drawdown_pct", "0.12"),
-                        label="Max Drawdown Threshold %",
-                    )
-                    _stop_sl = gr.Slider(
-                        minimum=1, maximum=15, step=0.5,
-                        value=_pct("stop_loss_pct", "0.04"),
-                        label="Stop-Loss Default %",
-                    )
+                    _max_pos_sl = gr.Slider(minimum=5, maximum=50, step=1,
+                                            value=_pct("max_position_pct", "0.20"),
+                                            label="Max Position Size %")
+                    _max_dd_sl  = gr.Slider(minimum=5, maximum=30, step=1,
+                                            value=_pct("max_drawdown_pct", "0.12"),
+                                            label="Max Drawdown Threshold %")
+                    _stop_sl    = gr.Slider(minimum=1, maximum=15, step=0.5,
+                                            value=_pct("stop_loss_pct", "0.04"),
+                                            label="Stop-Loss Default %")
                     _notif_check = gr.Checkbox(
                         value=_s0.get("notifications_enabled", "false") == "true",
                         label="Enable Notifications",
                     )
-                    _save_btn = gr.Button("💾 Save Settings", variant="primary")
+                    _save_btn    = gr.Button("💾 Save Settings", variant="primary")
                     _save_status = gr.HTML(value="")
                 with gr.Column(scale=1):
                     settings_summary_out = gr.HTML(value=render_settings_summary)
@@ -319,117 +303,33 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
 
     gr.HTML(value=FOOTER_HTML)
 
-    # Models tab toggle
+    # ── Event handlers ────────────────────────────────────────────────────────
     model_view.change(
         fn=lambda v: (gr.update(visible=(v == "📊 Investor View")),
                       gr.update(visible=(v == "🔬 Developer View"))),
-        inputs=[model_view],
-        outputs=[investor_out, dev_col],
+        inputs=[model_view], outputs=[investor_out, dev_col],
     )
 
-    # Portfolio performance period selection &mdash; also store the bare key in state
     def _on_perf_change(period_label):
         key = (period_label or "1M").split()[0]
         return render_portfolio_performance(period_label), key
-    perf_tabs.change(
-        fn=_on_perf_change,
-        inputs=[perf_tabs],
-        outputs=[perf_out, perf_key_state],
-    )
+    perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs],
+                     outputs=[perf_out, perf_key_state])
 
-    # Symbol drilldown — single handler updates both the detail panel and the state
     symbol_selector.change(
         fn=lambda v: (render_symbol_detail(v), v),
-        inputs=[symbol_selector],
-        outputs=[symbol_detail_out, _sym_state],
+        inputs=[symbol_selector], outputs=[symbol_detail_out, _sym_state],
     )
 
-    # One shared timer &mdash; cache layer ensures a single DB+API refresh per tick
-    timer = gr.Timer(value=60)
-    # Dashboard tab
-    timer.tick(fn=render_daily_headline,        outputs=daily_headline_out)
-    timer.tick(fn=render_portfolio_health_hero, outputs=hero_out)
-    timer.tick(fn=render_spy_banner,            outputs=spy_banner_dash_out)
-    timer.tick(fn=render_top_picks,             outputs=top_picks_out)
-    timer.tick(fn=render_market_mood,           outputs=market_mood_out)
-    timer.tick(fn=render_trade_frequency,       outputs=trade_freq_out)
-    timer.tick(fn=render_todays_actions,        outputs=todays_actions_out)
-    timer.tick(fn=render_ai_recommendation,     outputs=ai_rec_out)
-    timer.tick(fn=render_risk_panel,            outputs=risk_panel_out)
-    timer.tick(fn=render_market_intelligence,   outputs=mkt_intel_out)
-    timer.tick(fn=render_whats_changed,         outputs=whats_changed_out)
-    def _refresh_symbol_choices(sel):
-        choices = _get_symbol_choices()
-        val = sel if sel in choices else (choices[0] if choices else None)
-        return gr.update(choices=choices, value=val), val   # val heals _sym_state on fallback
-    # Use _sym_state as input so symbol_selector is never both input and output;
-    # also write val back to _sym_state so it stays in sync when timer changes the selection
-    timer.tick(fn=_refresh_symbol_choices, inputs=[_sym_state], outputs=[symbol_selector, _sym_state])
-    timer.tick(fn=render_symbol_detail, inputs=[_sym_state], outputs=[symbol_detail_out])
-    # News tab (30-min internal cache &mdash; refreshes on every timer tick but skips API if cached)
-    timer.tick(fn=render_news_feed, outputs=news_out)
-    # Signals tab
-    timer.tick(fn=render_buy_candidates,         outputs=buy_candidates_out)
-    timer.tick(fn=render_timeline,               outputs=timeline_out)
-    timer.tick(fn=render_signal_history,         outputs=signal_history_out)
-    timer.tick(fn=render_recommendation_history, outputs=rec_history_sig_out)
-    # Portfolio tab &mdash; use key state (not Radio value) to avoid stale-label validation errors
-    def _refresh_perf_tabs(current_key):
-        if not isinstance(current_key, str):
-            current_key = "1M"
-        choices = _perf_choices()
-        matched = next((c for c in choices if c.split()[0] == current_key), None)
-        val     = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
-        new_key = val.split()[0] if val else current_key
-        html    = render_portfolio_performance(val or "1M  —")
-        return gr.update(choices=choices, value=val), new_key, html
-    timer.tick(fn=_refresh_perf_tabs, inputs=[perf_key_state],
-               outputs=[perf_tabs, perf_key_state, perf_out])
-    timer.tick(fn=render_equity_chart,          outputs=eq_plot)
-    timer.tick(fn=render_allocation_chart,      outputs=alloc_plot)
-    timer.tick(fn=render_pnl_chart,             outputs=pnl_plot)
-    timer.tick(fn=render_ai_committee,          outputs=committee_out)
-    timer.tick(fn=render_decision_center,       outputs=decision_center_out)
-    timer.tick(fn=render_rebalance,             outputs=rebalance_out)
-    timer.tick(fn=render_watchlist,             outputs=watchlist_out)
-    timer.tick(fn=render_positions,             outputs=pos_out)
-    timer.tick(fn=render_trades,                outputs=trades_out)
-    timer.tick(fn=render_thesis_tracker,        outputs=thesis_out)
-    timer.tick(fn=render_all_timelines,         outputs=timeline_out_port)
-    # Portfolio simulator — update symbol choices on timer tick
-    def _refresh_sim_choices():
-        from dashboard.data import get_data as _gd
-        _d = _gd()
-        choices = sorted(_d.get("prices", {}).keys()) or []
-        return gr.update(choices=choices)
-    timer.tick(fn=_refresh_sim_choices,         outputs=sim_sym_dd)
-    # Performance tab
-    timer.tick(fn=render_paper_trading_scorecard,  outputs=scorecard_out)
-    timer.tick(fn=render_institutional_metrics,    outputs=metrics_out)
-    timer.tick(fn=render_returns_histogram,        outputs=returns_hist_plot)
-    timer.tick(fn=render_winloss_chart,            outputs=winloss_plot)
-    timer.tick(fn=render_investor_view,            outputs=investor_out)
-    timer.tick(fn=render_feature_importance_chart, outputs=fi_plot)
-    timer.tick(fn=render_validation_report,        outputs=val_out)
-    # Settings tab — timer keeps summary in sync if another session saved changes
-    timer.tick(fn=render_settings_summary,   outputs=settings_summary_out)
-    timer.tick(fn=render_investor_profile,   outputs=investor_profile_out)
-    # Dashboard tab — morning brief refreshes each tick
-    timer.tick(fn=render_scheduler_status,   outputs=scheduler_status_out)
-    timer.tick(fn=render_morning_brief,      outputs=morning_brief_out)
-
-    # Simulator: update when symbol or amount changes
     def _run_sim(sym, amt):
         return render_portfolio_simulator(sym, float(amt) if amt else 500.0)
     sim_sym_dd.change(fn=_run_sim, inputs=[sim_sym_dd, sim_amt_sl], outputs=simulator_out)
     sim_amt_sl.change(fn=_run_sim, inputs=[sim_sym_dd, sim_amt_sl], outputs=simulator_out)
 
-    def _save_settings(
-        risk_tol: str, benchmark: str,
-        max_pos: float, max_dd: float, stop_loss: float,
-        notif: bool,
-    ) -> tuple[str, str]:
-        # Server-side bounds — UI sliders are client-only guards
+    reinvest_radio.change(fn=save_reinvestment_mode, inputs=[reinvest_radio],
+                          outputs=[reinvest_status])
+
+    def _save_settings(risk_tol, benchmark, max_pos, max_dd, stop_loss, notif):
         max_pos   = max(5.0,  min(50.0, max_pos))
         max_dd    = max(5.0,  min(30.0, max_dd))
         stop_loss = max(1.0,  min(15.0, stop_loss))
@@ -441,30 +341,85 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
             save_setting("stop_loss_pct",         str(round(stop_loss / 100, 4))),
             save_setting("notifications_enabled", "true" if notif else "false"),
         ]
-        if all(results):
-            status = (
-                '<p style="color:#00c853;font-weight:600;margin:8px 0 0">'
-                '&#10003; Saved &mdash; active on next bot cycle</p>'
-            )
-        else:
-            status = (
-                '<p style="color:#ef4444;font-weight:600;margin:8px 0 0">'
-                '&#9888; Save failed &mdash; check application logs</p>'
-            )
+        ok = all(results)
+        status = (
+            '<p style="color:#00c853;font-weight:600;margin:8px 0 0">'
+            '&#10003; Saved &mdash; active on next bot cycle</p>'
+            if ok else
+            '<p style="color:#ef4444;font-weight:600;margin:8px 0 0">'
+            '&#9888; Save failed &mdash; check application logs</p>'
+        )
         return render_settings_summary(), status
-
     _save_btn.click(
         fn=_save_settings,
         inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _stop_sl, _notif_check],
         outputs=[settings_summary_out, _save_status],
     )
 
+    # ── Timer registration ────────────────────────────────────────────────────
+    timer = gr.Timer(value=60)
+    register_all_timers(timer, {
+        "exec_summary_out":    exec_summary_out,
+        # Brief tab
+        "three_q_out":         three_q_out,
+        "decision_bar_out":    decision_bar_out,
+        "scheduler_status_out": scheduler_status_out,
+        "morning_brief_out":   morning_brief_out,
+        "pos_brief_out":       pos_brief_out,
+        "whats_changed_out":   whats_changed_out,
+        "market_mood_out":     market_mood_out,
+        "ai_rec_brief_out":    ai_rec_brief_out,
+        "risk_panel_out":      risk_panel_out,
+        "mkt_intel_out":       mkt_intel_out,
+        "news_out":            news_out,
+        "timeline_brief_out":  timeline_brief_out,
+        # Portfolio tab
+        "daily_headline_out":  daily_headline_out,
+        "hero_out":            hero_out,
+        "spy_banner_out":      spy_banner_out,
+        "perf_tabs":           perf_tabs,
+        "perf_key_state":      perf_key_state,
+        "perf_out":            perf_out,
+        "eq_plot":             eq_plot,
+        "alloc_plot":          alloc_plot,
+        "pnl_plot":            pnl_plot,
+        "committee_out":       committee_out,
+        "decision_center_out": decision_center_out,
+        "rebalance_out":       rebalance_out,
+        "watchlist_out":       watchlist_out,
+        "pos_out":             pos_out,
+        "trades_out":          trades_out,
+        "thesis_out":          thesis_out,
+        "symbol_selector":     symbol_selector,
+        "_sym_state":          _sym_state,
+        "symbol_detail_out":   symbol_detail_out,
+        "sim_sym_dd":          sim_sym_dd,
+        # Capital tab
+        "capital_overview_out":  capital_overview_out,
+        "capital_chart_out":     capital_chart_out,
+        "profit_breakdown_out":  profit_breakdown_out,
+        # Trades tab
+        "top_picks_out":       top_picks_out,
+        "trade_freq_out":      trade_freq_out,
+        "buy_candidates_out":  buy_candidates_out,
+        "signal_history_out":  signal_history_out,
+        "rec_history_out":     rec_history_out,
+        "timeline_trades_out": timeline_trades_out,
+        # Performance tab
+        "scorecard_out":       scorecard_out,
+        "metrics_out":         metrics_out,
+        "returns_hist_plot":   returns_hist_plot,
+        "winloss_plot":        winloss_plot,
+        "investor_out":        investor_out,
+        "fi_plot":             fi_plot,
+        "val_out":             val_out,
+        # Settings tab
+        "settings_summary_out":  settings_summary_out,
+        "investor_profile_out":  investor_profile_out,
+    })
+
 
 # ── Cron HTTP endpoint ────────────────────────────────────────────────────────
-# Register /run/cron on a plain FastAPI app BEFORE mounting Gradio.
-# Gradio's SPA catch-all is added during gr.Blocks() — any route added to
-# demo.app afterwards loses to the catch-all. Mounting Gradio onto _api ensures
-# our explicit route is checked first by FastAPI's router.
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
