@@ -136,7 +136,19 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
-with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
+_CLOCK_JS = """
+() => {
+    setInterval(() => {
+        document.querySelectorAll('.nt-local-time').forEach(el => {
+            el.textContent = new Date().toLocaleTimeString(
+                [], {hour: '2-digit', minute: '2-digit'}
+            );
+        });
+    }, 1000);
+}
+"""
+
+with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_JS) as _demo:
     gr.HTML(HEADER_HTML)
     gr.HTML("""
     <script>

@@ -357,11 +357,21 @@ def render_scheduler_status() -> str:
             f'</span>'
         )
 
-    now_et_str = now_et().strftime("%I:%M %p ET")
+    # Browser-local time chip — JavaScript (nt-local-time class) updates it client-side
+    local_time_chip = (
+        f'<span style="display:inline-flex;flex-direction:column;align-items:center;'
+        f'gap:1px;padding:6px 14px;background:{SURFACE2};border-radius:6px;'
+        f'border:1px solid {BORDER};min-width:90px;">'
+        f'<span style="font-size:10px;color:{TEXT3};text-transform:uppercase;'
+        f'letter-spacing:.6px;">Now</span>'
+        f'<span class="nt-local-time" style="font-size:{FONT_VALUE};'
+        f'font-weight:700;color:{TEXT2};">--:--</span>'
+        f'</span>'
+    )
 
     chips = (
         f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">'
-        + _chip("Now (ET)", now_et_str, TEXT2)
+        + local_time_chip
         + _chip("Session", session_state, PRIMARY)
         + _chip("Cron", cron_lbl, cron_color)
         + _chip("Last Cycle", last_cycle)
