@@ -112,6 +112,21 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
+# ── Diagnostic (temporary — remove after root cause identified) ───────────────
+import time as _t, collections as _col
+_diag: dict = {"c_n": 0, "l_n": 0, "ui_n": 0, "dt_n": 0,
+               "ev": _col.deque(maxlen=80)}
+
+def _de(tag): _diag["ev"].append(f"{_t.strftime('%H:%M:%S')}.{int(_t.time()*1000)%1000:03d} {tag}"); logger.info(f"[DIAG] {tag}")
+
+def _wc(fn):  # wrap value=callable — counts connect-time fires
+    def w(): _diag["c_n"] += 1; _de(f"CALLABLE #{_diag['c_n']} {fn.__name__}"); return fn()
+    w.__name__ = fn.__name__; return w
+
+def _wl(fn):  # wrap _demo.load callbacks — counts SSE session opens
+    def w(): _diag["l_n"] += 1; _de(f"LOAD #{_diag['l_n']} {fn.__name__}"); return fn()
+    w.__name__ = fn.__name__; return w
+
 with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     gr.HTML(HEADER_HTML)
     gr.HTML("""
@@ -162,10 +177,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
         with gr.TabItem("📋 Brief"):
             # Fast cards (DB-only): rendered immediately via value=callable.
             # Everything else starts empty and is populated by demo.load() or timers.
-            exec_summary_out     = gr.HTML(value=render_executive_summary)
+            exec_summary_out     = gr.HTML(value=_wc(render_executive_summary))
             three_q_out          = gr.HTML(value="")
-            decision_bar_out     = gr.HTML(value=render_decision_bar)
-            scheduler_status_out = gr.HTML(value=render_scheduler_status)
+            decision_bar_out     = gr.HTML(value=_wc(render_decision_bar))
+            scheduler_status_out = gr.HTML(value=_wc(render_scheduler_status))
             morning_brief_out    = gr.HTML(value="")
             pos_brief_out        = gr.HTML(value="")
             with gr.Accordion("What Changed Today", open=False):
@@ -301,8 +316,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
                     _save_btn    = gr.Button("💾 Save Settings", variant="primary")
                     _save_status = gr.HTML(value="")
                 with gr.Column(scale=1):
-                    settings_summary_out = gr.HTML(value=render_settings_summary)
-            investor_profile_out = gr.HTML(value=render_investor_profile)
+                    settings_summary_out = gr.HTML(value=_wc(render_settings_summary))
+            investor_profile_out = gr.HTML(value=_wc(render_investor_profile))
 
     gr.HTML(value=FOOTER_HTML)
 
@@ -363,13 +378,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     #    DB-only functions only — no yfinance or external API calls here.
     #    render_three_question_summary calls yfinance (_spy_pct_today) so it
     #    is excluded; it populates at the first timer_ui tick (T+90 s).
-    _demo.load(fn=render_morning_brief,        outputs=morning_brief_out)
-    _demo.load(fn=render_positions,            outputs=pos_brief_out)
-    _demo.load(fn=render_daily_headline,       outputs=daily_headline_out)
-    _demo.load(fn=render_portfolio_health_hero, outputs=hero_out)
-    _demo.load(fn=render_positions,            outputs=pos_out)
-    _demo.load(fn=render_capital_overview,     outputs=capital_overview_out)
-    _demo.load(fn=render_profit_breakdown,     outputs=profit_breakdown_out)
+    _demo.load(fn=_wl(render_morning_brief),         outputs=morning_brief_out)
+    _demo.load(fn=_wl(render_positions),             outputs=pos_brief_out)
+    _demo.load(fn=_wl(render_daily_headline),        outputs=daily_headline_out)
+    _demo.load(fn=_wl(render_portfolio_health_hero), outputs=hero_out)
+    _demo.load(fn=_wl(render_positions),             outputs=pos_out)
+    _demo.load(fn=_wl(render_capital_overview),      outputs=capital_overview_out)
+    _demo.load(fn=_wl(render_profit_breakdown),      outputs=profit_breakdown_out)
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=90)   # lightweight: exec summary, positions, status
@@ -433,17 +448,22 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
         "settings_summary_out":  settings_summary_out,
         "investor_profile_out":  investor_profile_out,
     })
+    # Diagnostic tick counters — fire alongside real timer callbacks
+    _ui_st = gr.State(0)
+    _dt_st = gr.State(0)
+    def _cnt_ui(n): _diag["ui_n"] += 1; _de(f"TIMER_UI #{_diag['ui_n']}"); return n + 1
+    def _cnt_dt(n): _diag["dt_n"] += 1; _de(f"TIMER_DT #{_diag['dt_n']}"); return n + 1
+    timer_ui.tick(fn=_cnt_ui,   inputs=[_ui_st], outputs=[_ui_st])
+    timer_data.tick(fn=_cnt_dt, inputs=[_dt_st], outputs=[_dt_st])
 
 
-# ── Cron HTTP endpoint ────────────────────────────────────────────────────────
-import collections
+# ── Cron + debug HTTP endpoints ───────────────────────────────────────────────
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 _api = FastAPI()
 
-# In-memory ring buffer — captures loguru output (last 200 lines)
-_log_buffer: collections.deque = collections.deque(maxlen=200)
+_log_buffer: _col.deque = _col.deque(maxlen=200)
 
 def _loguru_sink(msg) -> None:
     _log_buffer.append(msg.strip())
@@ -461,8 +481,14 @@ async def _cron_endpoint():
 
 @_api.get("/run/debug-logs")
 async def _debug_logs_endpoint():
-    """Return the last 200 log lines for remote diagnosis."""
-    return JSONResponse({"lines": list(_log_buffer), "count": len(_log_buffer)})
+    return JSONResponse({
+        "callable_fires": _diag["c_n"],
+        "load_fires":     _diag["l_n"],
+        "timer_ui_ticks": _diag["ui_n"],
+        "timer_dt_ticks": _diag["dt_n"],
+        "events":  list(_diag["ev"]),
+        "logs":    list(_log_buffer),
+    })
 
 
 # app is the FastAPI app HF Spaces serves (no "demo" variable → HF uses "app").
