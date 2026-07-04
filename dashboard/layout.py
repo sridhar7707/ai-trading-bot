@@ -20,10 +20,11 @@ GRADIO_CSS = f"""
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
 
-/* ── Tab navigation &mdash; high contrast fix ─────── */
+/* ── Tab navigation — broad selectors cover Gradio 5.9+ HTML variants ───── */
 .tabs > .tab-nav,
 div.tabs > div.tab-nav,
-.gradio-container .tabs > .tab-nav {{
+.gradio-container .tabs > .tab-nav,
+[role="tablist"] {{
   background: {SURFACE2} !important;
   border-bottom: 2px solid {BORDER} !important;
   padding: 0 8px !important;
@@ -33,7 +34,9 @@ div.tabs > div.tab-nav,
 
 .tabs > .tab-nav > button,
 div.tabs > div.tab-nav > button,
-.gradio-container .tabs > .tab-nav > button {{
+.gradio-container .tabs > .tab-nav > button,
+[role="tablist"] > button,
+[role="tab"] {{
   color: {TEXT1} !important;
   background: transparent !important;
   border: none !important;
@@ -47,11 +50,14 @@ div.tabs > div.tab-nav > button,
   transition: opacity 0.15s, border-color 0.15s !important;
   white-space: nowrap !important;
   cursor: pointer !important;
+  pointer-events: auto !important;
   margin-bottom: -2px !important;
 }}
 
 .tabs > .tab-nav > button:hover,
-div.tabs > div.tab-nav > button:hover {{
+div.tabs > div.tab-nav > button:hover,
+[role="tablist"] > button:hover,
+[role="tab"]:hover {{
   opacity: 1 !important;
   background: rgba(255,255,255,0.05) !important;
   border-bottom-color: {TEXT2} !important;
@@ -59,7 +65,9 @@ div.tabs > div.tab-nav > button:hover {{
 
 .tabs > .tab-nav > button.selected,
 div.tabs > div.tab-nav > button.selected,
-.gradio-container .tabs > .tab-nav > button.selected {{
+.gradio-container .tabs > .tab-nav > button.selected,
+[role="tablist"] > button.selected,
+[role="tab"][aria-selected="true"] {{
   color: {TEXT1} !important;
   opacity: 1 !important;
   border-bottom: 3px solid {ACTION_BUY} !important;

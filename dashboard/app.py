@@ -114,48 +114,6 @@ _theme = gr.themes.Base(
 
 with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     gr.HTML(HEADER_HTML)
-    gr.HTML("""
-    <script>
-    (function() {
-      // ── Tab style enforcement ────────────────────────────────────────────
-      function enforceTabStyles() {
-        const buttons = document.querySelectorAll(
-          '.tab-nav button, .tabs button[role="tab"], button[id*="tab"]'
-        );
-        buttons.forEach(btn => {
-          btn.style.setProperty('color', '#ffffff', 'important');
-          const isSelected = btn.classList.contains('selected');
-          btn.style.setProperty('opacity', isSelected ? '1' : '0.6', 'important');
-          if (!btn._tgListeners) {
-            btn._tgListeners = true;
-            btn.addEventListener('mouseenter', () => btn.style.setProperty('opacity', '1', 'important'));
-            btn.addEventListener('mouseleave', () => {
-              if (!btn.classList.contains('selected'))
-                btn.style.setProperty('opacity', '0.6', 'important');
-            });
-          }
-        });
-      }
-      const styleObserver = new MutationObserver(enforceTabStyles);
-      // Observe only the tab-nav element, not the entire document body.
-      // Watching body with subtree:true fires on every DOM class change during
-      // timer renders, creating thousands of calls per minute.
-      function _attachObserver() {
-        const tabNav = document.querySelector('.tab-nav, [role="tablist"]');
-        if (tabNav) {
-          styleObserver.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
-        } else {
-          setTimeout(_attachObserver, 500);
-        }
-      }
-      _attachObserver();
-      setTimeout(enforceTabStyles, 300);
-      setTimeout(enforceTabStyles, 800);
-      setTimeout(enforceTabStyles, 2000);
-
-    })();
-    </script>
-    """)
 
     with gr.Tabs():
         # ── Tab 1: Brief ──────────────────────────────────────────────────────
