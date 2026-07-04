@@ -360,8 +360,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     )
 
     # ── Timer registration ────────────────────────────────────────────────────
-    timer_ui   = gr.Timer(value=90,  active=False)  # DISABLED — isolating refresh root cause
-    timer_data = gr.Timer(value=300, active=False)  # DISABLED — isolating refresh root cause
+    timer_ui   = gr.Timer(value=300)   # 5 min — gives 13-fn batch room to finish on HF free tier
+    timer_data = gr.Timer(value=900)   # 15 min — heavy batch: yfinance, charts, AI, news
     register_all_timers(timer_ui, timer_data, {
         "exec_summary_out":    exec_summary_out,
         # Brief tab
