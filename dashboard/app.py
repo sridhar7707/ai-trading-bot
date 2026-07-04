@@ -128,38 +128,59 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
     gr.HTML(HEADER_HTML)
     gr.HTML("""
     <script>
-    function enforceTabStyles() {
-      const buttons = document.querySelectorAll(
-        '.tab-nav button, .tabs button[role="tab"], button[id*="tab"]'
-      );
-      buttons.forEach(btn => {
-        btn.style.setProperty('color', '#ffffff', 'important');
-        const isSelected = btn.classList.contains('selected');
-        btn.style.setProperty('opacity', isSelected ? '1' : '0.6', 'important');
-        if (!btn._tgListeners) {
-          btn._tgListeners = true;
-          btn.addEventListener('mouseenter', () => btn.style.setProperty('opacity', '1', 'important'));
-          btn.addEventListener('mouseleave', () => {
-            if (!btn.classList.contains('selected'))
-              btn.style.setProperty('opacity', '0.6', 'important');
-          });
-        }
-      });
-    }
-    const observer = new MutationObserver(enforceTabStyles);
-    observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    setTimeout(enforceTabStyles, 300);
-    setTimeout(enforceTabStyles, 800);
-    setTimeout(enforceTabStyles, 2000);
+    (function() {
+      // ── Tab style enforcement ────────────────────────────────────────────
+      function enforceTabStyles() {
+        const buttons = document.querySelectorAll(
+          '.tab-nav button, .tabs button[role="tab"], button[id*="tab"]'
+        );
+        buttons.forEach(btn => {
+          btn.style.setProperty('color', '#ffffff', 'important');
+          const isSelected = btn.classList.contains('selected');
+          btn.style.setProperty('opacity', isSelected ? '1' : '0.6', 'important');
+          if (!btn._tgListeners) {
+            btn._tgListeners = true;
+            btn.addEventListener('mouseenter', () => btn.style.setProperty('opacity', '1', 'important'));
+            btn.addEventListener('mouseleave', () => {
+              if (!btn.classList.contains('selected'))
+                btn.style.setProperty('opacity', '0.6', 'important');
+            });
+          }
+        });
+      }
+      const styleObserver = new MutationObserver(enforceTabStyles);
+      styleObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+      setTimeout(enforceTabStyles, 300);
+      setTimeout(enforceTabStyles, 800);
+      setTimeout(enforceTabStyles, 2000);
+
+      // ── Tab-stay: remember which tab the user chose and restore it if
+      //    Gradio's timer updates reset the active tab ────────────────────
+      var _userTabIdx = 0;
+      document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.tab-nav button');
+        if (!btn) return;
+        var btns = document.querySelectorAll('.tab-nav button');
+        _userTabIdx = Array.prototype.indexOf.call(btns, btn);
+      }, true);
+
+      setInterval(function() {
+        var btns = document.querySelectorAll('.tab-nav button');
+        if (!btns.length) return;
+        var active = document.querySelector('.tab-nav button.selected');
+        if (!active) return;
+        var cur = Array.prototype.indexOf.call(btns, active);
+        if (cur !== _userTabIdx) btns[_userTabIdx].click();
+      }, 500);
+    })();
     </script>
     """)
-
-    # Executive Summary Card — sticky above all tabs
-    exec_summary_out = gr.HTML(value=render_executive_summary)
 
     with gr.Tabs():
         # ── Tab 1: Brief ──────────────────────────────────────────────────────
         with gr.TabItem("📋 Brief"):
+            # Executive Summary Card — top of Brief tab (not before gr.Tabs; avoids scroll-to-top on update)
+            exec_summary_out     = gr.HTML(value=render_executive_summary)
             three_q_out          = gr.HTML(value=render_three_question_summary)
             decision_bar_out     = gr.HTML(value=render_decision_bar)
             scheduler_status_out = gr.HTML(value=render_scheduler_status)
@@ -357,7 +378,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
     )
 
     # ── Timer registration ────────────────────────────────────────────────────
-    timer = gr.Timer(value=60)
+    timer = gr.Timer(value=90)
     register_all_timers(timer, {
         "exec_summary_out":    exec_summary_out,
         # Brief tab

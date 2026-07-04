@@ -49,10 +49,12 @@ def register_all_timers(timer: gr.Timer, c: dict) -> None:
     _trades(timer, c)
     _performance(timer, c)
     _settings(timer, c)
-    timer.tick(fn=render_executive_summary, outputs=c["exec_summary_out"])
 
 
 def _brief(timer: gr.Timer, c: dict) -> None:
+    # exec_summary lives inside Brief tab so its timer update doesn't cause
+    # a scroll-to-top effect (which happened when the component was before gr.Tabs()).
+    timer.tick(fn=render_executive_summary,      outputs=c["exec_summary_out"])
     timer.tick(fn=render_three_question_summary, outputs=c["three_q_out"])
     timer.tick(fn=render_decision_bar,           outputs=c["decision_bar_out"])
     timer.tick(fn=render_scheduler_status,       outputs=c["scheduler_status_out"])
