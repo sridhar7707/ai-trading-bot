@@ -360,8 +360,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     )
 
     # ── Timer registration ────────────────────────────────────────────────────
-    timer_ui   = gr.Timer(value=90)   # lightweight: exec summary, positions, status
-    timer_data = gr.Timer(value=300)  # heavy: news, charts, AI analysis, yfinance
+    timer_ui   = gr.Timer(value=90)              # lightweight: exec summary, positions, status
+    timer_data = gr.Timer(value=300, active=False)  # DISABLED — isolating refresh root cause
     register_all_timers(timer_ui, timer_data, {
         "exec_summary_out":    exec_summary_out,
         # Brief tab
