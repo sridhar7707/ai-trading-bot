@@ -112,21 +112,7 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
-_CLOCK_JS = """
-() => {
-    if (window._ntClockStarted) return;
-    window._ntClockStarted = true;
-    setInterval(() => {
-        document.querySelectorAll('.nt-local-time').forEach(el => {
-            el.textContent = new Date().toLocaleTimeString(
-                [], {hour: '2-digit', minute: '2-digit'}
-            );
-        });
-    }, 1000);
-}
-"""
-
-with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_JS) as _demo:
+with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     gr.HTML(HEADER_HTML)
     gr.HTML("""
     <script>
@@ -451,22 +437,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
 
 # ── Cron HTTP endpoint ────────────────────────────────────────────────────────
 import collections
-import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 _api = FastAPI()
 
-# In-memory ring buffer for recent log lines (last 200)
+# In-memory ring buffer — captures loguru output (last 200 lines)
 _log_buffer: collections.deque = collections.deque(maxlen=200)
 
-class _BufferHandler(logging.Handler):
-    def emit(self, record: logging.LogRecord) -> None:
-        _log_buffer.append(self.format(record))
+def _loguru_sink(msg) -> None:
+    _log_buffer.append(msg.strip())
 
-_buf_handler = _BufferHandler()
-_buf_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-logging.getLogger().addHandler(_buf_handler)
+logger.add(_loguru_sink, format="{time:HH:mm:ss} {level} {name}: {message}", level="DEBUG")
 
 
 @_api.get("/run/cron")
