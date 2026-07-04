@@ -154,24 +154,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
       setTimeout(enforceTabStyles, 800);
       setTimeout(enforceTabStyles, 2000);
 
-      // ── Tab-stay: remember which tab the user chose and restore it if
-      //    Gradio's timer updates reset the active tab ────────────────────
-      var _userTabIdx = 0;
-      document.addEventListener('click', function(e) {
-        var btn = e.target.closest('.tab-nav button');
-        if (!btn) return;
-        var btns = document.querySelectorAll('.tab-nav button');
-        _userTabIdx = Array.prototype.indexOf.call(btns, btn);
-      }, true);
-
-      setInterval(function() {
-        var btns = document.querySelectorAll('.tab-nav button');
-        if (!btns.length) return;
-        var active = document.querySelector('.tab-nav button.selected');
-        if (!active) return;
-        var cur = Array.prototype.indexOf.call(btns, active);
-        if (cur !== _userTabIdx) btns[_userTabIdx].click();
-      }, 500);
     })();
     </script>
     """)
