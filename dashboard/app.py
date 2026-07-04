@@ -126,19 +126,28 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
             scheduler_status_out = gr.HTML(value=render_scheduler_status)
             morning_brief_out    = gr.HTML(value=render_morning_brief)
             pos_brief_out        = gr.HTML(value=render_positions)
-            with gr.Accordion("What Changed Today", open=False):
-                whats_changed_out = gr.HTML(value="")
-            with gr.Accordion("Market Mood", open=False):
-                market_mood_out   = gr.HTML(value="")
-            with gr.Accordion("AI Committee", open=False):
-                ai_rec_brief_out  = gr.HTML(value="")
-            with gr.Accordion("Risk Panel", open=False):
-                risk_panel_out    = gr.HTML(value="")
-                mkt_intel_out     = gr.HTML(value="")
-            with gr.Accordion("News", open=False):
-                news_out          = gr.HTML(value="")
-            with gr.Accordion("Decision Timeline", open=False):
-                timeline_brief_out = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column():
+                    with gr.Accordion("What Changed Today", open=False):
+                        whats_changed_out = gr.HTML(value="")
+                with gr.Column():
+                    with gr.Accordion("Market Mood", open=False):
+                        market_mood_out   = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column():
+                    with gr.Accordion("AI Committee", open=False):
+                        ai_rec_brief_out  = gr.HTML(value="")
+                with gr.Column():
+                    with gr.Accordion("Risk Panel", open=False):
+                        risk_panel_out    = gr.HTML(value="")
+                        mkt_intel_out     = gr.HTML(value="")
+            with gr.Row():
+                with gr.Column():
+                    with gr.Accordion("News", open=False):
+                        news_out          = gr.HTML(value="")
+                with gr.Column():
+                    with gr.Accordion("Decision Timeline", open=False):
+                        timeline_brief_out = gr.HTML(value="")
 
         # ── Tab 2: Portfolio ──────────────────────────────────────────────────
         with gr.TabItem("💼 Portfolio"):
