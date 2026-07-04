@@ -427,10 +427,11 @@ def render_scheduler_status() -> str:
             f'</span>'
         )
 
-    # Server-side ET time chip
+    # Server-side CT time chip (CDT in summer, CST in winter)
     from zoneinfo import ZoneInfo as _ZI
-    _now_et_str = datetime.datetime.now(_ZI("America/New_York")).strftime("%I:%M %p")
-    local_time_chip = _chip("Now (ET)", _now_et_str)
+    _now_ct = datetime.datetime.now(_ZI("America/Chicago"))
+    _now_ct_str = _now_ct.strftime("%I:%M %p %Z")
+    local_time_chip = _chip("Now", _now_ct_str)
 
     chips = (
         f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">'
