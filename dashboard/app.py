@@ -114,6 +114,8 @@ _theme = gr.themes.Base(
 
 _CLOCK_JS = """
 () => {
+    if (window._ntClockStarted) return;
+    window._ntClockStarted = true;
     setInterval(() => {
         document.querySelectorAll('.nt-local-time').forEach(el => {
             el.textContent = new Date().toLocaleTimeString(
@@ -361,16 +363,16 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
     )
 
     # ── On-connect load: populate Brief tab cards the user sees immediately.
-    #    These are DB-only (no external APIs) so they are safe to run on connect.
-    #    Everything else starts empty and is filled by the timers below.
-    _demo.load(fn=render_morning_brief,          outputs=morning_brief_out)
-    _demo.load(fn=render_three_question_summary, outputs=three_q_out)
-    _demo.load(fn=render_positions,              outputs=pos_brief_out)
-    _demo.load(fn=render_daily_headline,         outputs=daily_headline_out)
-    _demo.load(fn=render_portfolio_health_hero,  outputs=hero_out)
-    _demo.load(fn=render_positions,              outputs=pos_out)
-    _demo.load(fn=render_capital_overview,       outputs=capital_overview_out)
-    _demo.load(fn=render_profit_breakdown,       outputs=profit_breakdown_out)
+    #    DB-only functions only — no yfinance or external API calls here.
+    #    render_three_question_summary calls yfinance (_spy_pct_today) so it
+    #    is excluded; it populates at the first timer_ui tick (T+90 s).
+    _demo.load(fn=render_morning_brief,        outputs=morning_brief_out)
+    _demo.load(fn=render_positions,            outputs=pos_brief_out)
+    _demo.load(fn=render_daily_headline,       outputs=daily_headline_out)
+    _demo.load(fn=render_portfolio_health_hero, outputs=hero_out)
+    _demo.load(fn=render_positions,            outputs=pos_out)
+    _demo.load(fn=render_capital_overview,     outputs=capital_overview_out)
+    _demo.load(fn=render_profit_breakdown,     outputs=profit_breakdown_out)
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=90)   # lightweight: exec summary, positions, status
@@ -437,10 +439,23 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
 
 
 # ── Cron HTTP endpoint ────────────────────────────────────────────────────────
+import collections
+import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 _api = FastAPI()
+
+# In-memory ring buffer for recent log lines (last 200)
+_log_buffer: collections.deque = collections.deque(maxlen=200)
+
+class _BufferHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        _log_buffer.append(self.format(record))
+
+_buf_handler = _BufferHandler()
+_buf_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.getLogger().addHandler(_buf_handler)
 
 
 @_api.get("/run/cron")
@@ -449,6 +464,12 @@ async def _cron_endpoint():
     from scheduler.dispatcher import main as _dispatch
     threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
     return JSONResponse({"status": "accepted"})
+
+
+@_api.get("/run/debug-logs")
+async def _debug_logs_endpoint():
+    """Return the last 200 log lines for remote diagnosis."""
+    return JSONResponse({"lines": list(_log_buffer), "count": len(_log_buffer)})
 
 
 # app is the FastAPI app HF Spaces serves (no "demo" variable → HF uses "app").
