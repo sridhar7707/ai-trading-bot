@@ -114,20 +114,6 @@ _theme = gr.themes.Base(
 
 with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
     gr.HTML(HEADER_HTML)
-    gr.HTML("""<script>
-(function(){
-  if('serviceWorker'in navigator){
-    navigator.serviceWorker.getRegistrations().then(function(regs){
-      if(!regs.length)return;
-      Promise.all(regs.map(function(r){return r.unregister();})).then(function(){
-        if(window.caches)caches.keys().then(function(ks){ks.forEach(function(k){caches.delete(k);});});
-        window.location.reload(true);
-      });
-    });
-  }
-})();
-</script>""")
-
     with gr.Tabs():
         # ── Tab 1: Brief ──────────────────────────────────────────────────────
         with gr.TabItem("📋 Brief"):
