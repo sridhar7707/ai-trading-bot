@@ -80,8 +80,15 @@ class AnalyticsService:
         def _fetch_return(ticker: str) -> float:
             try:
                 import yfinance as yf
-                data = yf.download(ticker, start=start, progress=False,
-                                   auto_adjust=True)
+                from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
+                with ThreadPoolExecutor(max_workers=1) as _pool:
+                    _fut = _pool.submit(yf.download, ticker, start=start,
+                                        progress=False, auto_adjust=True)
+                    try:
+                        data = _fut.result(timeout=15)
+                    except _FTimeout:
+                        _log.warning("yf.download timeout ticker=%s period=%s", ticker, period)
+                        return 0.0
                 if data is None or data.empty or len(data) < 2:
                     return 0.0
                 # squeeze() collapses single-ticker MultiIndex to Series;
