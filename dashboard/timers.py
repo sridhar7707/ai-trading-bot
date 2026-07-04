@@ -1,4 +1,9 @@
-"""Centralized Gradio timer callback registration (req 7.1)."""
+"""Centralized Gradio timer callback registration (req 7.1).
+
+Two timers keep the UI responsive without hammering external APIs:
+  timer_ui   (90 s)  — lightweight DB reads, exec summary, status cards
+  timer_data (300 s) — heavy: yfinance calls, chart rendering, AI analysis
+"""
 from __future__ import annotations
 
 import gradio as gr
@@ -41,35 +46,75 @@ from dashboard.charts import (
 )
 
 
-def register_all_timers(timer: gr.Timer, c: dict) -> None:
-    """Register every timer.tick() callback. c maps name → gr.Component."""
-    _brief(timer, c)
-    _portfolio(timer, c)
-    _capital(timer, c)
-    _trades(timer, c)
-    _performance(timer, c)
-    _settings(timer, c)
+def register_all_timers(
+    timer_ui: gr.Timer,
+    timer_data: gr.Timer,
+    c: dict,
+) -> None:
+    """Register all timer.tick() callbacks across the two timers.
+
+    timer_ui   — 90 s, lightweight (exec summary, positions, status)
+    timer_data — 300 s, heavy     (news, charts, AI, yfinance)
+    c maps string keys → gr.Component instances.
+    """
+    _ui_brief(timer_ui, c)
+    _ui_portfolio(timer_ui, c)
+    _ui_capital(timer_ui, c)
+    _ui_settings(timer_ui, c)
+
+    _data_brief(timer_data, c)
+    _data_portfolio(timer_data, c)
+    _data_capital(timer_data, c)
+    _data_trades(timer_data, c)
+    _data_performance(timer_data, c)
 
 
-def _brief(timer: gr.Timer, c: dict) -> None:
-    # exec_summary lives inside Brief tab so its timer update doesn't cause
-    # a scroll-to-top effect (which happened when the component was before gr.Tabs()).
+# ── Fast (90 s) ───────────────────────────────────────────────────────────────
+
+def _ui_brief(timer: gr.Timer, c: dict) -> None:
+    """Lightweight Brief-tab cards that must feel snappy."""
     timer.tick(fn=render_executive_summary,      outputs=c["exec_summary_out"])
     timer.tick(fn=render_three_question_summary, outputs=c["three_q_out"])
     timer.tick(fn=render_decision_bar,           outputs=c["decision_bar_out"])
     timer.tick(fn=render_scheduler_status,       outputs=c["scheduler_status_out"])
     timer.tick(fn=render_morning_brief,          outputs=c["morning_brief_out"])
     timer.tick(fn=render_positions,              outputs=c["pos_brief_out"])
-    timer.tick(fn=render_whats_changed,          outputs=c["whats_changed_out"])
-    timer.tick(fn=render_market_mood,            outputs=c["market_mood_out"])
-    timer.tick(fn=render_ai_recommendation,      outputs=c["ai_rec_brief_out"])
-    timer.tick(fn=render_risk_panel,             outputs=c["risk_panel_out"])
-    timer.tick(fn=render_market_intelligence,    outputs=c["mkt_intel_out"])
-    timer.tick(fn=render_news_feed,              outputs=c["news_out"])
-    timer.tick(fn=render_all_timelines,          outputs=c["timeline_brief_out"])
 
 
-def _portfolio(timer: gr.Timer, c: dict) -> None:
+def _ui_portfolio(timer: gr.Timer, c: dict) -> None:
+    """Portfolio headline + live positions — fast DB reads only."""
+    timer.tick(fn=render_daily_headline,        outputs=c["daily_headline_out"])
+    timer.tick(fn=render_portfolio_health_hero, outputs=c["hero_out"])
+    timer.tick(fn=render_spy_banner,            outputs=c["spy_banner_out"])
+    timer.tick(fn=render_positions,             outputs=c["pos_out"])
+
+
+def _ui_capital(timer: gr.Timer, c: dict) -> None:
+    """Capital overview card — fast DB read."""
+    timer.tick(fn=render_capital_overview,  outputs=c["capital_overview_out"])
+    timer.tick(fn=render_profit_breakdown,  outputs=c["profit_breakdown_out"])
+
+
+def _ui_settings(timer: gr.Timer, c: dict) -> None:
+    timer.tick(fn=render_settings_summary,  outputs=c["settings_summary_out"])
+    timer.tick(fn=render_investor_profile,  outputs=c["investor_profile_out"])
+
+
+# ── Slow (300 s) ──────────────────────────────────────────────────────────────
+
+def _data_brief(timer: gr.Timer, c: dict) -> None:
+    """Heavy Brief-tab data: yfinance, AI analysis, news (300 s)."""
+    timer.tick(fn=render_whats_changed,        outputs=c["whats_changed_out"])
+    timer.tick(fn=render_market_mood,          outputs=c["market_mood_out"])
+    timer.tick(fn=render_ai_recommendation,    outputs=c["ai_rec_brief_out"])
+    timer.tick(fn=render_risk_panel,           outputs=c["risk_panel_out"])
+    timer.tick(fn=render_market_intelligence,  outputs=c["mkt_intel_out"])
+    timer.tick(fn=render_news_feed,            outputs=c["news_out"])
+    timer.tick(fn=render_all_timelines,        outputs=c["timeline_brief_out"])
+
+
+def _data_portfolio(timer: gr.Timer, c: dict) -> None:
+    """Charts, AI committee, symbol drilldown, simulator — all heavy (300 s)."""
     def _refresh_perf(current_key: str):
         from dashboard.components.history import _perf_choices, render_portfolio_performance
         if not isinstance(current_key, str):
@@ -97,32 +142,28 @@ def _portfolio(timer: gr.Timer, c: dict) -> None:
 
     timer.tick(fn=_refresh_perf, inputs=[c["perf_key_state"]],
                outputs=[c["perf_tabs"], c["perf_key_state"], c["perf_out"]])
-    timer.tick(fn=render_daily_headline,         outputs=c["daily_headline_out"])
-    timer.tick(fn=render_portfolio_health_hero,  outputs=c["hero_out"])
-    timer.tick(fn=render_spy_banner,             outputs=c["spy_banner_out"])
-    timer.tick(fn=render_equity_chart,           outputs=c["eq_plot"])
-    timer.tick(fn=render_allocation_chart,       outputs=c["alloc_plot"])
-    timer.tick(fn=render_pnl_chart,              outputs=c["pnl_plot"])
-    timer.tick(fn=render_ai_committee,           outputs=c["committee_out"])
-    timer.tick(fn=render_decision_center,        outputs=c["decision_center_out"])
-    timer.tick(fn=render_rebalance,              outputs=c["rebalance_out"])
-    timer.tick(fn=render_watchlist,              outputs=c["watchlist_out"])
-    timer.tick(fn=render_positions,              outputs=c["pos_out"])
-    timer.tick(fn=render_trades,                 outputs=c["trades_out"])
-    timer.tick(fn=render_thesis_tracker,         outputs=c["thesis_out"])
+    timer.tick(fn=render_equity_chart,      outputs=c["eq_plot"])
+    timer.tick(fn=render_allocation_chart,  outputs=c["alloc_plot"])
+    timer.tick(fn=render_pnl_chart,         outputs=c["pnl_plot"])
+    timer.tick(fn=render_ai_committee,      outputs=c["committee_out"])
+    timer.tick(fn=render_decision_center,   outputs=c["decision_center_out"])
+    timer.tick(fn=render_rebalance,         outputs=c["rebalance_out"])
+    timer.tick(fn=render_watchlist,         outputs=c["watchlist_out"])
+    timer.tick(fn=render_trades,            outputs=c["trades_out"])
+    timer.tick(fn=render_thesis_tracker,    outputs=c["thesis_out"])
     timer.tick(fn=_refresh_sym, inputs=[c["_sym_state"]],
                outputs=[c["symbol_selector"], c["_sym_state"]])
     timer.tick(fn=_sym_detail,  inputs=[c["_sym_state"]], outputs=[c["symbol_detail_out"]])
-    timer.tick(fn=_sim_choices,                  outputs=c["sim_sym_dd"])
+    timer.tick(fn=_sim_choices,             outputs=c["sim_sym_dd"])
 
 
-def _capital(timer: gr.Timer, c: dict) -> None:
-    timer.tick(fn=render_capital_overview,  outputs=c["capital_overview_out"])
-    timer.tick(fn=render_capital_chart,     outputs=c["capital_chart_out"])
-    timer.tick(fn=render_profit_breakdown,  outputs=c["profit_breakdown_out"])
+def _data_capital(timer: gr.Timer, c: dict) -> None:
+    """Capital growth chart — Plotly + DB (300 s)."""
+    timer.tick(fn=render_capital_chart, outputs=c["capital_chart_out"])
 
 
-def _trades(timer: gr.Timer, c: dict) -> None:
+def _data_trades(timer: gr.Timer, c: dict) -> None:
+    """Trades tab: signals, candidates, history (300 s)."""
     timer.tick(fn=render_top_picks,              outputs=c["top_picks_out"])
     timer.tick(fn=render_trade_frequency,        outputs=c["trade_freq_out"])
     timer.tick(fn=render_buy_candidates,         outputs=c["buy_candidates_out"])
@@ -131,7 +172,8 @@ def _trades(timer: gr.Timer, c: dict) -> None:
     timer.tick(fn=render_timeline,               outputs=c["timeline_trades_out"])
 
 
-def _performance(timer: gr.Timer, c: dict) -> None:
+def _data_performance(timer: gr.Timer, c: dict) -> None:
+    """Performance tab: computation-heavy metrics and charts (300 s)."""
     timer.tick(fn=render_paper_trading_scorecard,  outputs=c["scorecard_out"])
     timer.tick(fn=render_institutional_metrics,    outputs=c["metrics_out"])
     timer.tick(fn=render_returns_histogram,        outputs=c["returns_hist_plot"])
@@ -139,8 +181,3 @@ def _performance(timer: gr.Timer, c: dict) -> None:
     timer.tick(fn=render_investor_view,            outputs=c["investor_out"])
     timer.tick(fn=render_feature_importance_chart, outputs=c["fi_plot"])
     timer.tick(fn=render_validation_report,        outputs=c["val_out"])
-
-
-def _settings(timer: gr.Timer, c: dict) -> None:
-    timer.tick(fn=render_settings_summary,  outputs=c["settings_summary_out"])
-    timer.tick(fn=render_investor_profile,  outputs=c["investor_profile_out"])
