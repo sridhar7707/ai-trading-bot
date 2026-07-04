@@ -161,69 +161,70 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
     with gr.Tabs():
         # ── Tab 1: Brief ──────────────────────────────────────────────────────
         with gr.TabItem("📋 Brief"):
-            # Executive Summary Card — top of Brief tab (not before gr.Tabs; avoids scroll-to-top on update)
+            # Fast cards (DB-only): rendered immediately via value=callable.
+            # Everything else starts empty and is populated by demo.load() or timers.
             exec_summary_out     = gr.HTML(value=render_executive_summary)
-            three_q_out          = gr.HTML(value=render_three_question_summary)
+            three_q_out          = gr.HTML(value="")
             decision_bar_out     = gr.HTML(value=render_decision_bar)
             scheduler_status_out = gr.HTML(value=render_scheduler_status)
-            morning_brief_out    = gr.HTML(value=render_morning_brief)
-            pos_brief_out        = gr.HTML(value=render_positions)
+            morning_brief_out    = gr.HTML(value="")
+            pos_brief_out        = gr.HTML(value="")
             with gr.Accordion("What Changed Today", open=False):
-                whats_changed_out = gr.HTML(value=render_whats_changed)
+                whats_changed_out = gr.HTML(value="")
             with gr.Accordion("Market Mood", open=False):
-                market_mood_out   = gr.HTML(value=render_market_mood)
+                market_mood_out   = gr.HTML(value="")
             with gr.Accordion("AI Committee", open=False):
-                ai_rec_brief_out  = gr.HTML(value=render_ai_recommendation)
+                ai_rec_brief_out  = gr.HTML(value="")
             with gr.Accordion("Risk Panel", open=False):
-                risk_panel_out    = gr.HTML(value=render_risk_panel)
-                mkt_intel_out     = gr.HTML(value=render_market_intelligence)
+                risk_panel_out    = gr.HTML(value="")
+                mkt_intel_out     = gr.HTML(value="")
             with gr.Accordion("News", open=False):
-                news_out          = gr.HTML(value=render_news_feed)
+                news_out          = gr.HTML(value="")
             with gr.Accordion("Decision Timeline", open=False):
-                timeline_brief_out = gr.HTML(value=render_all_timelines)
+                timeline_brief_out = gr.HTML(value="")
 
         # ── Tab 2: Portfolio ──────────────────────────────────────────────────
         with gr.TabItem("💼 Portfolio"):
-            daily_headline_out  = gr.HTML(value=render_daily_headline)
-            hero_out            = gr.HTML(value=render_portfolio_health_hero)
-            spy_banner_out      = gr.HTML(value=render_spy_banner)
+            daily_headline_out  = gr.HTML(value="")
+            hero_out            = gr.HTML(value="")
+            spy_banner_out      = gr.HTML(value="")
             perf_tabs           = gr.Radio(
                 choices=_perf_choices(), value=_perf_choices()[2],
                 label="", container=False, elem_classes=["perf-tabs"],
             )
             perf_key_state = gr.State(value="1M")
-            perf_out       = gr.HTML(value=render_portfolio_performance)
+            perf_out       = gr.HTML(value="")
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=render_equity_chart, label="")
+                    eq_plot    = gr.Plot(value=None, label="")
                 with gr.Column(scale=35):
-                    alloc_plot = gr.Plot(value=render_allocation_chart, label="")
-            pnl_plot            = gr.Plot(value=render_pnl_chart, label="")
-            committee_out       = gr.HTML(value=render_ai_committee)
-            decision_center_out = gr.HTML(value=render_decision_center)
-            rebalance_out       = gr.HTML(value=render_rebalance)
-            watchlist_out       = gr.HTML(value=render_watchlist)
-            pos_out             = gr.HTML(value=render_positions)
-            trades_out          = gr.HTML(value=render_trades)
-            thesis_out          = gr.HTML(value=render_thesis_tracker)
+                    alloc_plot = gr.Plot(value=None, label="")
+            pnl_plot            = gr.Plot(value=None, label="")
+            committee_out       = gr.HTML(value="")
+            decision_center_out = gr.HTML(value="")
+            rebalance_out       = gr.HTML(value="")
+            watchlist_out       = gr.HTML(value="")
+            pos_out             = gr.HTML(value="")
+            trades_out          = gr.HTML(value="")
+            thesis_out          = gr.HTML(value="")
             _initial_choices = _get_symbol_choices()
             _initial_sym     = _initial_choices[0] if _initial_choices else None
             symbol_selector  = gr.Dropdown(
                 choices=_initial_choices, label="🔍 Symbol Detail",
                 value=_initial_sym, container=True, elem_classes=["sym-selector"],
             )
-            symbol_detail_out = gr.HTML(value=lambda: render_symbol_detail(_initial_sym))
+            symbol_detail_out = gr.HTML(value="")
             _sym_state        = gr.State(value=_initial_sym)
             sim_sym_dd = gr.Dropdown(choices=[], label="🔬 Simulate: Symbol", container=True)
             sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
                                    label="Amount ($)", container=True)
-            simulator_out = gr.HTML(value=render_portfolio_simulator)
+            simulator_out = gr.HTML(value="")
 
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
-            capital_overview_out  = gr.HTML(value=render_capital_overview)
-            capital_chart_out     = gr.Plot(value=render_capital_chart, label="Capital Growth")
-            profit_breakdown_out  = gr.HTML(value=render_profit_breakdown)
+            capital_overview_out  = gr.HTML(value="")
+            capital_chart_out     = gr.Plot(value=None, label="Capital Growth")
+            profit_breakdown_out  = gr.HTML(value="")
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
                 choices=[
@@ -241,31 +242,31 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
 
         # ── Tab 4: Trades ─────────────────────────────────────────────────────
         with gr.TabItem("📈 Trades"):
-            top_picks_out       = gr.HTML(value=render_top_picks)
-            trade_freq_out      = gr.HTML(value=render_trade_frequency)
-            buy_candidates_out  = gr.HTML(value=render_buy_candidates)
-            signal_history_out  = gr.HTML(value=render_signal_history)
-            rec_history_out     = gr.HTML(value=render_recommendation_history)
-            timeline_trades_out = gr.HTML(value=render_timeline)
+            top_picks_out       = gr.HTML(value="")
+            trade_freq_out      = gr.HTML(value="")
+            buy_candidates_out  = gr.HTML(value="")
+            signal_history_out  = gr.HTML(value="")
+            rec_history_out     = gr.HTML(value="")
+            timeline_trades_out = gr.HTML(value="")
 
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
-            scorecard_out = gr.HTML(value=render_paper_trading_scorecard)
-            metrics_out   = gr.HTML(value=render_institutional_metrics)
+            scorecard_out = gr.HTML(value="")
+            metrics_out   = gr.HTML(value="")
             with gr.Row():
-                returns_hist_plot = gr.Plot(value=render_returns_histogram, label="")
-                winloss_plot      = gr.Plot(value=render_winloss_chart, label="")
+                returns_hist_plot = gr.Plot(value=None, label="")
+                winloss_plot      = gr.Plot(value=None, label="")
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View", label="", container=False,
             )
-            investor_out = gr.HTML(value=render_investor_view, visible=True)
+            investor_out = gr.HTML(value="", visible=True)
             with gr.Column(visible=False) as dev_col:
                 with gr.Row():
                     with gr.Column(scale=65):
-                        fi_plot = gr.Plot(value=render_feature_importance_chart, label="")
+                        fi_plot = gr.Plot(value=None, label="")
                     with gr.Column(scale=35):
-                        val_out = gr.HTML(value=render_validation_report)
+                        val_out = gr.HTML(value="")
 
         # ── Tab 6: Settings ───────────────────────────────────────────────────
         with gr.TabItem("⚙️ Settings"):
@@ -358,6 +359,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
         inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _stop_sl, _notif_check],
         outputs=[settings_summary_out, _save_status],
     )
+
+    # ── On-connect load: populate Brief tab cards the user sees immediately.
+    #    These are DB-only (no external APIs) so they are safe to run on connect.
+    #    Everything else starts empty and is filled by the timers below.
+    _demo.load(fn=render_morning_brief,          outputs=morning_brief_out)
+    _demo.load(fn=render_three_question_summary, outputs=three_q_out)
+    _demo.load(fn=render_positions,              outputs=pos_brief_out)
+    _demo.load(fn=render_daily_headline,         outputs=daily_headline_out)
+    _demo.load(fn=render_portfolio_health_hero,  outputs=hero_out)
+    _demo.load(fn=render_positions,              outputs=pos_out)
+    _demo.load(fn=render_capital_overview,       outputs=capital_overview_out)
+    _demo.load(fn=render_profit_breakdown,       outputs=profit_breakdown_out)
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=90)   # lightweight: exec summary, positions, status
