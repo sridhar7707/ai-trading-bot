@@ -1,8 +1,8 @@
 """Centralized Gradio timer callback registration (req 7.1).
 
 Two timers keep the UI responsive without hammering external APIs:
-  timer_ui   (300 s) — lightweight DB reads only; no yfinance calls
-  timer_data (900 s) — heavy: yfinance (with 15 s timeout), charts, AI; batched + stateful
+  timer_ui   (60 s)  — lightweight DB reads only; no yfinance calls
+  timer_data (300 s) — heavy: yfinance (15 s daemon-thread timeout), charts, AI; batched + stateful
 
 Batching all callbacks into a single timer.tick() per timer prevents Gradio 5
 from firing N separate sequential SSE events (one per registration), which
@@ -67,7 +67,7 @@ def register_all_timers(
     _register_data_tick(timer_data, c)
 
 
-# ── Fast (300 s) — DB reads only, no external API calls ───────────────────────
+# ── Fast (60 s) — DB reads only, no external API calls ────────────────────────
 
 def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
     """One batched tick for all lightweight components (DB reads only)."""
@@ -102,7 +102,7 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
     ])
 
 
-# ── Slow (900 s) — yfinance + charts + AI; 15 s timeout on all network calls ──
+# ── Slow (300 s) — yfinance (15 s timeout) + charts + AI ──────────────────────
 
 def _register_data_tick(timer: gr.Timer, c: dict) -> None:
     """One batched tick for all heavy renders, plus stateful callbacks."""
