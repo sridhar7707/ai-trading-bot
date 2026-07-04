@@ -73,12 +73,12 @@ def register_all_timers(
 
 def _ui_brief(timer: gr.Timer, c: dict) -> None:
     """Lightweight Brief-tab cards that must feel snappy."""
-    timer.tick(fn=render_executive_summary,      outputs=c["exec_summary_out"])
-    timer.tick(fn=render_three_question_summary, outputs=c["three_q_out"])
-    timer.tick(fn=render_decision_bar,           outputs=c["decision_bar_out"])
-    timer.tick(fn=render_scheduler_status,       outputs=c["scheduler_status_out"])
-    timer.tick(fn=render_morning_brief,          outputs=c["morning_brief_out"])
-    timer.tick(fn=render_positions,              outputs=c["pos_brief_out"])
+    timer.tick(fn=render_executive_summary, outputs=c["exec_summary_out"])
+    # render_three_question_summary calls yfinance → moved to _data_brief (300 s)
+    timer.tick(fn=render_decision_bar,      outputs=c["decision_bar_out"])
+    timer.tick(fn=render_scheduler_status,  outputs=c["scheduler_status_out"])
+    timer.tick(fn=render_morning_brief,     outputs=c["morning_brief_out"])
+    timer.tick(fn=render_positions,         outputs=c["pos_brief_out"])
 
 
 def _ui_portfolio(timer: gr.Timer, c: dict) -> None:
@@ -104,13 +104,14 @@ def _ui_settings(timer: gr.Timer, c: dict) -> None:
 
 def _data_brief(timer: gr.Timer, c: dict) -> None:
     """Heavy Brief-tab data: yfinance, AI analysis, news (300 s)."""
-    timer.tick(fn=render_whats_changed,        outputs=c["whats_changed_out"])
-    timer.tick(fn=render_market_mood,          outputs=c["market_mood_out"])
-    timer.tick(fn=render_ai_recommendation,    outputs=c["ai_rec_brief_out"])
-    timer.tick(fn=render_risk_panel,           outputs=c["risk_panel_out"])
-    timer.tick(fn=render_market_intelligence,  outputs=c["mkt_intel_out"])
-    timer.tick(fn=render_news_feed,            outputs=c["news_out"])
-    timer.tick(fn=render_all_timelines,        outputs=c["timeline_brief_out"])
+    timer.tick(fn=render_three_question_summary, outputs=c["three_q_out"])
+    timer.tick(fn=render_whats_changed,          outputs=c["whats_changed_out"])
+    timer.tick(fn=render_market_mood,            outputs=c["market_mood_out"])
+    timer.tick(fn=render_ai_recommendation,      outputs=c["ai_rec_brief_out"])
+    timer.tick(fn=render_risk_panel,             outputs=c["risk_panel_out"])
+    timer.tick(fn=render_market_intelligence,    outputs=c["mkt_intel_out"])
+    timer.tick(fn=render_news_feed,              outputs=c["news_out"])
+    timer.tick(fn=render_all_timelines,          outputs=c["timeline_brief_out"])
 
 
 def _data_portfolio(timer: gr.Timer, c: dict) -> None:

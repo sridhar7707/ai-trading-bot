@@ -151,7 +151,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=_CLOCK_J
         });
       }
       const styleObserver = new MutationObserver(enforceTabStyles);
-      styleObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+      // Observe only the tab-nav element, not the entire document body.
+      // Watching body with subtree:true fires on every DOM class change during
+      // timer renders, creating thousands of calls per minute.
+      function _attachObserver() {
+        const tabNav = document.querySelector('.tab-nav, [role="tablist"]');
+        if (tabNav) {
+          styleObserver.observe(tabNav, { subtree: true, attributes: true, attributeFilter: ['class'] });
+        } else {
+          setTimeout(_attachObserver, 500);
+        }
+      }
+      _attachObserver();
       setTimeout(enforceTabStyles, 300);
       setTimeout(enforceTabStyles, 800);
       setTimeout(enforceTabStyles, 2000);
