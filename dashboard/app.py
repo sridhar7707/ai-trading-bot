@@ -393,21 +393,24 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
 
 # ── Cron HTTP endpoint ────────────────────────────────────────────────────────
-from fastapi import FastAPI
+# gr.mount_gradio_app uses include_router which only copies API Route objects,
+# not Mount objects — so Gradio's /_app/immutable/ static files never get
+# registered on the outer FastAPI.  Fix: add the cron route directly to
+# Gradio's own internal FastAPI (gradio.routes.App), which owns the static
+# file mounts and serves them correctly.
+import threading
 from fastapi.responses import JSONResponse
+from gradio.routes import App as _GradioApp
 
-_api = FastAPI()
+app = _GradioApp.create_app(_demo, app_kwargs={"docs_url": None, "redoc_url": None})
 
-@_api.get("/run/cron")
+
+@app.get("/run/cron")
 async def _cron_endpoint():
-    import threading
     from scheduler.dispatcher import main as _dispatch
     threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
     return JSONResponse({"status": "accepted"})
 
-
-# app is the FastAPI app HF Spaces serves (no "demo" variable → HF uses "app").
-app = gr.mount_gradio_app(_api, _demo, path="/")
 
 if __name__ == "__main__":
     import uvicorn
