@@ -22,9 +22,13 @@ footer {{ display: none !important; }}
 
 /* ── Tab navigation — Gradio 5.9 uses .tab-container, not .tab-nav ────────── */
 
-/* Hide the measurement-only clone Gradio renders for overflow detection */
-.tab-container[aria-hidden="true"] {{
+/* Hide measurement-only clone. High-specificity (0,3,0) beats Svelte-scoped
+   .tab-container.svelte-* (0,2,0) even when both use !important. */
+.gradio-container .tab-container.visually-hidden,
+.gradio-container .tab-container[aria-hidden="true"] {{
   display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
 }}
 
 /* Real tab bar */
@@ -300,6 +304,14 @@ STYLES = f"""<style>
   .nt-card span[style*="font-size:11px"] {{ font-size:12px!important; }}
   .nt-hero-chg  {{ font-size:13px!important; }}
   .nt-cards     {{ grid-template-columns:repeat(2,1fr)!important;gap:6px!important; }}
+}}
+/* Belt-and-suspenders: this <style> is in the body so it loads last — hides
+   Gradio's measurement-only clone regardless of Svelte cascade order. */
+.gradio-container .tab-container.visually-hidden,
+.gradio-container .tab-container[aria-hidden="true"] {{
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
 }}
 </style>"""
 
