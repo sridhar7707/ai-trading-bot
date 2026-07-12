@@ -78,6 +78,7 @@ from dashboard.components.symbol_detail import render_symbol_detail, _get_symbol
 from dashboard.components.settings import render_settings_summary, render_investor_profile
 from dashboard.components.brief import render_morning_brief, render_scheduler_status, render_three_question_summary
 from dashboard.components.thesis import render_thesis_tracker
+from dashboard.components.weekly_summary import render_weekly_summary
 from dashboard.components.simulator import render_portfolio_simulator
 from dashboard.components.timeline import render_all_timelines
 from dashboard.components.executive_summary import render_executive_summary
@@ -150,6 +151,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
 
         # ── Tab 2: Portfolio ──────────────────────────────────────────────────
         with gr.TabItem("💼 Portfolio"):
+            weekly_summary_out  = gr.HTML(value=render_weekly_summary)
             daily_headline_out  = gr.HTML(value=render_daily_headline)
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
             spy_banner_out      = gr.HTML(value="")
@@ -344,6 +346,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
         "news_out":            news_out,
         "timeline_brief_out":  timeline_brief_out,
         # Portfolio tab
+        "weekly_summary_out":  weekly_summary_out,
         "daily_headline_out":  daily_headline_out,
         "hero_out":            hero_out,
         "spy_banner_out":      spy_banner_out,

@@ -41,6 +41,7 @@ from dashboard.components.rebalance import render_rebalance
 from dashboard.components.decision import render_decision_center
 from dashboard.components.thesis import render_thesis_tracker
 from dashboard.components.timeline import render_all_timelines
+from dashboard.components.weekly_summary import render_weekly_summary
 from dashboard.components.settings import render_settings_summary, render_investor_profile
 from dashboard.components.capital import (
     render_capital_overview, render_capital_chart, render_profit_breakdown,
@@ -81,6 +82,7 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
             render_positions(),           # → pos_brief_out
             render_daily_headline(),
             render_positions(),           # → pos_out
+            render_weekly_summary(),
             render_capital_overview(),
             render_profit_breakdown(),
             render_settings_summary(),
@@ -95,6 +97,7 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["pos_brief_out"],
         c["daily_headline_out"],
         c["pos_out"],
+        c["weekly_summary_out"],
         c["capital_overview_out"],
         c["profit_breakdown_out"],
         c["settings_summary_out"],
