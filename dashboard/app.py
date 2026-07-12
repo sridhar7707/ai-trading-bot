@@ -392,17 +392,24 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     })
 
 
-# ── Cron HTTP endpoint ────────────────────────────────────────────────────────
-# gr.mount_gradio_app uses include_router which only copies API Route objects,
-# not Mount objects — so Gradio's /_app/immutable/ static files never get
-# registered on the outer FastAPI.  Fix: add the cron route directly to
-# Gradio's own internal FastAPI (gradio.routes.App), which owns the static
-# file mounts and serves them correctly.
+# ── Cron HTTP endpoint + static-file fix ─────────────────────────────────────
+# Gradio 5.9.0's App.create_app builds the API routes but never registers a
+# handler for /_app/immutable/* — those requests fall through to FastAPI's
+# default 404.  Fix: insert a StaticFiles Mount at index 0 of the router
+# (checked before every other route/mount) so all /_app/* requests are served
+# from Gradio's compiled SvelteKit frontend package.
 import threading
+from pathlib import Path
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.routing import Mount
 from gradio.routes import App as _GradioApp
 
 app = _GradioApp.create_app(_demo, app_kwargs={"docs_url": None, "redoc_url": None})
+
+_GR_APP_DIR = Path(gr.__file__).parent / "templates" / "frontend" / "_app"
+if _GR_APP_DIR.is_dir():
+    app.router.routes.insert(0, Mount("/_app", app=StaticFiles(directory=str(_GR_APP_DIR))))
 
 
 @app.get("/run/cron")
