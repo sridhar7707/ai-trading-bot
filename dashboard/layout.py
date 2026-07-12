@@ -225,6 +225,38 @@ footer {{ display: none !important; }}
 }}
 """
 
+# ── Tab switching fix injected via gr.Blocks(js=TAB_FIX_JS) ──────────────────
+# Gradio 5.9 mounts Svelte components but the Svelte reactive panel-visibility
+# state sometimes fails under gr.mount_gradio_app (FastAPI wrapper).  This JS
+# runs after Svelte mounts and directly drives show/hide of .tabitem panels on
+# every tab-button click, acting as a reliable client-side override.
+TAB_FIX_JS = """
+() => {
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('button[role="tab"]');
+    if (!btn) return;
+
+    var tablist = document.querySelector('[role="tablist"]');
+    if (!tablist) return;
+
+    var buttons = Array.from(tablist.querySelectorAll('button[role="tab"]'));
+    var idx = buttons.indexOf(btn);
+    if (idx < 0) return;
+
+    // Top-level panels only (filter out panels nested inside another tabitem)
+    var panels = Array.from(document.querySelectorAll('.tabitem')).filter(
+      function(p) { return p.parentElement && !p.parentElement.closest('.tabitem'); }
+    );
+    if (panels.length !== buttons.length) return;
+
+    panels.forEach(function(p, i) { p.style.display = i === idx ? '' : 'none'; });
+    buttons.forEach(function(b, i) {
+      b.setAttribute('aria-selected', i === idx ? 'true' : 'false');
+    });
+  }, true);
+}
+"""
+
 # ── Stylesheet (injected once via static HEADER_HTML) ────────────────────────
 STYLES = f"""<style>
 .nt {{ font-family:-apple-system,'Inter',BlinkMacSystemFont,'Segoe UI',sans-serif;

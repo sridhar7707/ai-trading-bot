@@ -40,7 +40,7 @@ from dashboard.design_system import (
     _sym, _badge, _num, _pnl, _section, _wrap, _stat_card,
     TH, TD, TD0,
 )
-from dashboard.layout import GRADIO_CSS, STYLES, LOGO, HEADER_HTML, FOOTER_HTML
+from dashboard.layout import GRADIO_CSS, STYLES, LOGO, HEADER_HTML, FOOTER_HTML, TAB_FIX_JS
 from dashboard.data import (
     get_data, DB_PATH, HF_TOKEN, HF_REPO_ID,
     _now_ct, _to_ct, _market_status,
@@ -113,7 +113,7 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
-with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS) as _demo:
+with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_JS) as _demo:
     gr.HTML(HEADER_HTML)
     with gr.Tabs():
         # ── Tab 1: Brief ──────────────────────────────────────────────────────
