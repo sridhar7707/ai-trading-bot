@@ -20,10 +20,15 @@ GRADIO_CSS = f"""
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
 
-/* ── Tab navigation — scoped to .tab-nav to avoid matching tab panel labels ── */
-.tabs > .tab-nav,
-div.tabs > div.tab-nav,
-.gradio-container .tabs > .tab-nav {{
+/* ── Tab navigation — Gradio 5.9 uses .tab-container, not .tab-nav ────────── */
+
+/* Hide the measurement-only clone Gradio renders for overflow detection */
+.tab-container[aria-hidden="true"] {{
+  display: none !important;
+}}
+
+/* Real tab bar */
+.tab-container[role="tablist"] {{
   background: {SURFACE2} !important;
   border-bottom: 2px solid {BORDER} !important;
   padding: 0 8px !important;
@@ -31,9 +36,8 @@ div.tabs > div.tab-nav,
   gap: 4px !important;
 }}
 
-.tabs > .tab-nav > button,
-div.tabs > div.tab-nav > button,
-.gradio-container .tabs > .tab-nav > button {{
+/* Tab buttons */
+.tab-container[role="tablist"] > button[role="tab"] {{
   color: {TEXT1} !important;
   background: transparent !important;
   border: none !important;
@@ -50,17 +54,14 @@ div.tabs > div.tab-nav > button,
   margin-bottom: -2px !important;
 }}
 
-.tabs > .tab-nav > button:hover,
-div.tabs > div.tab-nav > button:hover,
-.gradio-container .tabs > .tab-nav > button:hover {{
+.tab-container[role="tablist"] > button[role="tab"]:hover {{
   opacity: 1 !important;
   background: rgba(255,255,255,0.05) !important;
   border-bottom-color: {TEXT2} !important;
 }}
 
-.tabs > .tab-nav > button.selected,
-div.tabs > div.tab-nav > button.selected,
-.gradio-container .tabs > .tab-nav > button.selected {{
+.tab-container[role="tablist"] > button[role="tab"].selected,
+.tab-container[role="tablist"] > button[role="tab"][aria-selected="true"] {{
   color: {TEXT1} !important;
   opacity: 1 !important;
   border-bottom: 3px solid {ACTION_BUY} !important;
@@ -177,9 +178,7 @@ div.tabs > div.tab-nav > button.selected,
     justify-content: center !important;
   }}
   /* Sticky tab bar — stays visible while scrolling content */
-  .tabs > .tab-nav,
-  div.tabs > div.tab-nav,
-  .gradio-container .tabs > .tab-nav {{
+  .tab-container[role="tablist"] {{
     position: sticky !important;
     top: 0 !important;
     z-index: 50 !important;
@@ -195,19 +194,15 @@ div.tabs > div.tab-nav > button.selected,
   table td, table th {{ padding: 8px 10px !important; }}
 
   /* Tab nav: scroll horizontally — all tabs always reachable */
-  .tabs > .tab-nav,
-  div.tabs > div.tab-nav,
-  .gradio-container .tabs > .tab-nav {{
+  .tab-container[role="tablist"] {{
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch !important;
     flex-wrap: nowrap !important;
     scrollbar-width: none !important;
     padding-bottom: 3px !important;
   }}
-  .tabs > .tab-nav::-webkit-scrollbar,
-  div.tabs > div.tab-nav::-webkit-scrollbar {{ display: none !important; }}
-  .tabs > .tab-nav > button,
-  div.tabs > div.tab-nav > button {{
+  .tab-container[role="tablist"]::-webkit-scrollbar {{ display: none !important; }}
+  .tab-container[role="tablist"] > button[role="tab"] {{
     padding: 10px 12px !important;
     font-size: 12px !important;
     min-height: 44px !important;
