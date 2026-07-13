@@ -228,7 +228,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
             scorecard_out = gr.HTML(value="")          # yfinance — populated by 300 s timer
-            metrics_out   = gr.HTML(value=render_institutional_metrics)
+            metrics_out   = gr.HTML(value=render_institutional_metrics)  # callable: spy path guarded by @safe_render; 300 s timer refreshes
             with gr.Row():
                 returns_hist_plot = gr.Plot(value=None, label="", show_label=False)
                 winloss_plot      = gr.Plot(value=None, label="", show_label=False)

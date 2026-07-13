@@ -74,20 +74,20 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
     """One batched tick for all lightweight components (DB reads only)."""
 
     def _tick():
+        _pos = render_positions()
         return (
             render_executive_summary(),
             render_decision_bar(),
             render_scheduler_status(),
             render_morning_brief(),
-            render_positions(),           # → pos_brief_out
+            _pos,                         # → pos_brief_out
             render_daily_headline(),
-            render_positions(),           # → pos_out
+            _pos,                         # → pos_out
             render_weekly_summary(),
             render_capital_overview(),
             render_profit_breakdown(),
             render_settings_summary(),
             render_investor_profile(),
-            render_institutional_metrics(),
             render_investor_view(),
         )
 
@@ -104,7 +104,6 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["profit_breakdown_out"],
         c["settings_summary_out"],
         c["investor_profile_out"],
-        c["metrics_out"],
         c["investor_out"],
     ])
 
@@ -158,6 +157,7 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
             render_recommendation_history(),
             render_timeline(),
             render_paper_trading_scorecard(),
+            render_institutional_metrics(),   # yfinance path via spy_return_since — belongs in 300 s, not 60 s
             render_returns_histogram(),
             render_winloss_chart(),
             render_feature_importance_chart(),
@@ -192,6 +192,7 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         c["rec_history_out"],
         c["timeline_trades_out"],
         c["scorecard_out"],
+        c["metrics_out"],
         c["returns_hist_plot"],
         c["winloss_plot"],
         c["fi_plot"],
