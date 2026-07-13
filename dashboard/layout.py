@@ -307,7 +307,7 @@ STYLES = f"""<style>
   text-transform:uppercase;letter-spacing:.8px;
   padding:10px 16px;border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;
 }}
-.nt-tbl td {{ padding:12px 16px;border-bottom:1px solid {BORDER};vertical-align:middle; }}
+.nt-tbl td {{ padding:12px 16px;border-bottom:1px solid {BORDER};vertical-align:middle;color:{TEXT1};background:transparent; }}
 .nt-tbl tr:last-child td {{ border-bottom:none; }}
 .nt-tbl tr:hover td {{ background:{SURFACE2}; }}
 @keyframes shimmer    {{ 0%{{background-position:0%}} 100%{{background-position:200%}} }}
