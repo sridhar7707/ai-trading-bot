@@ -14,12 +14,18 @@ GRADIO_CSS = f"""
   background-color: {BG} !important;
   color: {TEXT1} !important;
 }}
-.block, .form, .wrap {{ background: transparent !important; border: none !important;
-  box-shadow: none !important; padding: 0 !important; color: {TEXT1} !important; }}
-/* Hide Gradio 5's StatusTracker "Error" badge — safe_render handles errors inline */
-span.error {{ display: none !important; }}
+.block, .form, .wrap, .contain, .gap {{ background: transparent !important;
+  border: none !important; box-shadow: none !important; color: {TEXT1} !important; }}
+/* Strip extra padding that Gradio 5 injects around blocks */
+.block, .form, .wrap {{ padding: 0 !important; }}
 .gap {{ gap: 8px !important; }}
 .contain {{ padding: 8px 12px !important; }}
+/* Hide Gradio 5's StatusTracker "Error" badge — safe_render handles errors inline */
+span.error {{ display: none !important; }}
+/* Force page background on every layer Gradio 5 might add */
+body, .app, .gradio-container > .main, .gradio-container .wrap {{
+  background-color: {BG} !important;
+}}
 .plot-container, .plot-container > div {{ background: transparent !important; }}
 footer {{ display: none !important; }}
 
