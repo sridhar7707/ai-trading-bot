@@ -22,6 +22,24 @@ GRADIO_CSS = f"""
 .contain {{ padding: 8px 12px !important; }}
 /* Hide Gradio 5's StatusTracker "Error" badge — safe_render handles errors inline */
 span.error {{ display: none !important; }}
+/* ── Dim-text fix: remove StatusTracker opacity overlay (Gradio 5.9.0) ───────── */
+/* Gradio adds .translucent (opacity:0.5) when status="pending"|"minimal" —     */
+/* this halves contrast on all component content.  We render inline, don't need  */
+/* the pending UX.                                                               */
+.translucent {{ opacity: 1 !important; }}
+.pending     {{ opacity: 1 !important; }}
+.generating  {{ opacity: 1 !important; }}
+/* Override Gradio 5 CSS variables so inline var() references resolve to our colours */
+.gradio-container {{
+  --body-text-color: {TEXT1} !important;
+  --body-text-color-subdued: {TEXT2} !important;
+  --block-label-text-color: {TEXT2} !important;
+  --block-title-text-color: {TEXT1} !important;
+  --input-text-color: {TEXT1} !important;
+  --color-accent: #00c853 !important;
+}}
+/* ── Gap fix: collapse empty/loading blocks (three_q_out starts as value="") ─── */
+.gradio-container .block {{ min-height: 0 !important; margin: 0 !important; }}
 /* Force page background on every layer Gradio 5 might add */
 body, .app, .gradio-container > .main, .gradio-container .wrap {{
   background-color: {BG} !important;
