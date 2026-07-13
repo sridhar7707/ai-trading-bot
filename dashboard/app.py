@@ -393,11 +393,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
 
 # ── Cron HTTP endpoint + static-file fix ─────────────────────────────────────
-# Gradio 5.9.0's App.create_app builds the API routes but never registers a
-# handler for /_app/immutable/* — those requests fall through to FastAPI's
-# default 404.  Fix: insert a StaticFiles Mount at index 0 of the router
-# (checked before every other route/mount) so all /_app/* requests are served
-# from Gradio's compiled SvelteKit frontend package.
+# Gradio 5.9.0's App.create_app builds the API routes but never registers
+# handlers for /_app/immutable/* or /static/* — those requests fall through
+# to FastAPI's default 404.  Fix: insert StaticFiles Mounts at index 0 of
+# the router so they're checked before every other route/mount.
 import threading
 from pathlib import Path
 from fastapi.responses import JSONResponse
@@ -407,9 +406,14 @@ from gradio.routes import App as _GradioApp
 
 app = _GradioApp.create_app(_demo, app_kwargs={"docs_url": None, "redoc_url": None})
 
-_GR_APP_DIR = Path(gr.__file__).parent / "templates" / "frontend" / "_app"
+_GR_FRONTEND = Path(gr.__file__).parent / "templates" / "frontend"
+_GR_APP_DIR  = _GR_FRONTEND / "_app"
+_GR_STATIC   = _GR_FRONTEND / "static"
+
 if _GR_APP_DIR.is_dir():
     app.router.routes.insert(0, Mount("/_app", app=StaticFiles(directory=str(_GR_APP_DIR))))
+if _GR_STATIC.is_dir():
+    app.router.routes.insert(0, Mount("/static", app=StaticFiles(directory=str(_GR_STATIC))))
 
 
 @app.get("/run/cron")
