@@ -182,7 +182,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             )
             symbol_detail_out = gr.HTML(value="")
             _sym_state        = gr.State(value=_initial_sym)
-            sim_sym_dd = gr.Dropdown(choices=[], label="🔬 Simulate: Symbol", container=True)
+            _sim_syms  = sorted(get_data().get("prices", {}).keys()) or []
+            sim_sym_dd = gr.Dropdown(choices=_sim_syms, label="🔬 Simulate: Symbol", container=True)
             sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
                                    label="Amount ($)", container=True)
             simulator_out = gr.HTML(value="")

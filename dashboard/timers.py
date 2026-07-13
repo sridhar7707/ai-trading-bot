@@ -104,6 +104,23 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["investor_profile_out"],
     ])
 
+    # Dropdown choices are DB-only reads — refresh every 60 s so they populate
+    # immediately on the first tick rather than waiting for the 300 s data timer.
+    def _refresh_sym(sel: str):
+        from dashboard.components.symbol_detail import _get_symbol_choices
+        choices = _get_symbol_choices()
+        val = sel if sel in choices else (choices[0] if choices else None)
+        return gr.update(choices=choices, value=val), val
+
+    def _sim_choices():
+        from dashboard.data import get_data as _gd
+        choices = sorted(_gd().get("prices", {}).keys()) or []
+        return gr.update(choices=choices)
+
+    timer.tick(fn=_refresh_sym, inputs=[c["_sym_state"]],
+               outputs=[c["symbol_selector"], c["_sym_state"]])
+    timer.tick(fn=_sim_choices, outputs=[c["sim_sym_dd"]])
+
 
 # ── Slow (300 s) — yfinance (15 s timeout) + charts + AI ──────────────────────
 
@@ -183,7 +200,7 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         c["spy_banner_out"],
     ])
 
-    # Stateful callbacks need gr.State inputs — kept as separate ticks.
+    # Stateful callbacks that need gr.State inputs or heavier renders.
     def _refresh_perf(current_key: str):
         from dashboard.components.history import _perf_choices, render_portfolio_performance
         if not isinstance(current_key, str):
@@ -194,24 +211,10 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         new_key = val.split()[0] if val else current_key
         return gr.update(choices=choices, value=val), new_key, render_portfolio_performance(val or "1M")
 
-    def _refresh_sym(sel: str):
-        from dashboard.components.symbol_detail import _get_symbol_choices
-        choices = _get_symbol_choices()
-        val = sel if sel in choices else (choices[0] if choices else None)
-        return gr.update(choices=choices, value=val), val
-
     def _sym_detail(sel):
         from dashboard.components.symbol_detail import render_symbol_detail
         return render_symbol_detail(sel)
 
-    def _sim_choices():
-        from dashboard.data import get_data as _gd
-        choices = sorted(_gd().get("prices", {}).keys()) or []
-        return gr.update(choices=choices)
-
     timer.tick(fn=_refresh_perf, inputs=[c["perf_key_state"]],
                outputs=[c["perf_tabs"], c["perf_key_state"], c["perf_out"]])
-    timer.tick(fn=_refresh_sym,  inputs=[c["_sym_state"]],
-               outputs=[c["symbol_selector"], c["_sym_state"]])
     timer.tick(fn=_sym_detail,   inputs=[c["_sym_state"]], outputs=[c["symbol_detail_out"]])
-    timer.tick(fn=_sim_choices,  outputs=[c["sim_sym_dd"]])
