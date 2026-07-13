@@ -89,6 +89,11 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
             render_settings_summary(),
             render_investor_profile(),
             render_investor_view(),
+            render_whats_changed(),
+            render_ai_recommendation(),
+            render_risk_panel(),
+            render_market_intelligence(),
+            render_all_timelines(),
         )
 
     timer.tick(fn=_tick, outputs=[
@@ -105,6 +110,11 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["settings_summary_out"],
         c["investor_profile_out"],
         c["investor_out"],
+        c["whats_changed_out"],
+        c["ai_rec_brief_out"],
+        c["risk_panel_out"],
+        c["mkt_intel_out"],
+        c["timeline_brief_out"],
     ])
 
     # Dropdown choices are DB-only reads — refresh every 60 s so they populate
@@ -133,13 +143,8 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
     def _tick():
         return (
             render_three_question_summary(),
-            render_whats_changed(),
             render_market_mood(),
-            render_ai_recommendation(),
-            render_risk_panel(),
-            render_market_intelligence(),
             render_news_feed(),
-            render_all_timelines(),
             render_equity_chart(),
             render_allocation_chart(),
             render_pnl_chart(),
@@ -168,13 +173,8 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
 
     timer.tick(fn=_tick, outputs=[
         c["three_q_out"],
-        c["whats_changed_out"],
         c["market_mood_out"],
-        c["ai_rec_brief_out"],
-        c["risk_panel_out"],
-        c["mkt_intel_out"],
         c["news_out"],
-        c["timeline_brief_out"],
         c["eq_plot"],
         c["alloc_plot"],
         c["pnl_plot"],

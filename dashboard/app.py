@@ -129,25 +129,25 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("What Changed Today", open=False):
-                        whats_changed_out = gr.HTML(value="")
+                        whats_changed_out = gr.HTML(value=render_whats_changed)
                 with gr.Column():
                     with gr.Accordion("Market Mood", open=False):
-                        market_mood_out   = gr.HTML(value="")
+                        market_mood_out   = gr.HTML(value="")   # yfinance — 300 s timer
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("AI Committee", open=False):
-                        ai_rec_brief_out  = gr.HTML(value="")
+                        ai_rec_brief_out  = gr.HTML(value=render_ai_recommendation)
                 with gr.Column():
                     with gr.Accordion("Risk Panel", open=False):
-                        risk_panel_out    = gr.HTML(value="")
-                        mkt_intel_out     = gr.HTML(value="")
+                        risk_panel_out    = gr.HTML(value=render_risk_panel)
+                        mkt_intel_out     = gr.HTML(value=render_market_intelligence)
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("News", open=False):
-                        news_out          = gr.HTML(value="")
+                        news_out          = gr.HTML(value="")   # yfinance — 300 s timer
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
-                        timeline_brief_out = gr.HTML(value="")
+                        timeline_brief_out = gr.HTML(value=render_all_timelines)
 
         # ── Tab 2: Portfolio ──────────────────────────────────────────────────
         with gr.TabItem("💼 Portfolio"):
