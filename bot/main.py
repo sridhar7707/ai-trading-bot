@@ -76,7 +76,7 @@ from bot._main_market import (
     _load_premarket_sentiment, _load_today_universe, _log_buy_skip,
     _prefetch_earnings_parallel, _wsb,
 )
-from bot._main_cycle import _fetch_symbol, _handle_exits, _handle_entry
+from bot._main_cycle import _fetch_symbol, _handle_exits, _handle_entry, compute_tradeable_capital
 from bot._main_runner import (
     _do_clean_db, _do_reset_daily_start, end_of_day_summary, run_loop,
 )
@@ -369,6 +369,9 @@ def run(
     # Prefetch earnings proximity in parallel — avoids 25 sequential yfinance HTTP calls
     earnings_map = _prefetch_earnings_parallel(con, active_symbols)
 
+    # Compute once per cycle — avoids N identical DB reads inside _handle_entry.
+    _tradeable_capital = compute_tradeable_capital(con, portfolio_value)
+
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
         try:
@@ -456,7 +459,7 @@ def run(
                 xgb_prob, lstm_prob, sentiment, macro_score, macro_cap,
                 macro_halt, spy_5bar_return, vs_spy_today, sentiments,
                 action, action_str, ensemble_size, pdt_exempt, xgb,
-                _stop_fired_today, volume_ratio,
+                _stop_fired_today, volume_ratio, _tradeable_capital,
             )
 
         except Exception as e:

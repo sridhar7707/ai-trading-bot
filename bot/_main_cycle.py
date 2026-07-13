@@ -232,6 +232,60 @@ def _handle_exits(
     return True
 
 
+def compute_tradeable_capital(con: sqlite3.Connection, portfolio_value: float) -> float:
+    """Return the capital available for new positions respecting the reinvestment setting.
+
+    When reinvest_profits_only=true: tradeable = max(0, portfolio_value - initial_deposit).
+    Computes once per cycle and is passed into _handle_entry, avoiding per-symbol DB reads.
+    """
+    if _get_setting("reinvest_profits_only", "false") != "true":
+        return portfolio_value
+
+    dep_str = _get_setting("initial_deposit", None)
+    initial: float | None = None
+    if dep_str:
+        try:
+            initial = float(dep_str)
+        except Exception:
+            pass
+
+    if initial is None:
+        try:
+            row = con.execute(
+                "SELECT portfolio_value FROM portfolio_snapshots "
+                "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1"
+            ).fetchone()
+            if row:
+                initial = float(row[0])
+        except Exception:
+            pass
+
+    if initial is None:
+        try:
+            row = con.execute(
+                "SELECT portfolio_value FROM trades "
+                "WHERE portfolio_value > 0 ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if row:
+                initial = float(row[0])
+        except Exception:
+            pass
+
+    if initial is None:
+        logger.warning(
+            "reinvest_profits_only=true but initial deposit unknown "
+            "(no initial_deposit setting and no portfolio history) — trading full portfolio"
+        )
+        return portfolio_value
+
+    tradeable = max(0.0, portfolio_value - initial)
+    logger.debug(
+        f"reinvest-profits-only: tradeable=${tradeable:.0f} "
+        f"(portfolio=${portfolio_value:.0f}, deposit=${initial:.0f})"
+    )
+    return tradeable
+
+
 def _handle_entry(
     con: sqlite3.Connection, client, risk, symbol: str, positions: dict,
     buy_order_syms: set, earnings_map: dict, bars_map: dict,
@@ -241,7 +295,7 @@ def _handle_entry(
     macro_cap: float, macro_halt: bool, spy_5bar_return: float | None,
     vs_spy_today: float, sentiments: dict, action: int, action_str: str,
     ensemble_size: float, pdt_exempt: bool, xgb, stop_fired_today: set,
-    volume_ratio: float,
+    volume_ratio: float, tradeable_capital: float,
 ) -> float:
     """Process entry gates and buy execution. Returns updated available_cash."""
     # Gate 0 — VIX emergency halt: no new positions when VIX >= 40
@@ -312,35 +366,12 @@ def _handle_entry(
     confidence   = ensemble_size / BUY_FRACTION  # 1.0 for BUY, 1.67 for STRONG_BUY
     pos_fraction = min(kelly_f * macro_cap * confidence, KELLY_FRACTION_MAX)
 
-    # Reinvestment guard: when "profits only" mode is active, only trade with
-    # AI-generated profit above the initial deposit — never risk the seed capital.
-    _tradeable = portfolio_value
-    if _get_setting("reinvest_profits_only", "false") == "true":
-        _dep_str = _get_setting("initial_deposit", None)
-        _initial: float | None = None
-        if _dep_str:
-            try:
-                _initial = float(_dep_str)
-            except Exception:
-                pass
-        if _initial is None:
-            try:
-                row = con.execute(
-                    "SELECT portfolio_value FROM portfolio_snapshots "
-                    "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1"
-                ).fetchone()
-                if row:
-                    _initial = float(row[0])
-            except Exception:
-                pass
-        if _initial is not None:
-            _tradeable = max(0.0, portfolio_value - _initial)
-            logger.debug(
-                f"BUY {symbol}: reinvest-profits-only — tradeable=${_tradeable:.0f} "
-                f"(portfolio=${portfolio_value:.0f}, deposit=${_initial:.0f})"
-            )
-
-    notional = _tradeable * pos_fraction
+    # Reinvestment guard: tradeable_capital is pre-computed once per cycle by main.py
+    # using compute_tradeable_capital() so we avoid per-symbol DB reads here.
+    notional = tradeable_capital * pos_fraction
+    if notional <= 0.0:
+        _log_buy_skip(symbol, "no tradeable capital (profits only mode, no profits yet)")
+        return available_cash
 
     # Risk-per-trade cap: size so max dollar loss ≤ MAX_RISK_PER_TRADE_PCT of portfolio.
     # Derives the implied stop % from ATR (same formula as risk_manager), then back-calculates
@@ -367,7 +398,7 @@ def _handle_entry(
         )
         return available_cash
 
-    max_risk_notional = (_tradeable * MAX_RISK_PER_TRADE_PCT) / stop_pct
+    max_risk_notional = (portfolio_value * MAX_RISK_PER_TRADE_PCT) / stop_pct
     if notional > max_risk_notional:
         logger.info(
             f"BUY {symbol}: notional capped ${notional:.0f}→${max_risk_notional:.0f} "
