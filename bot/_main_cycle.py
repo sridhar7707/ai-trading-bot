@@ -21,6 +21,7 @@ from config import (
     MACD_CONFIRMATION_MIN, MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR,
     RS_LOOKBACK_BARS, SECTOR_MAP, STOP_LOSS_PCT,
 )
+from database.user_settings import get_setting as _get_setting
 from bot._main_db import log_trade, _save_risk_state
 from bot._main_market import _log_buy_skip
 from bot._main_positions import (
@@ -310,7 +311,36 @@ def _handle_entry(
     kelly_f      = _kelly_fraction(con, symbol)
     confidence   = ensemble_size / BUY_FRACTION  # 1.0 for BUY, 1.67 for STRONG_BUY
     pos_fraction = min(kelly_f * macro_cap * confidence, KELLY_FRACTION_MAX)
-    notional     = portfolio_value * pos_fraction
+
+    # Reinvestment guard: when "profits only" mode is active, only trade with
+    # AI-generated profit above the initial deposit — never risk the seed capital.
+    _tradeable = portfolio_value
+    if _get_setting("reinvest_profits_only", "false") == "true":
+        _dep_str = _get_setting("initial_deposit", None)
+        _initial: float | None = None
+        if _dep_str:
+            try:
+                _initial = float(_dep_str)
+            except Exception:
+                pass
+        if _initial is None:
+            try:
+                row = con.execute(
+                    "SELECT portfolio_value FROM portfolio_snapshots "
+                    "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1"
+                ).fetchone()
+                if row:
+                    _initial = float(row[0])
+            except Exception:
+                pass
+        if _initial is not None:
+            _tradeable = max(0.0, portfolio_value - _initial)
+            logger.debug(
+                f"BUY {symbol}: reinvest-profits-only — tradeable=${_tradeable:.0f} "
+                f"(portfolio=${portfolio_value:.0f}, deposit=${_initial:.0f})"
+            )
+
+    notional = _tradeable * pos_fraction
 
     # Risk-per-trade cap: size so max dollar loss ≤ MAX_RISK_PER_TRADE_PCT of portfolio.
     # Derives the implied stop % from ATR (same formula as risk_manager), then back-calculates
@@ -337,7 +367,7 @@ def _handle_entry(
         )
         return available_cash
 
-    max_risk_notional = (portfolio_value * MAX_RISK_PER_TRADE_PCT) / stop_pct
+    max_risk_notional = (_tradeable * MAX_RISK_PER_TRADE_PCT) / stop_pct
     if notional > max_risk_notional:
         logger.info(
             f"BUY {symbol}: notional capped ${notional:.0f}→${max_risk_notional:.0f} "

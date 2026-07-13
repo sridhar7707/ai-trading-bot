@@ -242,11 +242,17 @@ def render_profit_breakdown() -> str:
 
 def save_reinvestment_mode(mode: str) -> str:
     """Persist reinvestment toggle selection; returns status HTML snippet."""
-    value = "true" if "profits only" in mode.lower() else "false"
+    profits_only = "profits only" in mode.lower()
+    value = "true" if profits_only else "false"
     ok = save_setting("reinvest_profits_only", value)
     if ok:
+        desc = (
+            "Reinvest profits only &mdash; your initial deposit is always protected"
+            if profits_only
+            else "Reinvest everything &mdash; profits and initial deposit both grow the position"
+        )
         return (
             f'<span style="color:{GAIN};font-size:12px;">'
-            f'✓ Saved — active on next trade cycle</span>'
+            f'&#10003; Active: {desc}</span>'
         )
     return f'<span style="color:{LOSS};font-size:12px;">⚠ Save failed</span>'
