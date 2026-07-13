@@ -163,10 +163,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             perf_out       = gr.HTML(value="")
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=None, label="")
+                    eq_plot    = gr.Plot(value=None, label="", show_label=False)
                 with gr.Column(scale=35):
-                    alloc_plot = gr.Plot(value=None, label="")
-            pnl_plot            = gr.Plot(value=None, label="")
+                    alloc_plot = gr.Plot(value=None, label="", show_label=False)
+            pnl_plot            = gr.Plot(value=None, label="", show_label=False)
             committee_out       = gr.HTML(value="")
             decision_center_out = gr.HTML(value="")
             rebalance_out       = gr.HTML(value="")
@@ -222,8 +222,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             scorecard_out = gr.HTML(value="")
             metrics_out   = gr.HTML(value="")
             with gr.Row():
-                returns_hist_plot = gr.Plot(value=None, label="")
-                winloss_plot      = gr.Plot(value=None, label="")
+                returns_hist_plot = gr.Plot(value=None, label="", show_label=False)
+                winloss_plot      = gr.Plot(value=None, label="", show_label=False)
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View", label="", container=False,
@@ -232,7 +232,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Column(visible=False) as dev_col:
                 with gr.Row():
                     with gr.Column(scale=65):
-                        fi_plot = gr.Plot(value=None, label="")
+                        fi_plot = gr.Plot(value=None, label="", show_label=False)
                     with gr.Column(scale=35):
                         val_out = gr.HTML(value="")
 
