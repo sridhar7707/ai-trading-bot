@@ -163,7 +163,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 label="", container=False, elem_classes=["perf-tabs"],
             )
             perf_key_state = gr.State(value=_init_sel.split("  ")[0].strip())
-            perf_out       = gr.HTML(value=lambda: render_portfolio_performance(_init_sel))
+            perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
                     eq_plot    = gr.Plot(value=None, label="", show_label=False)
