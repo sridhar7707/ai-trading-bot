@@ -48,7 +48,7 @@ span.error {{ display: none !important; }}
 /* Prevent horizontal overflow scrollbars in blocks/accordion panels.
    Gradio 5's ETA progress bar (.eta-bar) overflows narrow accordion containers. */
 .gradio-container .block {{ margin: 0 !important; overflow-x: hidden !important; }}
-.eta-bar {{ display: none !important; }}
+.eta-bar, .meta-text, .meta-text-center {{ display: none !important; }}
 /* Force page background on every layer Gradio 5 might add */
 body, .app, .gradio-container > .main, .gradio-container .wrap {{
   background-color: {BG} !important;
