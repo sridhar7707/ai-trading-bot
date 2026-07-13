@@ -121,7 +121,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             # Fast cards (DB-only): rendered immediately via value=callable.
             # Everything else starts empty and is populated by timers.
             exec_summary_out     = gr.HTML(value=render_executive_summary, show_label=False)
-            three_q_out          = gr.HTML(value="", show_label=False)
+            three_q_out          = gr.HTML(value="", show_label=False, elem_id="three_q_out")
             decision_bar_out     = gr.HTML(value=render_decision_bar, show_label=False)
             scheduler_status_out = gr.HTML(value=render_scheduler_status, show_label=False)
             morning_brief_out    = gr.HTML(value=render_morning_brief, show_label=False)

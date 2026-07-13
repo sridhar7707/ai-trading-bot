@@ -28,18 +28,24 @@ span.error {{ display: none !important; }}
 /* the pending UX.                                                               */
 .translucent {{ opacity: 1 !important; }}
 .pending     {{ opacity: 1 !important; }}
-.generating  {{ opacity: 1 !important; }}
-/* Override Gradio 5 CSS variables so inline var() references resolve to our colours */
+/* NOTE: .generating is intentionally NOT overridden — it is the active-refresh
+   indicator on gr.Plot and gr.HTML components during the 300 s data timer.      */
+/* Override Gradio 5 CSS variables so inline var() references resolve to our colours.
+   No !important on the variable values — only the consuming properties need it;
+   !important inside var() is parsed as literal text in Safari < 15.4.            */
 .gradio-container {{
-  --body-text-color: {TEXT1} !important;
-  --body-text-color-subdued: {TEXT2} !important;
-  --block-label-text-color: {TEXT2} !important;
-  --block-title-text-color: {TEXT1} !important;
-  --input-text-color: {TEXT1} !important;
-  --color-accent: #00c853 !important;
+  --body-text-color: {TEXT1};
+  --body-text-color-subdued: {TEXT2};
+  --block-label-text-color: {TEXT2};
+  --block-title-text-color: {TEXT1};
+  --input-text-color: {TEXT1};
+  --color-accent: {PRIMARY};
 }}
-/* ── Gap fix: collapse empty/loading blocks (three_q_out starts as value="") ─── */
-.gradio-container .block {{ min-height: 0 !important; margin: 0 !important; }}
+/* ── Gap fix: collapse only the empty three_q_out block (value="" until 300 s timer) */
+/* Using elem_id selector avoids zeroing min-height on gr.Plot blocks that need   */
+/* Gradio's default height to initialize their Plotly canvas correctly.           */
+#three_q_out {{ min-height: 0 !important; }}
+.gradio-container .block {{ margin: 0 !important; }}
 /* Force page background on every layer Gradio 5 might add */
 body, .app, .gradio-container > .main, .gradio-container .wrap {{
   background-color: {BG} !important;
