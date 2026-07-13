@@ -191,7 +191,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
             capital_overview_out  = gr.HTML(value=render_capital_overview)
-            capital_chart_out     = gr.Plot(value=None, label="Capital Growth")
+            capital_chart_out     = gr.Plot(value=None, label="Capital Growth", show_label=False)
             profit_breakdown_out  = gr.HTML(value=render_profit_breakdown)
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
@@ -206,7 +206,15 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 ),
                 label="Reinvestment Mode",
             )
-            reinvest_status = gr.HTML(value="")
+            _reinvest_desc = (
+                "Reinvest profits only &mdash; your initial deposit is always protected"
+                if _cur_reinvest == "true"
+                else "Reinvest everything &mdash; profits and initial deposit both grow the position"
+            )
+            reinvest_status = gr.HTML(value=(
+                f'<span style="color:{GAIN};font-size:12px;">'
+                f'&#10003; Active: {_reinvest_desc}</span>'
+            ))
 
         # ── Tab 4: Trades ─────────────────────────────────────────────────────
         with gr.TabItem("📈 Trades"):
