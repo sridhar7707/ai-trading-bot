@@ -16,6 +16,8 @@ GRADIO_CSS = f"""
 }}
 .block, .form, .wrap {{ background: transparent !important; border: none !important;
   box-shadow: none !important; padding: 0 !important; color: {TEXT1} !important; }}
+/* Hide Gradio 5's StatusTracker "Error" badge — safe_render handles errors inline */
+span.error {{ display: none !important; }}
 .gap {{ gap: 8px !important; }}
 .contain {{ padding: 8px 12px !important; }}
 .plot-container, .plot-container > div {{ background: transparent !important; }}
