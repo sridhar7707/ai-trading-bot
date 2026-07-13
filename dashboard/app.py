@@ -132,7 +132,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                         whats_changed_out = gr.HTML(value=render_whats_changed)
                 with gr.Column():
                     with gr.Accordion("Market Mood", open=False):
-                        market_mood_out   = gr.HTML(value="")   # yfinance — 300 s timer
+                        market_mood_out   = gr.HTML(value="")
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("AI Committee", open=False):
@@ -144,7 +144,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("News", open=False):
-                        news_out          = gr.HTML(value="")   # yfinance — 300 s timer
+                        news_out          = gr.HTML(value="")
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
                         timeline_brief_out = gr.HTML(value=render_all_timelines)
@@ -166,10 +166,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=None, label="", show_label=False)
+                    eq_plot    = gr.Plot(value=render_equity_chart, label="", show_label=False)
                 with gr.Column(scale=35):
-                    alloc_plot = gr.Plot(value=None, label="", show_label=False)
-            pnl_plot            = gr.Plot(value=None, label="", show_label=False)
+                    alloc_plot = gr.Plot(value=render_allocation_chart, label="", show_label=False)
+            pnl_plot            = gr.Plot(value=render_pnl_chart, label="", show_label=False)
             committee_out       = gr.HTML(value="")
             decision_center_out = gr.HTML(value="")
             rebalance_out       = gr.HTML(value="")
@@ -338,6 +338,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         inputs=[_risk_radio, _bench_radio, _max_pos_sl, _max_dd_sl, _stop_sl, _notif_check],
         outputs=[settings_summary_out, _save_status],
     )
+
+    # ── Page-load events — populate yfinance/API panels after page is served ─────
+    # These fire per user session instead of at server startup, keeping startup
+    # fast while ensuring Market Mood and News appear immediately on page load.
+    _demo.load(fn=render_market_mood, outputs=[market_mood_out])
+    _demo.load(fn=render_news_feed,   outputs=[news_out])
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
