@@ -363,8 +363,8 @@ def _perf_choices() -> list[str]:
 @timed(_logger)
 @safe_render("Portfolio Performance")
 def render_portfolio_performance(period: str = "1M  —") -> str:
-    # Strip the inline stat suffix so we always have a clean key
-    key = period.split()[0] if period else "1M"
+    # Choices are "{key}  {stat}" (double space); split()[0] breaks "All Time" → use split("  ")
+    key = period.split("  ")[0].strip() if period else "1M"
 
     stats = _query_perf_stats()
     cur_row_val = None

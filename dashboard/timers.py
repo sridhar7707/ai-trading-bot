@@ -207,9 +207,9 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         if not isinstance(current_key, str):
             current_key = "1M"
         choices = _perf_choices()
-        matched = next((ch for ch in choices if ch.split()[0] == current_key), None)
+        matched = next((ch for ch in choices if ch.split("  ")[0].strip() == current_key), None)
         val = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
-        new_key = val.split()[0] if val else current_key
+        new_key = val.split("  ")[0].strip() if val else current_key
         return gr.update(choices=choices, value=val), new_key, render_portfolio_performance(val or "1M")
 
     def _sym_detail(sel):

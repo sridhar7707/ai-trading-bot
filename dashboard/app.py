@@ -155,12 +155,15 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             daily_headline_out  = gr.HTML(value=render_daily_headline)
             hero_out            = gr.HTML(value=render_portfolio_health_hero)
             spy_banner_out      = gr.HTML(value="")
-            perf_tabs           = gr.Radio(
-                choices=_perf_choices(), value=_perf_choices()[2],
+            _init_choices = _perf_choices()
+            # Pre-select the first period that has real data (not "—"); fall back to index 2
+            _init_sel = next((c for c in _init_choices if "—" not in c), _init_choices[2] if len(_init_choices) > 2 else _init_choices[0])
+            perf_tabs      = gr.Radio(
+                choices=_init_choices, value=_init_sel,
                 label="", container=False, elem_classes=["perf-tabs"],
             )
-            perf_key_state = gr.State(value="1M")
-            perf_out       = gr.HTML(value="")
+            perf_key_state = gr.State(value=_init_sel.split("  ")[0].strip())
+            perf_out       = gr.HTML(value=lambda: render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
                     eq_plot    = gr.Plot(value=None, label="", show_label=False)
@@ -291,7 +294,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     )
 
     def _on_perf_change(period_label):
-        key = (period_label or "1M").split()[0]
+        key = (period_label or "1M  —").split("  ")[0].strip()
         return render_portfolio_performance(period_label), key
     perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs],
                      outputs=[perf_out, perf_key_state])
