@@ -12,9 +12,10 @@ from dashboard.design_system import (
 GRADIO_CSS = f"""
 .gradio-container, .gradio-container > .main {{
   background-color: {BG} !important;
+  color: {TEXT1} !important;
 }}
 .block, .form, .wrap {{ background: transparent !important; border: none !important;
-  box-shadow: none !important; padding: 0 !important; }}
+  box-shadow: none !important; padding: 0 !important; color: {TEXT1} !important; }}
 .gap {{ gap: 8px !important; }}
 .contain {{ padding: 8px 12px !important; }}
 .plot-container, .plot-container > div {{ background: transparent !important; }}
@@ -307,7 +308,7 @@ STYLES = f"""<style>
   text-transform:uppercase;letter-spacing:.8px;
   padding:10px 16px;border-bottom:1px solid {BORDER};text-align:left;white-space:nowrap;
 }}
-.nt-tbl td {{ padding:12px 16px;border-bottom:1px solid {BORDER};vertical-align:middle;color:{TEXT1};background:transparent; }}
+.nt-tbl td {{ padding:12px 16px;border-bottom:1px solid {BORDER};vertical-align:middle;color:{TEXT1}!important;background:transparent!important; }}
 .nt-tbl tr:last-child td {{ border-bottom:none; }}
 .nt-tbl tr:hover td {{ background:{SURFACE2}; }}
 @keyframes shimmer    {{ 0%{{background-position:0%}} 100%{{background-position:200%}} }}
