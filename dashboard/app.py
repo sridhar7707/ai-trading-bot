@@ -227,8 +227,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
-            scorecard_out = gr.HTML(value="")
-            metrics_out   = gr.HTML(value="")
+            scorecard_out = gr.HTML(value="")          # yfinance — populated by 300 s timer
+            metrics_out   = gr.HTML(value=render_institutional_metrics)
             with gr.Row():
                 returns_hist_plot = gr.Plot(value=None, label="", show_label=False)
                 winloss_plot      = gr.Plot(value=None, label="", show_label=False)
@@ -236,7 +236,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View", label="", container=False,
             )
-            investor_out = gr.HTML(value="", visible=True)
+            investor_out = gr.HTML(value=render_investor_view, visible=True)
             with gr.Column(visible=False) as dev_col:
                 with gr.Row():
                     with gr.Column(scale=65):

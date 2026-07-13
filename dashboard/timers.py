@@ -87,6 +87,8 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
             render_profit_breakdown(),
             render_settings_summary(),
             render_investor_profile(),
+            render_institutional_metrics(),
+            render_investor_view(),
         )
 
     timer.tick(fn=_tick, outputs=[
@@ -102,6 +104,8 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["profit_breakdown_out"],
         c["settings_summary_out"],
         c["investor_profile_out"],
+        c["metrics_out"],
+        c["investor_out"],
     ])
 
     # Dropdown choices are DB-only reads — refresh every 60 s so they populate
@@ -154,10 +158,8 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
             render_recommendation_history(),
             render_timeline(),
             render_paper_trading_scorecard(),
-            render_institutional_metrics(),
             render_returns_histogram(),
             render_winloss_chart(),
-            render_investor_view(),
             render_feature_importance_chart(),
             render_validation_report(),
             render_portfolio_health_hero(),
@@ -190,10 +192,8 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         c["rec_history_out"],
         c["timeline_trades_out"],
         c["scorecard_out"],
-        c["metrics_out"],
         c["returns_hist_plot"],
         c["winloss_plot"],
-        c["investor_out"],
         c["fi_plot"],
         c["val_out"],
         c["hero_out"],
