@@ -293,22 +293,22 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
                     continue
 
                 if key == "1D":
-                    # "Today's change" = yesterday's market close -> now.
-                    # Use the LAST portfolio_snapshots entry from yesterday (true end-of-day).
-                    # Fallback to last trades record from yesterday if no snapshot exists.
-                    yesterday_str = (today - datetime.timedelta(days=1)).isoformat()
+                    # "Today's change" = most recent prior trading day's close → now.
+                    # Using < today (not = yesterday) so weekends and holidays are
+                    # skipped automatically: Monday correctly shows Friday's close.
+                    today_str = today.isoformat()
                     row = con.execute(
                         "SELECT portfolio_value, timestamp FROM portfolio_snapshots "
-                        "WHERE portfolio_value > 0 AND date(timestamp) = ? "
+                        "WHERE portfolio_value > 0 AND date(timestamp) < ? "
                         "ORDER BY timestamp DESC LIMIT 1",
-                        (yesterday_str,),
+                        (today_str,),
                     ).fetchone()
                     if not row:
                         row = con.execute(
                             "SELECT portfolio_value, timestamp FROM trades "
-                            "WHERE portfolio_value > 0 AND date(timestamp) = ? "
+                            "WHERE portfolio_value > 0 AND date(timestamp) < ? "
                             "ORDER BY id DESC LIMIT 1",
-                            (yesterday_str,),
+                            (today_str,),
                         ).fetchone()
                     if row:
                         result[key] = (float(row[0]), cur_val, row[1][:10])
@@ -322,21 +322,13 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
                     cutoff = (today - datetime.timedelta(days=days)).isoformat()
 
                 # First DB record on or after the cutoff date (start-of-period proxy).
-                # If the effective start date equals the bot's first-ever trade date, the bot
-                # hasn't been running long enough for this period &mdash; show "&mdash;" to avoid displaying
-                # the same cumulative loss as All Time under a misleading label like "1M".
                 row = con.execute(
                     "SELECT portfolio_value, timestamp FROM trades "
                     "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
                     (cutoff,),
                 ).fetchone()
                 if row:
-                    start_val  = float(row[0])
-                    start_date = row[1][:10]
-                    if first_ts and start_date == first_ts:
-                        result[key] = None
-                    else:
-                        result[key] = (start_val, cur_val, start_date)
+                    result[key] = (float(row[0]), cur_val, row[1][:10])
                 else:
                     result[key] = None
 
