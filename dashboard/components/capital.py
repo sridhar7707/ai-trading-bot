@@ -20,10 +20,32 @@ _DEFAULT_DEPOSIT = 1000.0
 
 
 def _initial_deposit() -> float:
+    custom = get_setting("initial_deposit", None)
+    if custom:
+        try:
+            return float(custom)
+        except Exception:
+            pass
+    # Derive from the earliest recorded portfolio value so the figure is
+    # accurate even when the user hasn't configured the setting explicitly.
     try:
-        return float(get_setting("initial_deposit", str(_DEFAULT_DEPOSIT)))
+        row = safe_query(
+            "SELECT portfolio_value FROM portfolio_snapshots "
+            "WHERE portfolio_value > 0 ORDER BY timestamp ASC LIMIT 1",
+            default=[],
+        )
+        if row:
+            return float(row[0][0])
+        row = safe_query(
+            "SELECT portfolio_value FROM trades "
+            "WHERE portfolio_value > 0 ORDER BY id ASC LIMIT 1",
+            default=[],
+        )
+        if row:
+            return float(row[0][0])
     except Exception:
-        return _DEFAULT_DEPOSIT
+        pass
+    return _DEFAULT_DEPOSIT
 
 
 def _capital_stats() -> dict:

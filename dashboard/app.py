@@ -343,11 +343,15 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     # gr.Plot ignores value=callable; gr.HTML yfinance callers block startup.
     # demo.load() fires per-session after HTML is sent, so the page appears
     # immediately and all panels fill in within seconds of connecting.
-    _demo.load(fn=render_equity_chart,     outputs=[eq_plot])
-    _demo.load(fn=render_allocation_chart, outputs=[alloc_plot])
-    _demo.load(fn=render_pnl_chart,        outputs=[pnl_plot])
-    _demo.load(fn=render_market_mood,      outputs=[market_mood_out])
-    _demo.load(fn=render_news_feed,        outputs=[news_out])
+    _demo.load(fn=render_equity_chart,              outputs=[eq_plot])
+    _demo.load(fn=render_allocation_chart,          outputs=[alloc_plot])
+    _demo.load(fn=render_pnl_chart,                 outputs=[pnl_plot])
+    _demo.load(fn=render_capital_chart,             outputs=[capital_chart_out])
+    _demo.load(fn=render_returns_histogram,         outputs=[returns_hist_plot])
+    _demo.load(fn=render_winloss_chart,             outputs=[winloss_plot])
+    _demo.load(fn=render_feature_importance_chart,  outputs=[fi_plot])
+    _demo.load(fn=render_market_mood,               outputs=[market_mood_out])
+    _demo.load(fn=render_news_feed,                 outputs=[news_out])
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
