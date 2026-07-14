@@ -68,7 +68,7 @@ from dashboard.components.history import render_whats_changed, render_portfolio_
 from dashboard.components.recommendation_history import (
     render_recommendation_history, render_buy_candidates, render_top_picks,
 )
-from dashboard.components.news import render_news_feed
+from dashboard.components.news import render_news_feed, render_news_feed_initial
 from dashboard.components.signal_history import render_signal_history
 from dashboard.components.actions import render_todays_actions, render_portfolio_actions
 from dashboard.components.analysis import render_sell_analysis, render_position_sizing_panel, render_position_sizing
@@ -351,7 +351,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     _demo.load(fn=render_winloss_chart,             outputs=[winloss_plot])
     _demo.load(fn=render_feature_importance_chart,  outputs=[fi_plot])
     _demo.load(fn=render_market_mood,               outputs=[market_mood_out])
-    _demo.load(fn=render_news_feed,                 outputs=[news_out])
+    _demo.load(fn=render_news_feed_initial,         outputs=[news_out])
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier

@@ -33,7 +33,7 @@ def _time_ago(pub_date_str: str) -> str:
         return ""
 
 
-def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
+def _fetch_symbol_news(symbol: str, max_items: int = 3, db_only: bool = False) -> list:
     import time as _t
     now = _t.time()
     # Membership check (not truthiness) so empty-list entries still respect TTL
@@ -41,6 +41,8 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
         cached_ts, cached = _news_cache[symbol]
         if now - cached_ts < _NEWS_CACHE_TTL:
             return cached
+    if db_only:
+        return _db_news_fallback(symbol, max_items, now)
     try:
         import yfinance as _yf
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
@@ -159,9 +161,7 @@ def _news_block(title: str, icon: str, items: list) -> str:
     )
 
 
-@timed(_logger)
-@safe_render("News Feed")
-def render_news_feed() -> str:
+def _build_news_html(db_only: bool = False) -> str:
     d = get_data()
     open_syms = list(d.get("open_pos", {}).keys())
 
@@ -180,13 +180,13 @@ def render_news_feed() -> str:
 
     held_news: list = []
     for sym in open_syms[:5]:
-        held_news.extend(_fetch_symbol_news(sym, max_items=2))
+        held_news.extend(_fetch_symbol_news(sym, max_items=2, db_only=db_only))
     held_news.sort(key=lambda x: x["pub_date"], reverse=True)
     held_news = held_news[:5]
 
     radar_news: list = []
     for sym in watchlist_syms[:5]:
-        radar_news.extend(_fetch_symbol_news(sym, max_items=2))
+        radar_news.extend(_fetch_symbol_news(sym, max_items=2, db_only=db_only))
     radar_news.sort(key=lambda x: x["pub_date"], reverse=True)
     radar_news = radar_news[:5]
 
@@ -209,3 +209,18 @@ def render_news_feed() -> str:
         f'{radar_block}'
         f'</div>'
     )
+
+
+@timed(_logger)
+@safe_render("News Feed")
+def render_news_feed() -> str:
+    """Live render — fetches fresh headlines from yfinance. Used by the refresh timer."""
+    return _build_news_html(db_only=False)
+
+
+@timed(_logger)
+@safe_render("News Feed")
+def render_news_feed_initial() -> str:
+    """DB-only render for page-load events — instant, no yfinance calls.
+    The 5-minute timer calls render_news_feed() to refresh with live data."""
+    return _build_news_html(db_only=True)

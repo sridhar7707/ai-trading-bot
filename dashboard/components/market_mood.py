@@ -418,3 +418,11 @@ def render_market_mood() -> str:
             f'<p style="color:{TEXT3};padding:12px;">Unable to load market mood</p>'
             f'</div>'
         )
+
+
+# Pre-warm cache at module import so the first _demo.load() reads from cache
+# instead of blocking on a live yfinance fetch. Runs as a daemon thread so it
+# doesn't delay server startup; by the time the first client connects the fetch
+# has either succeeded (cache populated) or timed out (cache set to {}).
+import threading as _threading
+_threading.Thread(target=_fetch_mood_data, daemon=True, name="mood_prewarm").start()
