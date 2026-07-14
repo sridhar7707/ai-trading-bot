@@ -132,7 +132,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                         whats_changed_out = gr.HTML(value=render_whats_changed)
                 with gr.Column():
                     with gr.Accordion("Market Mood", open=True):
-                        market_mood_out   = gr.HTML(value=render_market_mood)
+                        market_mood_out   = gr.HTML(value="")
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("AI Committee", open=False):
@@ -144,7 +144,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("News", open=True):
-                        news_out          = gr.HTML(value=render_news_feed)
+                        news_out          = gr.HTML(value="")
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
                         timeline_brief_out = gr.HTML(value=render_all_timelines)
@@ -339,9 +339,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         outputs=[settings_summary_out, _save_status],
     )
 
-    # ── Page-load events — populate charts after page is served ─────────────────
-    # gr.Plot ignores value=callable so plots must be populated via demo.load().
-    # gr.HTML components use value=callable directly (pre-populated at startup).
+    # ── Page-load events — populate charts and yfinance panels after page is served ──
+    # gr.Plot ignores value=callable; gr.HTML with yfinance calls must also use demo.load()
+    # so the blocking yfinance fetch doesn't delay Gradio startup.
+    # Accordions are open=True so the height is measured correctly when content arrives.
     _demo.load(fn=render_equity_chart,              outputs=[eq_plot])
     _demo.load(fn=render_allocation_chart,          outputs=[alloc_plot])
     _demo.load(fn=render_pnl_chart,                 outputs=[pnl_plot])
@@ -349,6 +350,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     _demo.load(fn=render_returns_histogram,         outputs=[returns_hist_plot])
     _demo.load(fn=render_winloss_chart,             outputs=[winloss_plot])
     _demo.load(fn=render_feature_importance_chart,  outputs=[fi_plot])
+    _demo.load(fn=render_market_mood,               outputs=[market_mood_out])
+    _demo.load(fn=render_news_feed,                 outputs=[news_out])
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier

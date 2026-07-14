@@ -14,7 +14,8 @@ from bot.core.error_logger import safe_render, timed
 _logger = logger
 
 _news_cache: dict[str, tuple[float, list]] = {}  # symbol → (fetched_at, items)
-_NEWS_CACHE_TTL = 1800.0  # 30 minutes
+_NEWS_CACHE_TTL = 1800.0   # 30 minutes — live yfinance results
+_NEWS_FALLBACK_TTL = 60.0  # 60 seconds — DB-fallback results; retry yfinance sooner
 
 
 def _time_ago(pub_date_str: str) -> str:
@@ -35,9 +36,11 @@ def _time_ago(pub_date_str: str) -> str:
 def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
     import time as _t
     now = _t.time()
-    cached_ts, cached = _news_cache.get(symbol, (0.0, []))
-    if cached and now - cached_ts < _NEWS_CACHE_TTL:
-        return cached
+    # Membership check (not truthiness) so empty-list entries still respect TTL
+    if symbol in _news_cache:
+        cached_ts, cached = _news_cache[symbol]
+        if now - cached_ts < _NEWS_CACHE_TTL:
+            return cached
     try:
         import yfinance as _yf
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
@@ -45,13 +48,15 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
         def _get_news():
             return _yf.Ticker(symbol).news or []
 
-        with ThreadPoolExecutor(max_workers=1) as _pool:
-            _fut = _pool.submit(_get_news)
-            try:
-                raw = _fut.result(timeout=10)
-            except _FutTimeout:
-                logger.debug(f"news_fetch {symbol}: yfinance timed out — using DB cache")
-                return _db_news_fallback(symbol, max_items, now)
+        _pool = ThreadPoolExecutor(max_workers=1)
+        _fut = _pool.submit(_get_news)
+        try:
+            raw = _fut.result(timeout=10)
+        except _FutTimeout:
+            _pool.shutdown(wait=False)  # let stalled thread die in background
+            logger.debug(f"news_fetch {symbol}: yfinance timed out — using DB cache")
+            return _db_news_fallback(symbol, max_items, now)
+        _pool.shutdown(wait=False)
 
         items = []
         for r in raw[:max_items]:
@@ -73,6 +78,10 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
 
 def _db_news_fallback(symbol: str, max_items: int, now: float) -> list:
     """Fall back to the SQLite news_cache table when yfinance is unavailable."""
+    import json
+    # Back-date the cache entry so it expires after _NEWS_FALLBACK_TTL, not the full 30 min,
+    # allowing yfinance to be retried sooner after a transient outage.
+    _fallback_ts = now - _NEWS_CACHE_TTL + _NEWS_FALLBACK_TTL
     try:
         rows = safe_query(
             "SELECT headlines_json, fetch_date FROM news_cache WHERE symbol = ? "
@@ -80,11 +89,10 @@ def _db_news_fallback(symbol: str, max_items: int, now: float) -> list:
             (symbol,), default=[],
         )
         if not rows or not rows[0][0]:
-            _news_cache[symbol] = (now, [])
+            _news_cache[symbol] = (_fallback_ts, [])
             return []
-        import json
         headlines = json.loads(rows[0][0])[:max_items]
-        fetch_date = rows[0][1]
+        fetch_date = rows[0][1] or datetime.date.today().isoformat()
         items = [
             {
                 "symbol":    symbol,
@@ -95,10 +103,10 @@ def _db_news_fallback(symbol: str, max_items: int, now: float) -> list:
             }
             for h in headlines if h
         ]
-        _news_cache[symbol] = (now, items)
+        _news_cache[symbol] = (_fallback_ts, items)
         return items
     except Exception:
-        _news_cache[symbol] = (now, [])
+        _news_cache[symbol] = (_fallback_ts, [])
         return []
 
 

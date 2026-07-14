@@ -368,9 +368,12 @@ def _handle_entry(
 
     # Reinvestment guard: tradeable_capital is pre-computed once per cycle by main.py
     # using compute_tradeable_capital() so we avoid per-symbol DB reads here.
+    if tradeable_capital <= 0.0:
+        _log_buy_skip(symbol, "no tradeable capital (profits only mode, no profits yet)")
+        return available_cash
     notional = tradeable_capital * pos_fraction
     if notional <= 0.0:
-        _log_buy_skip(symbol, "no tradeable capital (profits only mode, no profits yet)")
+        _log_buy_skip(symbol, f"zero position size (kelly={kelly_f:.3f}, macro_cap={macro_cap:.2f})")
         return available_cash
 
     # Risk-per-trade cap: size so max dollar loss ≤ MAX_RISK_PER_TRADE_PCT of portfolio.

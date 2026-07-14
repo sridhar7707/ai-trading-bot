@@ -54,15 +54,17 @@ def _fetch_mood_data() -> dict:
         def _download():
             return yf.download(all_tickers, period="2d", progress=False, auto_adjust=True)
 
-        with ThreadPoolExecutor(max_workers=1) as _pool:
-            _fut = _pool.submit(_download)
-            try:
-                raw = _fut.result(timeout=20)
-            except _FutTimeout:
-                _log.warning("_fetch_mood_data: yfinance download timed out after 20s")
-                _mood_cache = {}
-                _mood_cache_ts = now
-                return {}
+        _pool = ThreadPoolExecutor(max_workers=1)
+        _fut = _pool.submit(_download)
+        try:
+            raw = _fut.result(timeout=20)
+        except _FutTimeout:
+            _pool.shutdown(wait=False)  # let stalled thread die in background
+            _log.warning("_fetch_mood_data: yfinance download timed out after 20s")
+            _mood_cache = {}
+            _mood_cache_ts = now
+            return {}
+        _pool.shutdown(wait=False)
 
         close = raw["Close"]  # DataFrame with tickers as columns
 

@@ -371,6 +371,8 @@ def run(
 
     # Compute once per cycle — avoids N identical DB reads inside _handle_entry.
     _tradeable_capital = compute_tradeable_capital(con, portfolio_value)
+    # Track remaining profits pool across symbols so aggregate buys can't exceed it.
+    _remaining_tradeable = _tradeable_capital
 
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
@@ -452,6 +454,7 @@ def run(
             if action != 1:
                 continue
 
+            _cash_before = available_cash
             available_cash = _handle_entry(
                 con, client, risk, symbol, positions, buy_order_syms,
                 earnings_map, bars_map, sig_bars, latest, current_price,
@@ -459,8 +462,11 @@ def run(
                 xgb_prob, lstm_prob, sentiment, macro_score, macro_cap,
                 macro_halt, spy_5bar_return, vs_spy_today, sentiments,
                 action, action_str, ensemble_size, pdt_exempt, xgb,
-                _stop_fired_today, volume_ratio, _tradeable_capital,
+                _stop_fired_today, volume_ratio, _remaining_tradeable,
             )
+            _deployed = _cash_before - available_cash
+            if _deployed > 0.0:
+                _remaining_tradeable = max(0.0, _remaining_tradeable - _deployed)
 
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
