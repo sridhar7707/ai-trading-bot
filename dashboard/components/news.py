@@ -40,7 +40,19 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
         return cached
     try:
         import yfinance as _yf
-        raw = _yf.Ticker(symbol).news or []
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+
+        def _get_news():
+            return _yf.Ticker(symbol).news or []
+
+        with ThreadPoolExecutor(max_workers=1) as _pool:
+            _fut = _pool.submit(_get_news)
+            try:
+                raw = _fut.result(timeout=10)
+            except _FutTimeout:
+                logger.debug(f"news_fetch {symbol}: yfinance timed out — using DB cache")
+                return _db_news_fallback(symbol, max_items, now)
+
         items = []
         for r in raw[:max_items]:
             c = r.get("content", {})
@@ -56,6 +68,36 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3) -> list:
         return items
     except Exception as exc:
         logger.debug(f"news_fetch {symbol}: {exc}")
+        return _db_news_fallback(symbol, max_items, now)
+
+
+def _db_news_fallback(symbol: str, max_items: int, now: float) -> list:
+    """Fall back to the SQLite news_cache table when yfinance is unavailable."""
+    try:
+        rows = safe_query(
+            "SELECT headlines_json, fetch_date FROM news_cache WHERE symbol = ? "
+            "ORDER BY cached_at DESC LIMIT 1",
+            (symbol,), default=[],
+        )
+        if not rows or not rows[0][0]:
+            _news_cache[symbol] = (now, [])
+            return []
+        import json
+        headlines = json.loads(rows[0][0])[:max_items]
+        fetch_date = rows[0][1]
+        items = [
+            {
+                "symbol":    symbol,
+                "title":     h,
+                "publisher": "NewsAPI",
+                "pub_date":  f"{fetch_date}T12:00:00Z",
+                "url":       "",
+            }
+            for h in headlines if h
+        ]
+        _news_cache[symbol] = (now, items)
+        return items
+    except Exception:
         _news_cache[symbol] = (now, [])
         return []
 

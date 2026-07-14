@@ -44,13 +44,26 @@ def _fetch_mood_data() -> dict:
 
     try:
         import yfinance as yf
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
         from config import STOCKS
 
         broad = ["SPY", "QQQ", "IWM", "^VIX"]
         sectors = list(SECTOR_ETFS.values())
         all_tickers = broad + sectors + list(STOCKS)
 
-        raw = yf.download(all_tickers, period="2d", progress=False, auto_adjust=True)
+        def _download():
+            return yf.download(all_tickers, period="2d", progress=False, auto_adjust=True)
+
+        with ThreadPoolExecutor(max_workers=1) as _pool:
+            _fut = _pool.submit(_download)
+            try:
+                raw = _fut.result(timeout=20)
+            except _FutTimeout:
+                _log.warning("_fetch_mood_data: yfinance download timed out after 20s")
+                _mood_cache = {}
+                _mood_cache_ts = now
+                return {}
+
         close = raw["Close"]  # DataFrame with tickers as columns
 
         def _pct(sym: str) -> Optional[float]:
