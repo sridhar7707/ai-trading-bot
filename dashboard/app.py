@@ -131,7 +131,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                     with gr.Accordion("What Changed Today", open=False):
                         whats_changed_out = gr.HTML(value=render_whats_changed)
                 with gr.Column():
-                    with gr.Accordion("Market Mood", open=False):
+                    with gr.Accordion("Market Mood", open=True):
                         market_mood_out   = gr.HTML(value=render_market_mood)
             with gr.Row():
                 with gr.Column():
@@ -143,7 +143,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                         mkt_intel_out     = gr.HTML(value=render_market_intelligence)
             with gr.Row():
                 with gr.Column():
-                    with gr.Accordion("News", open=False):
+                    with gr.Accordion("News", open=True):
                         news_out          = gr.HTML(value=render_news_feed)
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
