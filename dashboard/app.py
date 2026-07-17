@@ -361,6 +361,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs, perf_key_state],
                      outputs=[perf_out, perf_key_state])
 
+    # Same Gradio 5.9 workaround as perf_tabs.change above.
     symbol_selector.change(
         fn=lambda v, _s: (render_symbol_detail(v), v),
         inputs=[symbol_selector, _sym_state], outputs=[symbol_detail_out, _sym_state],
@@ -468,73 +469,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     })
 
 
-# ── Cron HTTP endpoint + static-file fix ─────────────────────────────────────
-# Gradio 5.9.0's App.create_app builds the API routes but never registers a
-# handler for /_app/immutable/* — those requests fall through to FastAPI's
-# default 404.  Fix: insert a StaticFiles Mount at index 0 of the router
-# (checked before every other route/mount) so all /_app/* requests are served
-# from Gradio's compiled SvelteKit frontend package.
-#
-# NOTE: do NOT mount /static — Gradio registers APIRoute /static/{path:path}
-# (static_resource) to serve its own assets.  An overlapping StaticFiles mount
-# at index 0 would shadow that route and break Gradio's static resource serving.
-# The /static/fonts/*.woff2 404s from Gradio 5's CSS are benign — those are
-# OS-level system fonts (ui-sans-serif, system-ui) that browsers provide natively.
-import threading
-from pathlib import Path
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.routing import Mount
-from gradio.routes import App as _GradioApp
-
-app = _GradioApp.create_app(_demo, app_kwargs={"docs_url": None, "redoc_url": None})
-
-_GR_APP_DIR = Path(gr.__file__).parent / "templates" / "frontend" / "_app"
-if _GR_APP_DIR.is_dir():
-    app.router.routes.insert(0, Mount("/_app", app=StaticFiles(directory=str(_GR_APP_DIR))))
-
-
-@app.get("/run/cron")
-async def _cron_endpoint():
-    from scheduler.dispatcher import main as _dispatch
-    threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
-    return JSONResponse({"status": "accepted"})
-
-
-@app.get("/debug/charts")
-async def _debug_charts():
-    """Call each chart render function and report success/failure + timing."""
-    import time as _t
-    import traceback as _tb2
-    from dashboard.charts import (
-        render_equity_chart, render_allocation_chart, render_pnl_chart,
-        render_feature_importance_chart, render_returns_histogram, render_winloss_chart,
-    )
-    from dashboard.components.capital import render_capital_chart
-    from dashboard.components.market_mood import render_market_mood
-    from dashboard.components.news import render_news_feed
-
-    fns = [
-        ("equity",       render_equity_chart),
-        ("allocation",   render_allocation_chart),
-        ("pnl",          render_pnl_chart),
-        ("capital",      render_capital_chart),
-        ("returns_hist", render_returns_histogram),
-        ("winloss",      render_winloss_chart),
-        ("feat_imp",     render_feature_importance_chart),
-        ("market_mood",  render_market_mood),
-        ("news",         render_news_feed),
-    ]
-    results = {}
-    for name, fn in fns:
-        t0 = _t.time()
-        try:
-            out = fn()
-            results[name] = {"ok": True, "type": type(out).__name__, "ms": round((_t.time()-t0)*1000)}
-        except Exception:
-            results[name] = {"ok": False, "error": _tb2.format_exc(), "ms": round((_t.time()-t0)*1000)}
-    return JSONResponse(results)
-
+from dashboard.http_endpoints import build_app
+app = build_app(_demo)
 
 if __name__ == "__main__":
     import uvicorn
