@@ -352,15 +352,18 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         inputs=[model_view], outputs=[investor_out, dev_col],
     )
 
-    def _on_perf_change(period_label):
+    def _on_perf_change(period_label, _cur_key=None):
         key = (period_label or "1M  —").split("  ")[0].strip()
         return render_portfolio_performance(period_label), key
-    perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs],
+    # Gradio 5.9: gr.State in outputs causes the JS client to inject the
+    # current state value into the payload — include it in inputs too so the
+    # argument counts match and "Too many arguments" is not thrown.
+    perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs, perf_key_state],
                      outputs=[perf_out, perf_key_state])
 
     symbol_selector.change(
-        fn=lambda v: (render_symbol_detail(v), v),
-        inputs=[symbol_selector], outputs=[symbol_detail_out, _sym_state],
+        fn=lambda v, _s: (render_symbol_detail(v), v),
+        inputs=[symbol_selector, _sym_state], outputs=[symbol_detail_out, _sym_state],
     )
 
     def _run_sim(sym, amt):
