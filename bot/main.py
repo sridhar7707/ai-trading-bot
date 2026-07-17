@@ -174,6 +174,27 @@ def run(
         tg._send("🚨 Alpaca account value is $0.00 — check API credentials. Bot cycle aborted.")
         con.close()
         return
+
+    # Sanity check: reject any reading that is less than half the last known value.
+    # Prevents a transient API error or wrong-account connection from triggering a
+    # mass SELL_RECONCILE that phantom-closes all held positions in the DB.
+    _last_snap = con.execute(
+        "SELECT portfolio_value FROM portfolio_snapshots "
+        "WHERE portfolio_value > 0 ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    if _last_snap and real_portfolio_value < _last_snap[0] * 0.50:
+        logger.error(
+            f"Portfolio value sanity check FAILED: Alpaca reports ${real_portfolio_value:,.2f} "
+            f"but last snapshot was ${_last_snap[0]:,.2f} — drop >50%%. "
+            "Likely wrong account or transient API error. Aborting cycle to protect positions."
+        )
+        tg._send(
+            f"🚨 Portfolio value sanity check failed — Alpaca reports ${real_portfolio_value:,.0f} "
+            f"vs last known ${_last_snap[0]:,.0f}. Cycle aborted. Check API key / account."
+        )
+        con.close()
+        return
+
     logger.info(f"Alpaca connection OK — account value ${real_portfolio_value:,.2f}")
     # Paper sim-capital: size/risk-check as if the account were small (dry-run).
     # We keep the real values separately so the dashboard always shows the true account equity.

@@ -144,9 +144,9 @@ def _handle_exits(
         _upsert_position_state(con, symbol, entry_price, current_price, current_atr)
         hwm = current_price
 
-    # ① Take-profit: max(10%, 4×ATR), capped at 15% — wider targets for 3-week momentum holds
+    # ① Take-profit: max(6%, 4×ATR), capped at 10% — captures shorter swing moves
     if entry_price > 0 and current_atr > 0:
-        tp_pct = max(0.10, min(0.15, (4 * current_atr) / entry_price))
+        tp_pct = max(0.06, min(0.10, (4 * current_atr) / entry_price))
         if pnl_pct >= tp_pct:
             success = _signal_sell(
                 con, client, symbol, pos_qty, current_price,
@@ -382,10 +382,10 @@ def _handle_entry(
     if current_atr and current_atr > 0 and current_price > 0:
         stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT,
                        (ATR_STOP_MULTIPLIER * current_atr) / current_price))
-        tp_target_pct = max(0.10, min(0.15, (4 * current_atr) / current_price))
+        tp_target_pct = max(0.06, min(0.10, (4 * current_atr) / current_price))
     else:
         stop_pct = STOP_LOSS_PCT
-        tp_target_pct = 0.10
+        tp_target_pct = 0.06
 
     # Gate 8a — Minimum absolute profit target: not worth entering if upside < MIN_TP_PCT
     if tp_target_pct < MIN_TP_PCT:
