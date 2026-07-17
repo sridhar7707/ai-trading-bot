@@ -7,7 +7,7 @@ from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
 XGB_MODEL_PATH  = Path("models/saved/xgb_predictor.pkl")
-FORWARD_PERIODS = 5    # 1-week target — short-term momentum edge (was 15 for 3-week holds; retrain required)
+FORWARD_PERIODS = 10   # 2-week target — matches 14-day max hold; was 5 (misaligned with swing strategy)
 MIN_MOVE_PCT    = 0.003  # require ≥0.3% move to label as "up" — filters 5-min microstructure noise
 
 
