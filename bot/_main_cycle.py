@@ -182,8 +182,8 @@ def _handle_exits(
         _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
         return True
 
-    # ③ Trailing stop (armed after 0.5% gain)
-    if hwm > entry_price * 1.005 and risk.check_trailing_stop(
+    # ③ Trailing stop (armed after 3% gain — prevents trail firing before real momentum builds)
+    if hwm > entry_price * 1.03 and risk.check_trailing_stop(
             symbol, current_price, hwm, current_atr):
         success = _signal_sell(
             con, client, symbol, pos_qty, current_price,

@@ -844,12 +844,12 @@ def test_log_signal_writes_row(db):
 
 
 def test_log_signal_ensemble_score_math(db):
-    """ensemble_score = 0.35*xgb + 0.35*lstm + 0.15*((sent+1)/2) + 0.15*macro"""
+    """ensemble_score = 0.55*xgb + 0.15*lstm + 0.15*((sent+1)/2) + 0.15*macro"""
     xgb, lstm, sent, macro = 0.8, 0.6, 0.4, 0.7
     _log_signal(db, "MSFT", xgb, lstm, sent, macro, "RANGING", "STRONG_BUY")
     row = db.execute("SELECT ensemble_score FROM signal_log").fetchone()
     sent_norm = (sent + 1.0) / 2.0
-    expected  = 0.35 * xgb + 0.35 * lstm + 0.15 * sent_norm + 0.15 * macro
+    expected  = 0.55 * xgb + 0.15 * lstm + 0.15 * sent_norm + 0.15 * macro
     assert row[0] == pytest.approx(expected, abs=0.001)
 
 

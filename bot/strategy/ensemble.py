@@ -8,8 +8,8 @@ from loguru import logger
 # it acts as a hard entry gate in main.py (ENTRY_REGIMES). Including it here
 # would double-count it: once as a score component and again as a binary block.
 WEIGHTS = {
-    "xgb":       0.35,
-    "lstm":      0.35,
+    "xgb":       0.55,
+    "lstm":      0.15,
     "sentiment": 0.15,
     "macro":     0.15,
 }
