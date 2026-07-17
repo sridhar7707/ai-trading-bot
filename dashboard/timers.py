@@ -123,15 +123,14 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         from dashboard.components.symbol_detail import _get_symbol_choices
         choices = _get_symbol_choices()
         val = sel if sel in choices else (choices[0] if choices else None)
-        return gr.update(choices=choices, value=val), val
+        return gr.update(choices=choices, value=val)
 
     def _sim_choices():
         from dashboard.data import get_data as _gd
         choices = sorted(_gd().get("prices", {}).keys()) or []
         return gr.update(choices=choices)
 
-    timer.tick(fn=_refresh_sym, inputs=[c["_sym_state"]],
-               outputs=[c["symbol_selector"], c["_sym_state"]])
+    timer.tick(fn=_refresh_sym, inputs=[c["symbol_selector"]], outputs=[c["symbol_selector"]])
     timer.tick(fn=_sim_choices, outputs=[c["sim_sym_dd"]])
 
 
@@ -201,21 +200,20 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         c["spy_banner_out"],
     ])
 
-    # Stateful callbacks that need gr.State inputs or heavier renders.
-    def _refresh_perf(current_key: str):
+    # Read perf_tabs label directly — eliminates the gr.State indirection that
+    # caused Gradio 5.9's "Too many arguments" bug on user-triggered events.
+    def _refresh_perf(current_label: str):
         from dashboard.components.history import _perf_choices, render_portfolio_performance
-        if not isinstance(current_key, str):
-            current_key = "1M"
+        current_key = current_label.split("  ")[0].strip() if isinstance(current_label, str) and current_label else "1M"
         choices = _perf_choices()
         matched = next((ch for ch in choices if ch.split("  ")[0].strip() == current_key), None)
         val = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
-        new_key = val.split("  ")[0].strip() if val else current_key
-        return gr.update(choices=choices, value=val), new_key, render_portfolio_performance(val or "1M")
+        return gr.update(choices=choices, value=val), render_portfolio_performance(val or "1M")
 
-    def _sym_detail(sel):
+    def _sym_detail(sel: str):
         from dashboard.components.symbol_detail import render_symbol_detail
         return render_symbol_detail(sel)
 
-    timer.tick(fn=_refresh_perf, inputs=[c["perf_key_state"]],
-               outputs=[c["perf_tabs"], c["perf_key_state"], c["perf_out"]])
-    timer.tick(fn=_sym_detail,   inputs=[c["_sym_state"]], outputs=[c["symbol_detail_out"]])
+    timer.tick(fn=_refresh_perf, inputs=[c["perf_tabs"]],
+               outputs=[c["perf_tabs"], c["perf_out"]])
+    timer.tick(fn=_sym_detail,   inputs=[c["symbol_selector"]], outputs=[c["symbol_detail_out"]])

@@ -221,7 +221,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 choices=_init_choices, value=_init_sel,
                 label="", container=False, elem_classes=["perf-tabs"],
             )
-            perf_key_state = gr.State(value=_init_sel.split("  ")[0].strip())
             perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
@@ -243,7 +242,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 value=_initial_sym, container=True, elem_classes=["sym-selector"],
             )
             symbol_detail_out = gr.HTML(value="")
-            _sym_state        = gr.State(value=_initial_sym)
             _sim_syms  = sorted(get_data().get("prices", {}).keys()) or []
             sim_sym_dd = gr.Dropdown(choices=_sim_syms, label="🔬 Simulate: Symbol", container=True)
             sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
@@ -352,20 +350,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         inputs=[model_view], outputs=[investor_out, dev_col],
     )
 
-    def _on_perf_change(period_label, _cur_key=None):
-        key = (period_label or "1M  —").split("  ")[0].strip()
-        return render_portfolio_performance(period_label), key
-    # Gradio 5.9: gr.State in outputs causes the JS client to inject the
-    # current state value into the payload — include it in inputs too so the
-    # argument counts match and "Too many arguments" is not thrown.
-    perf_tabs.change(fn=_on_perf_change, inputs=[perf_tabs, perf_key_state],
-                     outputs=[perf_out, perf_key_state])
-
-    # Same Gradio 5.9 workaround as perf_tabs.change above.
-    symbol_selector.change(
-        fn=lambda v, _s: (render_symbol_detail(v), v),
-        inputs=[symbol_selector, _sym_state], outputs=[symbol_detail_out, _sym_state],
-    )
+    # Gradio 5.9 injects gr.State output values as extra inputs, causing
+    # "Too many arguments". Fix: no gr.State in outputs of user events.
+    # Timers read perf_tabs / symbol_selector directly instead.
+    perf_tabs.change(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=[perf_out])
+    symbol_selector.change(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
 
     def _run_sim(sym, amt):
         return render_portfolio_simulator(sym, float(amt) if amt else 500.0)
@@ -428,7 +417,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         "hero_out":            hero_out,
         "spy_banner_out":      spy_banner_out,
         "perf_tabs":           perf_tabs,
-        "perf_key_state":      perf_key_state,
         "perf_out":            perf_out,
         "eq_plot":             eq_plot,
         "alloc_plot":          alloc_plot,
@@ -441,7 +429,6 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         "trades_out":          trades_out,
         "thesis_out":          thesis_out,
         "symbol_selector":     symbol_selector,
-        "_sym_state":          _sym_state,
         "symbol_detail_out":   symbol_detail_out,
         "sim_sym_dd":          sim_sym_dd,
         # Capital tab

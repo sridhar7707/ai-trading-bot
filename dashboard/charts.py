@@ -222,7 +222,7 @@ def render_pnl_chart() -> Any:
             fig.add_trace(go.Bar(
                 x=daily_pnl["date"], y=daily_pnl["pnl_dollar"],
                 marker_color=colors, marker_line=dict(width=0),
-                hovertemplate="<b>%{x|%b %d}</b><br>P&L: $%{y:+,.2f}<extra></extra>",
+                hovertemplate="<b>%{x|%b %d}</b><br>P&L: $%{y:,.2f}<extra></extra>",
                 name="Daily P&L",
             ))
 
