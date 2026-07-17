@@ -175,24 +175,24 @@ def render_whats_changed() -> str:
         changes: list[tuple[str, str, str]] = []
 
         if abs(score_delta) > 0.05:
-            arrow = (f'<span style="color:{GAIN};font-weight:700;">â†‘</span>' if score_delta > 0
-                     else f'<span style="color:{LOSS};font-weight:700;">â†“</span>')
+            arrow = (f'<span style="color:{GAIN};font-weight:700;">&uarr;</span>' if score_delta > 0
+                     else f'<span style="color:{LOSS};font-weight:700;">&darr;</span>')
             changes.append(("Confidence", arrow,
-                            f'{y["score"] * 100:.0f}% â†’ {t["score"] * 100:.0f}%'))
+                            f'{y["score"] * 100:.0f}% &rarr; {t["score"] * 100:.0f}%'))
 
         if regime_y and regime_t and regime_y != regime_t:
             changes.append(("Regime",
-                            f'<span style="color:{TEXT2};font-weight:700;">â†’</span>',
-                            f'{regime_y} â†’ {regime_t}'))
+                            f'<span style="color:{TEXT2};font-weight:700;">&rarr;</span>',
+                            f'{regime_y} &rarr; {regime_t}'))
 
         if sent_y != sent_t:
             if sent_t == "Positive":
-                s_arrow = f'<span style="color:{GAIN};font-weight:700;">â†‘</span>'
+                s_arrow = f'<span style="color:{GAIN};font-weight:700;">&uarr;</span>'
             elif sent_t == "Negative":
-                s_arrow = f'<span style="color:{LOSS};font-weight:700;">â†“</span>'
+                s_arrow = f'<span style="color:{LOSS};font-weight:700;">&darr;</span>'
             else:
-                s_arrow = f'<span style="color:{TEXT2};font-weight:700;">â†’</span>'
-            changes.append(("Sentiment", s_arrow, f'{sent_y} â†’ {sent_t}'))
+                s_arrow = f'<span style="color:{TEXT2};font-weight:700;">&rarr;</span>'
+            changes.append(("Sentiment", s_arrow, f'{sent_y} &rarr; {sent_t}'))
 
         if not changes:
             continue
@@ -398,7 +398,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
             f'<div style="display:flex;align-items:center;gap:12px;">'
             f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">From</span>'
             f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${start_val:,.2f}</span>'
-            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">â†’</span>'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">&rarr;</span>'
             f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{TEXT1};">${end_val:,.2f}</span>'
             f'</div>'
             # Start date
