@@ -68,7 +68,7 @@ from scripts._screener_helpers import (  # noqa: E402
     _sector, _rank_pct, _trend_r2, _compute_beta, _detect_regime,
     _factor_weights, _corr_dedup, _earnings_blackout_set,
     _avg_overnight_gap, _analyst_signal, _sector_etf_momentum,
-    _pead_score,
+    _pead_score, _eps_quality_score,
 )
 
 CANDIDATE_UNIVERSE: list[str] = [
@@ -260,13 +260,17 @@ def screen(
         if pead > 0:
             logger.info(f"PEAD signal: {sym} earnings beat score={pead:.2f}")
 
+        eps_quality = _eps_quality_score(sym)
+        if eps_quality < 0.4:
+            logger.debug(f"EPS quality low: {sym} score={eps_quality:.2f} (declining earnings)")
+
         scores[sym] = {
             "beta": beta, "price": last_price,
             "risk_adj_mom": risk_adj_mom, "rs_20": rs_20,
             "r2": r2, "proximity_hi": proximity_hi,
             "vol_surge": vol_surge, "etf_momentum": etf_momentum,
             "defensive": defensive, "analyst_signal": 0.0,  # filled in Stage 2b
-            "pead": pead,
+            "pead": pead, "eps_quality": eps_quality,
         }
 
     logger.info(
@@ -321,7 +325,7 @@ def screen(
             logger.info("FINNHUB_API_KEY not set — analyst signal skipped (set secret to enable)")
 
     display_cols = ["beta", "price", "risk_adj_mom", "rs_20", "r2",
-                    "proximity_hi", "etf_momentum", "pead", "analyst_signal", "composite"]
+                    "proximity_hi", "etf_momentum", "pead", "eps_quality", "analyst_signal", "composite"]
     top10_cols = [c for c in display_cols if c in score_df.columns]
     logger.info(f"Top 10 candidates ({regime} regime):\n"
                 f"{score_df.head(10)[top10_cols].round(3).to_string()}")

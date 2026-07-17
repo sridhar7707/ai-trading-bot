@@ -95,24 +95,26 @@ def _detect_regime(spy_closes: pd.Series) -> str:
 def _factor_weights(regime: str) -> dict[str, float]:
     if regime == "BULL":
         return {
-            "risk_adj_mom": 0.25,   # reduced from 0.30 to make room for PEAD
-            "rs_20":        0.18,   # reduced from 0.20
+            "risk_adj_mom": 0.21,
+            "rs_20":        0.14,
             "r2":           0.12,
             "proximity_hi": 0.10,
             "vol_surge":    0.10,
             "etf_momentum": 0.15,
-            "pead":         0.10,   # post-earnings drift — strong 1-week edge
+            "pead":         0.10,
+            "eps_quality":  0.08,   # fundamental earnings quality — filters weak breakouts
         }
     # BEAR — rotate toward quality + RS, de-emphasise raw momentum
     return {
         "risk_adj_mom": 0.08,
-        "rs_20":        0.22,
-        "r2":           0.18,
+        "rs_20":        0.18,
+        "r2":           0.14,
         "proximity_hi": 0.05,
         "vol_surge":    0.05,
         "etf_momentum": 0.15,
         "defensive":    0.17,
-        "pead":         0.10,   # earnings beats work in bear markets too
+        "pead":         0.10,
+        "eps_quality":  0.08,   # earnings quality matters more in bear markets
     }
 
 
@@ -238,6 +240,43 @@ def _pead_score(symbol: str) -> float:
         return float(min(1.0, surprise / 10.0))
     except Exception:
         return 0.0
+
+
+def _eps_quality_score(symbol: str) -> float:
+    """Return [0, 1] earnings quality score for screener composite.
+
+    0.5 = neutral/unknown (ETFs, no data), > 0.5 = growing earnings, < 0.5 = declining.
+    Soft mapping: +25% YoY growth → 0.625; flat → 0.5; -25% → 0.375.
+    Uses a daemon thread with 8s timeout so a slow yfinance response never stalls the screener.
+    """
+    if symbol in _ETF_SYMBOLS:
+        return 0.5
+    try:
+        import threading as _th
+        _result: list = []
+
+        def _fetch() -> None:
+            try:
+                _result.append(yf.Ticker(symbol).info)
+            except Exception:
+                pass
+
+        t = _th.Thread(target=_fetch, daemon=True, name=f"eps_info_{symbol}")
+        t.start()
+        t.join(timeout=8)
+        if not _result:
+            return 0.5
+
+        info = _result[0]
+        eg = info.get("earningsQuarterlyGrowth")
+        if eg is None:
+            eg = info.get("earningsGrowth")
+        if eg is None:
+            return 0.5
+        # Soft linear map — keeps cyclicals competitive; only penalises severe declines
+        return float(np.clip(0.5 + float(eg) * 0.5, 0.0, 1.0))
+    except Exception:
+        return 0.5
 
 
 def _avg_overnight_gap(closes: pd.Series, opens: pd.Series) -> float:
