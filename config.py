@@ -148,7 +148,7 @@ XGB_MIN_CONFIDENCE      = float(os.getenv("XGB_MIN_CONFIDENCE",      0.55))    #
 RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5-min relative strength vs SPY
 # Regimes that allow new long entries. HIGH_VOLATILITY is included because the
 # risk manager still caps position size and the stop-loss hard-overrides any exit.
-ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,RANGING,HIGH_VOLATILITY").split(","))
+ENTRY_REGIMES         = set(os.getenv("ENTRY_REGIMES", "TRENDING_UP,HIGH_VOLATILITY").split(","))
 # Minimum partial-day volume relative to 20-day average daily volume. Bot uses
 # daily OHLCV bars from yfinance; at 10 AM ET only ~30-40% of daily volume has
 # traded, so 0.7 never cleared until early afternoon. 0.3 = ~9:45-10:15 AM ET.
