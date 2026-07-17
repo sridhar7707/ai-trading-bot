@@ -113,13 +113,15 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
-# ── Pre-render chart figures concurrently at startup ──────────────────────────
-# gr.Plot ignores value=callable in Gradio 5.9; gr.Plot(value=Figure) works.
-# Running all 7 in parallel keeps startup overhead to ~max(individual render time).
+# ── Pre-render all components concurrently at startup ─────────────────────────
+# gr.Plot ignores value=callable in Gradio 5.9 and demo.load() events do not
+# fire reliably, so we render everything upfront and pass static values.
+# market_mood has a 20 s yfinance timeout; its prewarm thread starts at import
+# so by the time this block runs it already has a head start.
 import concurrent.futures as _cf
 import traceback as _tb_init
 
-def _safe_render(fn):
+def _safe_fig(fn):
     try:
         return fn()
     except Exception:
@@ -127,19 +129,48 @@ def _safe_render(fn):
         logger.error(f"[startup] chart render failed: {fn.__name__}\n{_tb_init.format_exc()}")
         return _go.Figure()
 
-logger.info("[startup] pre-rendering chart figures...")
-with _cf.ThreadPoolExecutor(max_workers=7) as _pool:
-    _futs = {
-        "equity":   _pool.submit(_safe_render, render_equity_chart),
-        "alloc":    _pool.submit(_safe_render, render_allocation_chart),
-        "pnl":      _pool.submit(_safe_render, render_pnl_chart),
-        "capital":  _pool.submit(_safe_render, render_capital_chart),
-        "ret_hist": _pool.submit(_safe_render, render_returns_histogram),
-        "winloss":  _pool.submit(_safe_render, render_winloss_chart),
-        "fi":       _pool.submit(_safe_render, render_feature_importance_chart),
-    }
-    _ci = {k: f.result() for k, f in _futs.items()}
-logger.info("[startup] chart pre-render complete")
+def _safe_html(fn, fallback=""):
+    try:
+        return fn()
+    except Exception:
+        logger.error(f"[startup] HTML render failed: {fn.__name__}\n{_tb_init.format_exc()}")
+        return fallback
+
+logger.info("[startup] pre-rendering all components...")
+_executor = _cf.ThreadPoolExecutor(max_workers=9)
+_chart_futs = {
+    "equity":      _executor.submit(_safe_fig,  render_equity_chart),
+    "alloc":       _executor.submit(_safe_fig,  render_allocation_chart),
+    "pnl":         _executor.submit(_safe_fig,  render_pnl_chart),
+    "capital":     _executor.submit(_safe_fig,  render_capital_chart),
+    "ret_hist":    _executor.submit(_safe_fig,  render_returns_histogram),
+    "winloss":     _executor.submit(_safe_fig,  render_winloss_chart),
+    "fi":          _executor.submit(_safe_fig,  render_feature_importance_chart),
+    "news":        _executor.submit(_safe_html, render_news_feed_initial),
+    "market_mood": _executor.submit(_safe_html, render_market_mood),
+}
+
+def _wait(key, timeout):
+    try:
+        return _chart_futs[key].result(timeout=timeout)
+    except Exception:
+        logger.warning(f"[startup] {key} timed out or failed after {timeout}s")
+        return _go.Figure() if key not in ("news", "market_mood") else ""
+
+import plotly.graph_objects as _go
+_ci = {
+    "equity":   _wait("equity",   15),
+    "alloc":    _wait("alloc",    15),
+    "pnl":      _wait("pnl",      15),
+    "capital":  _wait("capital",  15),
+    "ret_hist": _wait("ret_hist", 15),
+    "winloss":  _wait("winloss",  15),
+    "fi":       _wait("fi",       15),
+    "news":     _wait("news",     15),
+    "market_mood": _wait("market_mood", 25),  # 20 s yfinance + buffer
+}
+_executor.shutdown(wait=False)
+logger.info("[startup] pre-render complete")
 
 with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_JS) as _demo:
     gr.HTML(HEADER_HTML)
@@ -160,7 +191,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                         whats_changed_out = gr.HTML(value=render_whats_changed)
                 with gr.Column():
                     with gr.Accordion("Market Mood", open=True):
-                        market_mood_out   = gr.HTML(value="")
+                        market_mood_out   = gr.HTML(value=_ci["market_mood"])
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("AI Committee", open=False):
@@ -172,7 +203,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("News", open=True):
-                        news_out          = gr.HTML(value="")
+                        news_out          = gr.HTML(value=_ci["news"])
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
                         timeline_brief_out = gr.HTML(value=render_all_timelines)
@@ -367,12 +398,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         outputs=[settings_summary_out, _save_status],
     )
 
-    # ── Page-load events — yfinance panels only ──────────────────────────────────
-    # gr.Plot components are populated at startup via _ci (pre-rendered above).
-    # Only market_mood and news use demo.load() — they make external API calls
-    # (yfinance / NewsAPI) that must not block Gradio server startup.
-    _demo.load(fn=render_market_mood,       outputs=[market_mood_out])
-    _demo.load(fn=render_news_feed_initial, outputs=[news_out])
+    # All components are pre-rendered at startup via _ci — no demo.load() needed.
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
