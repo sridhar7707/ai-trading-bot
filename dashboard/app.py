@@ -113,6 +113,34 @@ _theme = gr.themes.Base(
     border_color_primary="#2d3445",
 )
 
+# ── Pre-render chart figures concurrently at startup ──────────────────────────
+# gr.Plot ignores value=callable in Gradio 5.9; gr.Plot(value=Figure) works.
+# Running all 7 in parallel keeps startup overhead to ~max(individual render time).
+import concurrent.futures as _cf
+import traceback as _tb_init
+
+def _safe_render(fn):
+    try:
+        return fn()
+    except Exception:
+        import plotly.graph_objects as _go
+        logger.error(f"[startup] chart render failed: {fn.__name__}\n{_tb_init.format_exc()}")
+        return _go.Figure()
+
+logger.info("[startup] pre-rendering chart figures...")
+with _cf.ThreadPoolExecutor(max_workers=7) as _pool:
+    _futs = {
+        "equity":   _pool.submit(_safe_render, render_equity_chart),
+        "alloc":    _pool.submit(_safe_render, render_allocation_chart),
+        "pnl":      _pool.submit(_safe_render, render_pnl_chart),
+        "capital":  _pool.submit(_safe_render, render_capital_chart),
+        "ret_hist": _pool.submit(_safe_render, render_returns_histogram),
+        "winloss":  _pool.submit(_safe_render, render_winloss_chart),
+        "fi":       _pool.submit(_safe_render, render_feature_importance_chart),
+    }
+    _ci = {k: f.result() for k, f in _futs.items()}
+logger.info("[startup] chart pre-render complete")
+
 with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_JS) as _demo:
     gr.HTML(HEADER_HTML)
     with gr.Tabs():
@@ -166,10 +194,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=None, label="", show_label=False)
+                    eq_plot    = gr.Plot(value=_ci["equity"],  label="", show_label=False)
                 with gr.Column(scale=35):
-                    alloc_plot = gr.Plot(value=None, label="", show_label=False)
-            pnl_plot            = gr.Plot(value=None, label="", show_label=False)
+                    alloc_plot = gr.Plot(value=_ci["alloc"],   label="", show_label=False)
+            pnl_plot            = gr.Plot(value=_ci["pnl"],    label="", show_label=False)
             committee_out       = gr.HTML(value="")
             decision_center_out = gr.HTML(value="")
             rebalance_out       = gr.HTML(value="")
@@ -194,7 +222,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
             capital_overview_out  = gr.HTML(value=render_capital_overview)
-            capital_chart_out     = gr.Plot(value=None, label="Capital Growth", show_label=False)
+            capital_chart_out     = gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False)
             profit_breakdown_out  = gr.HTML(value=render_profit_breakdown)
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
@@ -233,8 +261,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             scorecard_out = gr.HTML(value="")          # yfinance — populated by 300 s timer
             metrics_out   = gr.HTML(value=render_institutional_metrics)  # callable: spy path guarded by @safe_render; 300 s timer refreshes
             with gr.Row():
-                returns_hist_plot = gr.Plot(value=None, label="", show_label=False)
-                winloss_plot      = gr.Plot(value=None, label="", show_label=False)
+                returns_hist_plot = gr.Plot(value=_ci["ret_hist"], label="", show_label=False)
+                winloss_plot      = gr.Plot(value=_ci["winloss"],  label="", show_label=False)
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View", label="", container=False,
@@ -243,7 +271,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             with gr.Column(visible=False) as dev_col:
                 with gr.Row():
                     with gr.Column(scale=65):
-                        fi_plot = gr.Plot(value=None, label="", show_label=False)
+                        fi_plot = gr.Plot(value=_ci["fi"], label="", show_label=False)
                     with gr.Column(scale=35):
                         val_out = gr.HTML(value="")
 
@@ -339,38 +367,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         outputs=[settings_summary_out, _save_status],
     )
 
-    # ── Page-load events — populate charts and yfinance panels after page is served ──
-    # gr.Plot ignores value=callable in Gradio 5.9; must use demo.load() to populate plots.
-    # concurrency_limit=None bypasses the HF Spaces queue slot limit so all events start
-    # immediately in parallel instead of queuing sequentially and timing out.
-    # Each chart has its own load call for independent fault isolation.
-    import time as _time
-    import traceback as _tb
-
-    def _chart_loader(name, fn):
-        def _wrapped():
-            t0 = _time.time()
-            logger.info(f"[chart-load] START {name}")
-            try:
-                result = fn()
-                logger.info(f"[chart-load] OK    {name} ({_time.time()-t0:.2f}s) type={type(result).__name__}")
-                return result
-            except Exception:
-                logger.error(f"[chart-load] FAIL  {name} ({_time.time()-t0:.2f}s)\n{_tb.format_exc()}")
-                raise
-        _wrapped.__name__ = f"load_{name}"
-        return _wrapped
-
-    _cl = {"concurrency_limit": None}
-    _demo.load(fn=_chart_loader("equity",       render_equity_chart),             outputs=[eq_plot],             **_cl)
-    _demo.load(fn=_chart_loader("allocation",   render_allocation_chart),         outputs=[alloc_plot],          **_cl)
-    _demo.load(fn=_chart_loader("pnl",          render_pnl_chart),               outputs=[pnl_plot],            **_cl)
-    _demo.load(fn=_chart_loader("capital",      render_capital_chart),           outputs=[capital_chart_out],   **_cl)
-    _demo.load(fn=_chart_loader("returns_hist", render_returns_histogram),       outputs=[returns_hist_plot],   **_cl)
-    _demo.load(fn=_chart_loader("winloss",      render_winloss_chart),           outputs=[winloss_plot],        **_cl)
-    _demo.load(fn=_chart_loader("feat_imp",     render_feature_importance_chart), outputs=[fi_plot],            **_cl)
-    _demo.load(fn=_chart_loader("market_mood",  render_market_mood),             outputs=[market_mood_out],     **_cl)
-    _demo.load(fn=_chart_loader("news",         render_news_feed_initial),       outputs=[news_out],            **_cl)
+    # ── Page-load events — yfinance panels only ──────────────────────────────────
+    # gr.Plot components are populated at startup via _ci (pre-rendered above).
+    # Only market_mood and news use demo.load() — they make external API calls
+    # (yfinance / NewsAPI) that must not block Gradio server startup.
+    _demo.load(fn=render_market_mood,       outputs=[market_mood_out])
+    _demo.load(fn=render_news_feed_initial, outputs=[news_out])
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
