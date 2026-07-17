@@ -44,21 +44,29 @@ def _fetch_symbol_news(symbol: str, max_items: int = 3, db_only: bool = False) -
     if db_only:
         return _db_news_fallback(symbol, max_items, now)
     try:
+        import threading as _th
         import yfinance as _yf
-        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutTimeout
+
+        _result: list = []
+        _err: list = []
 
         def _get_news():
-            return _yf.Ticker(symbol).news or []
+            try:
+                _result.append(_yf.Ticker(symbol).news or [])
+            except Exception as e:
+                _err.append(e)
 
-        _pool = ThreadPoolExecutor(max_workers=1)
-        _fut = _pool.submit(_get_news)
-        try:
-            raw = _fut.result(timeout=10)
-        except _FutTimeout:
-            _pool.shutdown(wait=False)  # let stalled thread die in background
+        # daemon=True so this thread never blocks process exit (CI or graceful shutdown)
+        _t = _th.Thread(target=_get_news, daemon=True, name=f"yf_news_{symbol}")
+        _t.start()
+        _t.join(timeout=10)
+        if _t.is_alive():
             logger.debug(f"news_fetch {symbol}: yfinance timed out — using DB cache")
             return _db_news_fallback(symbol, max_items, now)
-        _pool.shutdown(wait=False)
+        if _err:
+            raise _err[0]
+
+        raw = _result[0] if _result else []
 
         items = []
         for r in raw[:max_items]:
