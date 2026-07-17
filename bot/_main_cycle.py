@@ -31,6 +31,15 @@ from bot._main_positions import (
     _upsert_position_state,
 )
 
+# TP ceiling is 12% so worst-case R:R at the stop ceiling (10%) stays at 1.2,
+# keeping a 20% buffer above MIN_RR_RATIO=1.0 to absorb transaction costs.
+_TP_FLOOR = 0.06
+_TP_CEIL  = 0.12
+
+
+def _atr_tp_pct(atr: float, price: float) -> float:
+    return max(_TP_FLOOR, min(_TP_CEIL, (4.0 * atr) / price))
+
 
 def _fetch_symbol(symbol: str, client, yf_batch: dict) -> tuple[str, pd.DataFrame, pd.DataFrame]:
     """Return (symbol, bars_5m, bars_daily).
@@ -144,9 +153,9 @@ def _handle_exits(
         _upsert_position_state(con, symbol, entry_price, current_price, current_atr)
         hwm = current_price
 
-    # ① Take-profit: max(6%, 4×ATR), capped at 10% — captures shorter swing moves
+    # ① Take-profit: 4×ATR clamped to [6%, 12%] — captures medium-term swing moves
     if entry_price > 0 and current_atr > 0:
-        tp_pct = max(0.06, min(0.10, (4 * current_atr) / entry_price))
+        tp_pct = _atr_tp_pct(current_atr, entry_price)
         if pnl_pct >= tp_pct:
             success = _signal_sell(
                 con, client, symbol, pos_qty, current_price,
@@ -382,10 +391,10 @@ def _handle_entry(
     if current_atr and current_atr > 0 and current_price > 0:
         stop_pct = max(ATR_MIN_STOP_PCT, min(ATR_MAX_STOP_PCT,
                        (ATR_STOP_MULTIPLIER * current_atr) / current_price))
-        tp_target_pct = max(0.06, min(0.10, (4 * current_atr) / current_price))
+        tp_target_pct = _atr_tp_pct(current_atr, current_price)
     else:
         stop_pct = STOP_LOSS_PCT
-        tp_target_pct = 0.06
+        tp_target_pct = _TP_FLOOR
 
     # Gate 8a — Minimum absolute profit target: not worth entering if upside < MIN_TP_PCT
     if tp_target_pct < MIN_TP_PCT:

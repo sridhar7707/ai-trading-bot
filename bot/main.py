@@ -182,18 +182,20 @@ def run(
         "SELECT portfolio_value FROM portfolio_snapshots "
         "WHERE portfolio_value > 0 ORDER BY timestamp DESC LIMIT 1"
     ).fetchone()
-    if _last_snap and real_portfolio_value < _last_snap[0] * 0.50:
+    # _sanity_blocked=True: block reconcile (prevents phantom SELL_RECONCILE storm) and
+    # new entries (can't size positions without correct account value), but exit management
+    # still runs every cycle so stop-losses and gap-down floors are never suppressed.
+    _sanity_blocked = _last_snap and real_portfolio_value < _last_snap[0] * 0.50
+    if _sanity_blocked:
         logger.error(
             f"Portfolio value sanity check FAILED: Alpaca reports ${real_portfolio_value:,.2f} "
-            f"but last snapshot was ${_last_snap[0]:,.2f} — drop >50%%. "
-            "Likely wrong account or transient API error. Aborting cycle to protect positions."
+            f"but last snapshot was ${_last_snap[0]:,.2f} — drop >50%. "
+            "Likely wrong account or transient API error. Blocking reconcile and new entries."
         )
         tg._send(
             f"🚨 Portfolio value sanity check failed — Alpaca reports ${real_portfolio_value:,.0f} "
-            f"vs last known ${_last_snap[0]:,.0f}. Cycle aborted. Check API key / account."
+            f"vs last known ${_last_snap[0]:,.0f}. Reconcile + buys blocked. Check API key / account."
         )
-        con.close()
-        return
 
     logger.info(f"Alpaca connection OK — account value ${real_portfolio_value:,.2f}")
     # Paper sim-capital: size/risk-check as if the account were small (dry-run).
@@ -236,7 +238,8 @@ def run(
         pdt_exempt = False
 
     positions       = client.get_positions()
-    _reconcile_positions(con, positions, portfolio_value=portfolio_value, client=client)
+    if not _sanity_blocked:
+        _reconcile_positions(con, positions, portfolio_value=portfolio_value, client=client)
     buy_order_syms, sell_order_syms = client.get_open_order_symbols()
 
     # Restore intraday halt — persists across 5-min cycles so a mid-day breach
@@ -472,7 +475,7 @@ def run(
                 continue
 
             # ── Entry gates (applied in order of cheapness) ───────────────────
-            if action != 1:
+            if action != 1 or _sanity_blocked:
                 continue
 
             _cash_before = available_cash

@@ -87,7 +87,7 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
                     continue
 
             if entry_price > 0:
-                tp_pct = max(0.06, min(0.08, (3 * atr) / entry_price)) if atr > 0 else 0.06
+                tp_pct = max(0.06, min(0.12, (4 * atr) / entry_price)) if atr > 0 else 0.06
                 current_pnl = (price - entry_price) / entry_price
                 if current_pnl >= tp_pct:
                     fill_price = price * (1 - SLIPPAGE_BPS / 10_000)
