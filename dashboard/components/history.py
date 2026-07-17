@@ -321,12 +321,21 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
                 else:
                     cutoff = (today - datetime.timedelta(days=days)).isoformat()
 
-                # First DB record on or after the cutoff date (start-of-period proxy).
+                # portfolio_snapshots has denser coverage than trades (whose portfolio_value
+                # is often 0 for BUY entries). Try snapshots first; fall back to trades.
                 row = con.execute(
-                    "SELECT portfolio_value, timestamp FROM trades "
-                    "WHERE portfolio_value > 0 AND date(timestamp) >= ? ORDER BY id ASC LIMIT 1",
+                    "SELECT portfolio_value, timestamp FROM portfolio_snapshots "
+                    "WHERE portfolio_value > 0 AND date(timestamp) >= ? "
+                    "ORDER BY timestamp ASC LIMIT 1",
                     (cutoff,),
                 ).fetchone()
+                if not row:
+                    row = con.execute(
+                        "SELECT portfolio_value, timestamp FROM trades "
+                        "WHERE portfolio_value > 0 AND date(timestamp) >= ? "
+                        "ORDER BY id ASC LIMIT 1",
+                        (cutoff,),
+                    ).fetchone()
                 if row:
                     result[key] = (float(row[0]), cur_val, row[1][:10])
                 else:
