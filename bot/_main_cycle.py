@@ -18,7 +18,7 @@ from config import (
     MAX_POSITION_DRIFT_PCT, MAX_POSITION_PCT,
     MAX_RISK_PER_TRADE_PCT, MAX_SECTOR_EXPOSURE_PCT,
     MIN_CASH_RESERVE_PCT, MIN_RR_RATIO, MIN_TP_PCT,
-    MACD_CONFIRMATION_MIN, MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR, XGB_MIN_CONFIDENCE,
+    MACD_CONFIRMATION_MIN, MIN_VOLUME_RATIO, XGB_MIN_CONFIDENCE,
     RS_LOOKBACK_BARS, SECTOR_MAP, STOP_LOSS_PCT,
 )
 from database.user_settings import get_setting as _get_setting
@@ -423,12 +423,7 @@ def _handle_entry(
         )
         notional = max_risk_notional
 
-    # Gate 8c — Reduce position by RANGING_SIZE_FACTOR in sideways markets (lower conviction)
-    if regime_name == "RANGING":
-        notional *= RANGING_SIZE_FACTOR
-        logger.debug(f"BUY {symbol}: RANGING regime — size reduced to ${notional:.0f}")
-
-    # Gate 8d — Sector exposure cap: total portfolio value in this sector ≤ MAX_SECTOR_EXPOSURE_PCT
+    # Gate 8c — Sector exposure cap: total portfolio value in this sector ≤ MAX_SECTOR_EXPOSURE_PCT
     _sym_sector = SECTOR_MAP.get(symbol, "Unknown")
     if _sym_sector not in ("Unknown", "Broad_ETF"):
         _sector_val = sum(
