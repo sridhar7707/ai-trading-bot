@@ -344,16 +344,33 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     # concurrency_limit=None bypasses the HF Spaces queue slot limit so all events start
     # immediately in parallel instead of queuing sequentially and timing out.
     # Each chart has its own load call for independent fault isolation.
+    import time as _time
+    import traceback as _tb
+
+    def _chart_loader(name, fn):
+        def _wrapped():
+            t0 = _time.time()
+            logger.info(f"[chart-load] START {name}")
+            try:
+                result = fn()
+                logger.info(f"[chart-load] OK    {name} ({_time.time()-t0:.2f}s) type={type(result).__name__}")
+                return result
+            except Exception:
+                logger.error(f"[chart-load] FAIL  {name} ({_time.time()-t0:.2f}s)\n{_tb.format_exc()}")
+                raise
+        _wrapped.__name__ = f"load_{name}"
+        return _wrapped
+
     _cl = {"concurrency_limit": None}
-    _demo.load(fn=render_equity_chart,             outputs=[eq_plot],             **_cl)
-    _demo.load(fn=render_allocation_chart,         outputs=[alloc_plot],          **_cl)
-    _demo.load(fn=render_pnl_chart,               outputs=[pnl_plot],            **_cl)
-    _demo.load(fn=render_capital_chart,           outputs=[capital_chart_out],   **_cl)
-    _demo.load(fn=render_returns_histogram,       outputs=[returns_hist_plot],   **_cl)
-    _demo.load(fn=render_winloss_chart,           outputs=[winloss_plot],        **_cl)
-    _demo.load(fn=render_feature_importance_chart, outputs=[fi_plot],            **_cl)
-    _demo.load(fn=render_market_mood,             outputs=[market_mood_out],     **_cl)
-    _demo.load(fn=render_news_feed_initial,       outputs=[news_out],            **_cl)
+    _demo.load(fn=_chart_loader("equity",       render_equity_chart),             outputs=[eq_plot],             **_cl)
+    _demo.load(fn=_chart_loader("allocation",   render_allocation_chart),         outputs=[alloc_plot],          **_cl)
+    _demo.load(fn=_chart_loader("pnl",          render_pnl_chart),               outputs=[pnl_plot],            **_cl)
+    _demo.load(fn=_chart_loader("capital",      render_capital_chart),           outputs=[capital_chart_out],   **_cl)
+    _demo.load(fn=_chart_loader("returns_hist", render_returns_histogram),       outputs=[returns_hist_plot],   **_cl)
+    _demo.load(fn=_chart_loader("winloss",      render_winloss_chart),           outputs=[winloss_plot],        **_cl)
+    _demo.load(fn=_chart_loader("feat_imp",     render_feature_importance_chart), outputs=[fi_plot],            **_cl)
+    _demo.load(fn=_chart_loader("market_mood",  render_market_mood),             outputs=[market_mood_out],     **_cl)
+    _demo.load(fn=_chart_loader("news",         render_news_feed_initial),       outputs=[news_out],            **_cl)
 
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
@@ -451,6 +468,41 @@ async def _cron_endpoint():
     from scheduler.dispatcher import main as _dispatch
     threading.Thread(target=_dispatch, daemon=True, name="cron-dispatcher").start()
     return JSONResponse({"status": "accepted"})
+
+
+@app.get("/debug/charts")
+async def _debug_charts():
+    """Call each chart render function and report success/failure + timing."""
+    import time as _t
+    import traceback as _tb2
+    from dashboard.charts import (
+        render_equity_chart, render_allocation_chart, render_pnl_chart,
+        render_feature_importance_chart, render_returns_histogram, render_winloss_chart,
+    )
+    from dashboard.components.capital import render_capital_chart
+    from dashboard.components.market_mood import render_market_mood
+    from dashboard.components.news import render_news_feed
+
+    fns = [
+        ("equity",       render_equity_chart),
+        ("allocation",   render_allocation_chart),
+        ("pnl",          render_pnl_chart),
+        ("capital",      render_capital_chart),
+        ("returns_hist", render_returns_histogram),
+        ("winloss",      render_winloss_chart),
+        ("feat_imp",     render_feature_importance_chart),
+        ("market_mood",  render_market_mood),
+        ("news",         render_news_feed),
+    ]
+    results = {}
+    for name, fn in fns:
+        t0 = _t.time()
+        try:
+            out = fn()
+            results[name] = {"ok": True, "type": type(out).__name__, "ms": round((_t.time()-t0)*1000)}
+        except Exception:
+            results[name] = {"ok": False, "error": _tb2.format_exc(), "ms": round((_t.time()-t0)*1000)}
+    return JSONResponse(results)
 
 
 if __name__ == "__main__":
