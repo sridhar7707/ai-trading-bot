@@ -117,20 +117,14 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
         c["timeline_brief_out"],
     ])
 
-    # Dropdown choices are DB-only reads — refresh every 60 s so they populate
-    # immediately on the first tick rather than waiting for the 300 s data timer.
-    def _refresh_sym(sel: str):
-        from dashboard.components.symbol_detail import _get_symbol_choices
-        choices = _get_symbol_choices()
-        val = sel if sel in choices else (choices[0] if choices else None)
-        return gr.update(choices=choices, value=val)
-
+    # sim_sym_dd choices are a cheap DB read — keep them fresh every 60 s.
+    # symbol_selector choices are NOT refreshed by timer: writing to a Dropdown
+    # with a registered .change() triggers Gradio 5.9's feedback-loop bug.
     def _sim_choices():
         from dashboard.data import get_data as _gd
         choices = sorted(_gd().get("prices", {}).keys()) or []
         return gr.update(choices=choices)
 
-    timer.tick(fn=_refresh_sym, inputs=[c["symbol_selector"]], outputs=[c["symbol_selector"]])
     timer.tick(fn=_sim_choices, outputs=[c["sim_sym_dd"]])
 
 
@@ -200,20 +194,21 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
         c["spy_banner_out"],
     ])
 
-    # Read perf_tabs label directly — eliminates the gr.State indirection that
-    # caused Gradio 5.9's "Too many arguments" bug on user-triggered events.
+    # Read perf_tabs label directly. Do NOT write back to perf_tabs — writing to
+    # a Radio that has a .change() handler registered causes Gradio 5.9 to fire
+    # that handler (Radio.svelte:39 → handle_change), which then sends both a
+    # trigger value and an input value to a 1-param endpoint → "Too many arguments".
     def _refresh_perf(current_label: str):
         from dashboard.components.history import _perf_choices, render_portfolio_performance
         current_key = current_label.split("  ")[0].strip() if isinstance(current_label, str) and current_label else "1M"
         choices = _perf_choices()
         matched = next((ch for ch in choices if ch.split("  ")[0].strip() == current_key), None)
         val = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
-        return gr.update(choices=choices, value=val), render_portfolio_performance(val or "1M")
+        return render_portfolio_performance(val or "1M")
 
     def _sym_detail(sel: str):
         from dashboard.components.symbol_detail import render_symbol_detail
         return render_symbol_detail(sel)
 
-    timer.tick(fn=_refresh_perf, inputs=[c["perf_tabs"]],
-               outputs=[c["perf_tabs"], c["perf_out"]])
+    timer.tick(fn=_refresh_perf, inputs=[c["perf_tabs"]], outputs=[c["perf_out"]])
     timer.tick(fn=_sym_detail,   inputs=[c["symbol_selector"]], outputs=[c["symbol_detail_out"]])
