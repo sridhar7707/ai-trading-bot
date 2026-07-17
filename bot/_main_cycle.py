@@ -18,7 +18,7 @@ from config import (
     MAX_POSITION_DRIFT_PCT, MAX_POSITION_PCT,
     MAX_RISK_PER_TRADE_PCT, MAX_SECTOR_EXPOSURE_PCT,
     MIN_CASH_RESERVE_PCT, MIN_RR_RATIO, MIN_TP_PCT,
-    MACD_CONFIRMATION_MIN, MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR,
+    MACD_CONFIRMATION_MIN, MIN_VOLUME_RATIO, RANGING_SIZE_FACTOR, XGB_MIN_CONFIDENCE,
     RS_LOOKBACK_BARS, SECTOR_MAP, STOP_LOSS_PCT,
 )
 from database.user_settings import get_setting as _get_setting
@@ -320,6 +320,11 @@ def _handle_entry(
     # Gate 2 — Volume: confirm institutional participation
     if volume_ratio < MIN_VOLUME_RATIO:
         _log_buy_skip(symbol, f"volume ratio {volume_ratio:.2f} < {MIN_VOLUME_RATIO}")
+        return available_cash
+
+    # Gate 3 — XGB minimum confidence: live trades show 62% WR at >=0.55 vs 25% below
+    if xgb_prob < XGB_MIN_CONFIDENCE:
+        _log_buy_skip(symbol, f"xgb_prob {xgb_prob:.3f} < min {XGB_MIN_CONFIDENCE:.2f}")
         return available_cash
 
     # Gate 4 — Relative strength: stock must be outperforming SPY over last N bars

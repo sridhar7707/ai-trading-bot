@@ -144,6 +144,7 @@ KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades use
 KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
 CORRELATION_THRESHOLD   = float(os.getenv("CORRELATION_THRESHOLD",   0.85))   # block buy if corr > this with held pos (relaxed from 0.80 to allow faster turnover)
 MACD_CONFIRMATION_MIN   = float(os.getenv("MACD_CONFIRMATION_MIN",   "-inf"))  # Gate 7.9: block entry if daily macd_diff <= this; -inf = disabled (default)
+XGB_MIN_CONFIDENCE      = float(os.getenv("XGB_MIN_CONFIDENCE",      0.55))    # Gate 3: block entry if xgb_prob < this; live data shows 62% WR at >=0.55 vs 25% below
 RS_LOOKBACK_BARS      = int(os.getenv("RS_LOOKBACK_BARS", 5))       # bars for 5-min relative strength vs SPY
 # Regimes that allow new long entries. HIGH_VOLATILITY is included because the
 # risk manager still caps position size and the stop-loss hard-overrides any exit.
