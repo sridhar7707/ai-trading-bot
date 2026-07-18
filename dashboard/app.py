@@ -231,9 +231,9 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             committee_out       = gr.HTML(value="")
             decision_center_out = gr.HTML(value="")
             rebalance_out       = gr.HTML(value="")
-            watchlist_out       = gr.HTML(value="")
+            watchlist_out       = gr.HTML(value=render_watchlist)
             pos_out             = gr.HTML(value=render_positions)
-            trades_out          = gr.HTML(value="")
+            trades_out          = gr.HTML(value=render_trades)
             thesis_out          = gr.HTML(value="")
             _initial_choices = _get_symbol_choices()
             _initial_sym     = _initial_choices[0] if _initial_choices else None
@@ -241,7 +241,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 choices=_initial_choices, label="🔍 Symbol Detail",
                 value=_initial_sym, container=True, elem_classes=["sym-selector"],
             )
-            symbol_detail_out = gr.HTML(value="")
+            symbol_detail_out = gr.HTML(value=render_symbol_detail(_initial_sym) if _initial_sym else "")
             _sim_syms  = sorted(get_data().get("prices", {}).keys()) or []
             sim_sym_dd = gr.Dropdown(choices=_sim_syms, label="🔬 Simulate: Symbol", container=True)
             sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
@@ -278,12 +278,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
         # ── Tab 4: Trades ─────────────────────────────────────────────────────
         with gr.TabItem("📈 Trades"):
-            top_picks_out       = gr.HTML(value="")
-            trade_freq_out      = gr.HTML(value="")
-            buy_candidates_out  = gr.HTML(value="")
-            signal_history_out  = gr.HTML(value="")
-            rec_history_out     = gr.HTML(value="")
-            timeline_trades_out = gr.HTML(value="")
+            top_picks_out       = gr.HTML(value=render_top_picks)
+            trade_freq_out      = gr.HTML(value=render_trade_frequency)
+            buy_candidates_out  = gr.HTML(value=render_buy_candidates)
+            signal_history_out  = gr.HTML(value=render_signal_history)
+            rec_history_out     = gr.HTML(value=render_recommendation_history)
+            timeline_trades_out = gr.HTML(value=render_timeline)
 
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
