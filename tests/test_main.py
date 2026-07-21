@@ -844,21 +844,26 @@ def test_log_signal_writes_row(db):
 
 
 def test_log_signal_ensemble_score_math(db):
-    """ensemble_score = 0.55*xgb + 0.15*lstm + 0.15*((sent+1)/2) + 0.15*macro"""
+    """ensemble_score matches the WEIGHTS defined in ensemble.py."""
+    from bot.strategy.ensemble import WEIGHTS
     xgb, lstm, sent, macro = 0.8, 0.6, 0.4, 0.7
     _log_signal(db, "MSFT", xgb, lstm, sent, macro, "RANGING", "STRONG_BUY")
     row = db.execute("SELECT ensemble_score FROM signal_log").fetchone()
     sent_norm = (sent + 1.0) / 2.0
-    expected  = 0.55 * xgb + 0.15 * lstm + 0.15 * sent_norm + 0.15 * macro
+    expected  = (WEIGHTS["xgb"] * xgb + WEIGHTS["lstm"] * lstm
+                 + WEIGHTS["sentiment"] * sent_norm + WEIGHTS["macro"] * macro)
     assert row[0] == pytest.approx(expected, abs=0.001)
 
 
 def test_log_signal_negative_sentiment_normalised(db):
-    """Strongly negative sentiment (-1.0) → normalised to 0.0, not negative."""
+    """Strongly negative sentiment (-1.0) → normalised to 0.0, not negative.
+    lstm=0.5 is indeterminate → its weight transfers to xgb."""
+    from bot.strategy.ensemble import WEIGHTS
     _log_signal(db, "TSLA", 0.5, 0.5, -1.0, 0.5, "VOLATILE", "HOLD")
     row = db.execute("SELECT ensemble_score FROM signal_log").fetchone()
-    # sent_norm = 0.0 → no negative contribution to ensemble
-    expected = 0.35 * 0.5 + 0.35 * 0.5 + 0.15 * 0.0 + 0.15 * 0.5
+    # sent_norm = 0.0, lstm indeterminate → w_xgb = xgb + lstm, w_lstm = 0
+    w_xgb = WEIGHTS["xgb"] + WEIGHTS["lstm"]
+    expected = w_xgb * 0.5 + WEIGHTS["sentiment"] * 0.0 + WEIGHTS["macro"] * 0.5
     assert row[0] == pytest.approx(expected, abs=0.001)
 
 

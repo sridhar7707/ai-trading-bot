@@ -22,8 +22,8 @@ def test_strong_buy():
 
 
 def test_buy():
-    # xgb=0.7, lstm=0.7, sentiment=0.0, regime=RANGING → score ≈ 0.62
-    action, fraction = ensemble_signal(0.7, 0.7, 0.0, "RANGING")
+    # xgb=0.60, lstm=0.60, sentiment=0.0, regime=RANGING → score ≈ 0.58 (BUY, not STRONG_BUY)
+    action, fraction = ensemble_signal(0.60, 0.60, 0.0, "RANGING")
     assert action == "BUY"
     assert fraction == BUY_FRACTION
 
