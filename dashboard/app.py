@@ -344,20 +344,20 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     gr.HTML(value=FOOTER_HTML)
 
     # ── Event handlers ────────────────────────────────────────────────────────
-    model_view.change(
-        fn=lambda v: (gr.update(visible=(v == "📊 Investor View")),
-                      gr.update(visible=(v == "🔬 Developer View"))),
-        inputs=[model_view], outputs=[investor_out, dev_col],
-    )
+    def _on_model_view_change(v, *_):
+        return (gr.update(visible=(v == "📊 Investor View")),
+                gr.update(visible=(v == "🔬 Developer View")))
 
-    # Gradio 5.9 injects gr.State output values as extra inputs, causing
-    # "Too many arguments". Fix: no gr.State in outputs of user events.
-    # Timers read perf_tabs / symbol_selector directly instead.
-    perf_tabs.change(
-        fn=lambda p: (render_portfolio_performance(p), render_equity_chart(p)),
-        inputs=[perf_tabs],
-        outputs=[perf_out, eq_plot],
-    )
+    model_view.change(fn=_on_model_view_change, inputs=[model_view], outputs=[investor_out, dev_col])
+
+    # Gradio 5.9 injects current output component values as extra inputs when
+    # ANY component (not just gr.State) appears in outputs — causing "Too many
+    # arguments" and silently dropping the entire event (zero network requests).
+    # Fix: accept the injected extras with *_ and discard them.
+    def _on_period_change(p, *_):
+        return render_portfolio_performance(p), render_equity_chart(p)
+
+    perf_tabs.change(fn=_on_period_change, inputs=[perf_tabs], outputs=[perf_out, eq_plot])
     symbol_selector.change(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
 
     def _run_sim(sym, amt):
