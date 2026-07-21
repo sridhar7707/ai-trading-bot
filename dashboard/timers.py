@@ -133,12 +133,12 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
 def _register_data_tick(timer: gr.Timer, c: dict) -> None:
     """One batched tick for all heavy renders, plus stateful callbacks."""
 
-    def _tick(period: str = "All Time"):
+    def _tick():
         return (
             render_three_question_summary(),
             render_market_mood(),
             render_news_feed(),
-            render_equity_chart(period),
+            render_equity_chart(),
             render_allocation_chart(),
             render_pnl_chart(),
             render_ai_committee(),
@@ -164,7 +164,7 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
             render_spy_banner(),
         )
 
-    timer.tick(fn=_tick, inputs=[c["perf_tabs"]], outputs=[
+    timer.tick(fn=_tick, outputs=[
         c["three_q_out"],
         c["market_mood_out"],
         c["news_out"],
@@ -213,10 +213,3 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
     timer.tick(fn=_refresh_perf, inputs=[c["perf_tabs"]], outputs=[c["perf_out"]])
     timer.tick(fn=_sym_detail,   inputs=[c["symbol_selector"]], outputs=[c["symbol_detail_out"]])
 
-    # Dedicated 5 s equity-chart refresh — Gradio 5.9 "Too many arguments" bug
-    # prevents gr.Plot from being in .change() outputs, so we poll instead.
-    # Timer callbacks do not have the injection problem that .change() has.
-    def _eq_refresh(period: str = "All Time"):
-        return render_equity_chart(period)
-
-    gr.Timer(value=5).tick(fn=_eq_refresh, inputs=[c["perf_tabs"]], outputs=[c["eq_plot"]])

@@ -224,7 +224,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
             perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=_ci["equity"],  label="", show_label=False)
+                    eq_plot    = gr.Plot(value=_ci["equity"],  label="", show_label=False, elem_id="equity-chart")
                 with gr.Column(scale=35):
                     alloc_plot = gr.Plot(value=_ci["alloc"],   label="", show_label=False)
             pnl_plot            = gr.Plot(value=_ci["pnl"],    label="", show_label=False)
@@ -350,11 +350,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
     model_view.change(fn=_on_model_view_change, inputs=[model_view], outputs=[investor_out, dev_col])
 
-    # Gradio 5.9 injects current values of every output component as extra
-    # positional inputs, and rejects the call with "Too many arguments" when
-    # the declared inputs list is shorter than what it sends. gr.Plot triggers
-    # this; gr.HTML does not. So eq_plot cannot be in .change() outputs — a
-    # dedicated 5 s timer in timers.py keeps it in sync with perf_tabs instead.
+    # perf_out (gr.HTML) updates server-side on radio change.
+    # eq_plot (gr.Plot) updates client-side via Plotly.relayout() in TAB_FIX_JS —
+    # Gradio 5.9 "Too many arguments" prevents gr.Plot in .change() outputs when
+    # inputs are also declared, so the chart period filter runs in the browser.
     perf_tabs.change(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=[perf_out])
     symbol_selector.change(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
 

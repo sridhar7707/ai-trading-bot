@@ -290,6 +290,30 @@ TAB_FIX_JS = """
       b.setAttribute('aria-selected', i === idx ? 'true' : 'false');
     });
   }, true);
+
+  // Equity chart period selector: relayout Plotly x-axis range on radio change.
+  // Gradio 5.9 "Too many arguments" prevents gr.Plot from being an output of any
+  // event handler that also has inputs, so we update the chart client-side instead.
+  function _attachEquityPeriodListener() {
+    var container = document.querySelector('.perf-tabs');
+    if (!container) { setTimeout(_attachEquityPeriodListener, 800); return; }
+    container.addEventListener('change', function(e) {
+      if (!e.target || e.target.type !== 'radio') return;
+      var period = e.target.value || 'All Time';
+      var key = period.split('  ')[0].trim();
+      var daysMap = {'1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365};
+      var now = new Date();
+      var since = key === 'YTD'
+        ? new Date(now.getFullYear(), 0, 1)
+        : (daysMap[key] ? new Date(now.getTime() - daysMap[key] * 864e5) : null);
+      var plotDiv = document.querySelector('#equity-chart .js-plotly-plot');
+      if (!plotDiv || typeof Plotly === 'undefined') return;
+      Plotly.relayout(plotDiv, since
+        ? {'xaxis.range': [since.toISOString().slice(0, 10), now.toISOString().slice(0, 10)]}
+        : {'xaxis.autorange': true});
+    });
+  }
+  _attachEquityPeriodListener();
 }
 """
 
