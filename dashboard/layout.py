@@ -291,29 +291,58 @@ TAB_FIX_JS = """
     });
   }, true);
 
-  // Equity chart period selector: relayout Plotly x-axis range on radio change.
-  // Gradio 5.9 "Too many arguments" prevents gr.Plot from being an output of any
-  // event handler that also has inputs, so we update the chart client-side instead.
-  function _attachEquityPeriodListener() {
-    var container = document.querySelector('.perf-tabs');
-    if (!container) { setTimeout(_attachEquityPeriodListener, 800); return; }
-    container.addEventListener('change', function(e) {
-      if (!e.target || e.target.type !== 'radio') return;
-      var period = e.target.value || 'All Time';
-      var key = period.split('  ')[0].trim();
-      var daysMap = {'1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365};
-      var now = new Date();
-      var since = key === 'YTD'
-        ? new Date(now.getFullYear(), 0, 1)
-        : (daysMap[key] ? new Date(now.getTime() - daysMap[key] * 864e5) : null);
-      var plotDiv = document.querySelector('#equity-chart .js-plotly-plot');
-      if (!plotDiv || typeof Plotly === 'undefined') return;
-      Plotly.relayout(plotDiv, since
-        ? {'xaxis.range': [since.toISOString().slice(0, 10), now.toISOString().slice(0, 10)]}
-        : {'xaxis.autorange': true});
-    });
+  // Equity chart period selector — updates client-side via Plotly.relayout()
+  // (Gradio 5.9 injection bug prevents gr.Plot in handler outputs with inputs).
+  // MutationObserver re-applies the selection after each 300 s server push.
+  var _eqPKey  = 'All Time';
+  var _eqSince = null;
+  var _EQ_DAYS  = {'1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365};
+  var _EQ_LABEL = {
+    '1D': 'Today', '1W': 'Last 7 Days', '1M': 'Last 30 Days',
+    '3M': 'Last 3 Months', 'YTD': 'Year to Date',
+    '1Y': 'Last 12 Months', 'All Time': 'All Time'
+  };
+  function _localDateStr(d) {
+    return d.getFullYear() + '-' +
+           String(d.getMonth() + 1).padStart(2, '0') + '-' +
+           String(d.getDate()).padStart(2, '0');
   }
-  _attachEquityPeriodListener();
+  function _eqRelayout() {
+    var pd = document.querySelector('#equity-chart .js-plotly-plot');
+    if (!pd || typeof Plotly === 'undefined') return;
+    Plotly.relayout(pd, _eqSince
+      ? {'xaxis.range': [_eqSince, _localDateStr(new Date())],
+         'title.text':  'Portfolio Value — ' + (_EQ_LABEL[_eqPKey] || 'All Time') +
+                        '  <span style=\'font-size:11px;\'>(end-of-day snapshots, includes cash + open positions)</span>'}
+      : {'xaxis.autorange': true});
+  }
+  function _initEquityPeriod() {
+    var c = document.querySelector('.perf-tabs');
+    if (!c) { setTimeout(_initEquityPeriod, 800); return; }
+    c.addEventListener('change', function(e) {
+      if (!e.target || e.target.type !== 'radio') return;
+      var key = (e.target.value || 'All Time').split('  ')[0].trim();
+      var now = new Date();
+      _eqPKey  = key;
+      if (key === 'YTD') {
+        _eqSince = now.getFullYear() + '-01-01';
+      } else if (_EQ_DAYS[key]) {
+        _eqSince = _localDateStr(new Date(now.getTime() - _EQ_DAYS[key] * 864e5));
+      } else {
+        _eqSince = null;
+      }
+      _eqRelayout();
+    });
+    // Re-apply period after the 300 s timer pushes a fresh "All Time" figure.
+    // 200 ms delay gives Plotly time to initialise the newly swapped DOM node.
+    var eqEl = document.querySelector('#equity-chart');
+    if (eqEl) {
+      new MutationObserver(function() {
+        if (_eqPKey !== 'All Time') setTimeout(_eqRelayout, 200);
+      }).observe(eqEl, {childList: true, subtree: true});
+    }
+  }
+  _initEquityPeriod();
 }
 """
 
