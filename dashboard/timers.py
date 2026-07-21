@@ -133,12 +133,12 @@ def _register_ui_tick(timer: gr.Timer, c: dict) -> None:
 def _register_data_tick(timer: gr.Timer, c: dict) -> None:
     """One batched tick for all heavy renders, plus stateful callbacks."""
 
-    def _tick():
+    def _tick(period: str = "All Time"):
         return (
             render_three_question_summary(),
             render_market_mood(),
             render_news_feed(),
-            render_equity_chart(),
+            render_equity_chart(period),
             render_allocation_chart(),
             render_pnl_chart(),
             render_ai_committee(),
@@ -164,7 +164,7 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
             render_spy_banner(),
         )
 
-    timer.tick(fn=_tick, outputs=[
+    timer.tick(fn=_tick, inputs=[c["perf_tabs"]], outputs=[
         c["three_q_out"],
         c["market_mood_out"],
         c["news_out"],

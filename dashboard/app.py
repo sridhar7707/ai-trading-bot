@@ -353,7 +353,11 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     # Gradio 5.9 injects gr.State output values as extra inputs, causing
     # "Too many arguments". Fix: no gr.State in outputs of user events.
     # Timers read perf_tabs / symbol_selector directly instead.
-    perf_tabs.change(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=[perf_out])
+    perf_tabs.change(
+        fn=lambda p: (render_portfolio_performance(p), render_equity_chart(p)),
+        inputs=[perf_tabs],
+        outputs=[perf_out, eq_plot],
+    )
     symbol_selector.change(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
 
     def _run_sim(sym, amt):

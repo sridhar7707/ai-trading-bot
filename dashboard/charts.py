@@ -55,12 +55,39 @@ _FI_LABELS: dict = {
 }
 
 
-def render_equity_chart() -> Any:
+_EQUITY_PERIOD_DAYS: dict[str, int | None] = {
+    "1D": 1, "1W": 7, "1M": 30, "3M": 90, "1Y": 365,
+}
+_EQUITY_PERIOD_LABELS: dict[str, str] = {
+    "1D": "Today", "1W": "Last 7 Days", "1M": "Last 30 Days",
+    "3M": "Last 3 Months", "YTD": "Year to Date",
+    "1Y": "Last 12 Months", "All Time": "All Time",
+}
+
+
+def render_equity_chart(period: str = "All Time") -> Any:
+    # Period string may include inline % from Radio label, e.g. "1W  -0.6%"
+    key   = period.split("  ")[0].strip() if period else "All Time"
+    label = _EQUITY_PERIOD_LABELS.get(key, "All Time")
+
+    if key == "YTD":
+        since: str | None = datetime.date(datetime.date.today().year, 1, 1).isoformat()
+    elif key in _EQUITY_PERIOD_DAYS:
+        days  = _EQUITY_PERIOD_DAYS[key]
+        since = (datetime.date.today() - datetime.timedelta(days=days)).isoformat() if days else None
+    else:
+        since = None   # All Time
+
     try:
         import plotly.graph_objects as go
         from dashboard.data import get_db_conn
         import os, sqlite3 as _sq3
         df  = get_data()["trades_df"]
+
+        # Apply time filter to trades_df
+        if since and not df.empty and "timestamp" in df.columns:
+            df = df[pd.to_datetime(df["timestamp"], errors="coerce").dt.date.astype(str) >= since]
+
         fig = go.Figure()
 
         has_data = (not df.empty and "portfolio_value" in df.columns
@@ -74,11 +101,19 @@ def render_equity_chart() -> Any:
                 from dashboard.data import DB_PATH
                 if os.path.exists(DB_PATH):
                     with get_db_conn() as _con:
-                        _rows = _con.execute(
-                            "SELECT date(timestamp) AS d, AVG(portfolio_value) AS v "
-                            "FROM portfolio_snapshots WHERE portfolio_value > 0 "
-                            "GROUP BY d ORDER BY d"
-                        ).fetchall()
+                        if since:
+                            _rows = _con.execute(
+                                "SELECT date(timestamp) AS d, AVG(portfolio_value) AS v "
+                                "FROM portfolio_snapshots WHERE portfolio_value > 0 "
+                                "AND date(timestamp) >= ? GROUP BY d ORDER BY d",
+                                (since,),
+                            ).fetchall()
+                        else:
+                            _rows = _con.execute(
+                                "SELECT date(timestamp) AS d, AVG(portfolio_value) AS v "
+                                "FROM portfolio_snapshots WHERE portfolio_value > 0 "
+                                "GROUP BY d ORDER BY d"
+                            ).fetchall()
                     if _rows:
                         _snap_daily = pd.DataFrame(_rows, columns=["date", "value"])
                         _snap_daily["date"] = pd.to_datetime(_snap_daily["date"])
@@ -130,7 +165,7 @@ def render_equity_chart() -> Any:
                         ))
 
         fig.update_layout(
-            title=dict(text="Portfolio Value Over Time  <span style='font-size:11px;'>&mdash; end-of-day snapshots, includes cash + open positions</span>",
+            title=dict(text=f"Portfolio Value &mdash; {label}  <span style='font-size:11px;'>(end-of-day snapshots, includes cash + open positions)</span>",
                        font=dict(color=TEXT1, size=13), x=0.01),
             xaxis=dict(title="", **PLOTLY_LAYOUT["xaxis"], tickfont=dict(color=TEXT2)),
             yaxis=dict(title="Account Value ($)", **PLOTLY_LAYOUT["yaxis"],
