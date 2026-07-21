@@ -34,6 +34,15 @@ TRAIN_CUTOFF = (datetime.now(timezone.utc) - timedelta(days=_HOLDOUT_DAYS)).strf
 
 
 def load_combined(cutoff: str | None = None) -> pd.DataFrame:
+    # Load SPY close first so compute_features can compute rs_vs_spy features
+    spy_close: pd.Series | None = None
+    spy_path = f"{DATA_DIR}/SPY.csv"
+    if os.path.exists(spy_path):
+        spy_raw = pd.read_csv(spy_path, index_col=0, parse_dates=True)
+        if cutoff:
+            spy_raw = spy_raw[spy_raw.index < cutoff]
+        spy_close = spy_raw["close"]
+
     frames = []
     for sym in TRAINING_SYMBOLS:
         path = f"{DATA_DIR}/{sym}.csv"
@@ -43,7 +52,7 @@ def load_combined(cutoff: str | None = None) -> pd.DataFrame:
         df = pd.read_csv(path, index_col=0, parse_dates=True)
         if cutoff:
             df = df[df.index < cutoff]
-        df = compute_features(df)
+        df = compute_features(df, spy_close=spy_close)
         df["regime"] = label_regime(df)
         df["symbol"] = sym
         frames.append(df)

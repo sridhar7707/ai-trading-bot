@@ -2,16 +2,17 @@ from __future__ import annotations
 import math
 from loguru import logger
 
-# Fix #10: macro_score added as a 5th signal.
-# Weights redistributed so they still sum to 1.0.
 # Regime is intentionally excluded from the score weights —
 # it acts as a hard entry gate in main.py (ENTRY_REGIMES). Including it here
 # would double-count it: once as a score component and again as a binary block.
+# Macro weight zeroed out: ablation on live trades showed macro removal improves
+# Sharpe by +4.79. Macro halt/cap logic in macro.py is preserved for crash protection.
+# Remaining 0.15 redistributed proportionally to xgb/lstm/sentiment.
 WEIGHTS = {
-    "xgb":       0.55,
-    "lstm":      0.15,
-    "sentiment": 0.15,
-    "macro":     0.15,
+    "xgb":       0.65,
+    "lstm":      0.175,
+    "sentiment": 0.175,
+    "macro":     0.0,
 }
 
 STRONG_BUY_THRESHOLD  = 0.65
@@ -41,9 +42,9 @@ def _reweight_score(
 ) -> float:
     """Compute ensemble score, redistributing LSTM weight to XGB when LSTM is flat."""
     if lstm_indeterminate:
-        # LSTM has no conviction — transfer its 0.35 weight to XGB so the signal
+        # LSTM has no conviction — transfer its weight to XGB so the signal
         # comes from the model that is actually producing a directional output.
-        w_xgb  = WEIGHTS["xgb"] + WEIGHTS["lstm"]  # 0.70
+        w_xgb  = WEIGHTS["xgb"] + WEIGHTS["lstm"]  # 0.825
         w_lstm = 0.0
     else:
         w_xgb  = WEIGHTS["xgb"]
@@ -100,14 +101,6 @@ def ensemble_signal(
         )
 
     if score > STRONG_BUY_THRESHOLD:
-        # ML agreement gate: only blocks when LSTM has a clear directional opinion
-        # that disagrees with XGB. A flat-lining LSTM (indeterminate) is not a veto.
-        if not lstm_indeterminate and lstm_prob < 0.50:
-            logger.debug(
-                f"Ensemble: STRONG_BUY suppressed — LSTM disagrees "
-                f"(xgb={xgb_prob:.3f}, lstm={lstm_prob:.3f})"
-            )
-            return "HOLD", 0.00
         if xgb_prob < 0.50:
             logger.debug(
                 f"Ensemble: STRONG_BUY suppressed — XGB below threshold "
@@ -116,12 +109,6 @@ def ensemble_signal(
             return "HOLD", 0.00
         return "STRONG_BUY",  STRONG_BUY_FRACTION
     elif score > BUY_THRESHOLD:
-        if not lstm_indeterminate and lstm_prob < 0.50:
-            logger.debug(
-                f"Ensemble: BUY suppressed — LSTM disagrees "
-                f"(xgb={xgb_prob:.3f}, lstm={lstm_prob:.3f})"
-            )
-            return "HOLD", 0.00
         if xgb_prob < 0.50:
             logger.debug(
                 f"Ensemble: BUY suppressed — XGB below threshold "

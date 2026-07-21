@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 import ta
@@ -7,7 +9,7 @@ import ta
 # Live bot fetches period="2y" (~504 bars); training CSVs go back to 2007 (~4500 bars).
 MIN_BARS = 260
 
-def compute_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_features(df: pd.DataFrame, spy_close: pd.Series | None = None) -> pd.DataFrame:
     """Add all technical indicators to an OHLCV DataFrame."""
     if len(df) < MIN_BARS:
         raise ValueError(f"compute_features requires at least {MIN_BARS} bars, got {len(df)}")
@@ -111,20 +113,41 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     # exhibit continuation; far-from-high stocks show anchoring/reversal
     df["high_52w_pct"] = close / (close.rolling(252).max() + eps) - 1
 
-    # ── Short-term signals for 1-week prediction horizon (FEATURE_COLS_V3) ──────
-    # Overnight gap: open vs prior close. Large gaps show mean-reversion within 1-3 days.
+    # ── Short-term signals (kept for V3 compatibility but not in V4) ─────────────
     if "open" in df.columns:
         df["gap_overnight"] = (df["open"] - close.shift(1)) / (close.shift(1) + eps)
     else:
         df["gap_overnight"] = 0.0
-
-    # RSI divergence: today's RSI minus yesterday's — captures momentum acceleration
     df["rsi_divergence"] = df["rsi"].diff(1)
-
-    # MACD crossover boolean: 1 when histogram flips from negative to positive (buy signal)
     df["macd_cross_up"] = (
         (df["macd_diff"] > 0) & (df["macd_diff"].shift(1) <= 0)
     ).astype(float)
+
+    # ── Medium-term features (FEATURE_COLS_V4) ────────────────────────────────
+    # Relative strength vs SPY: positive = stock outperforming the market.
+    # 21d / 63d RS is the strongest documented medium-term momentum predictor.
+    if spy_close is not None:
+        spy_aligned = spy_close.reindex(df.index).ffill()
+        df["rs_vs_spy_21d"] = close.pct_change(21) - spy_aligned.pct_change(21)
+        df["rs_vs_spy_63d"] = close.pct_change(63) - spy_aligned.pct_change(63)
+    else:
+        df["rs_vs_spy_21d"] = 0.0
+        df["rs_vs_spy_63d"] = 0.0
+
+    # ADX: 0 = sideways/no trend, 25+ = trending, 50+ = strong trend.
+    # Filters entries in ranging markets that hurt medium-term momentum holds.
+    df["adx_14"] = ta.trend.ADXIndicator(high, low, close, window=14).adx()
+
+    # HV ratio: 10d realized vol / 63d realized vol.
+    # > 1 = vol expansion (breakout or breakdown); < 1 = compression (setup building).
+    _log_ret  = np.log(close / (close.shift(1) + eps))
+    _hv_10    = _log_ret.rolling(10).std() * np.sqrt(252)
+    _hv_63    = _log_ret.rolling(63).std() * np.sqrt(252)
+    df["hv_ratio"] = (_hv_10 / (_hv_63 + eps)).replace([np.inf, -np.inf], np.nan)
+
+    # Trend consistency: fraction of up days in past 20 sessions.
+    # High ratio (>0.65) with positive momentum = clean uptrend, not chop.
+    df["up_day_ratio_20d"] = (close.diff() > 0).astype(float).rolling(20).mean()
 
     df.dropna(inplace=True)
     return df
@@ -144,14 +167,40 @@ FEATURE_COLS_V3 = [
     "vwap_dev",
     "macd_diff_pct",
     "ema_spread",
-    "ret_5d",             # 1-week return — still relevant at 1-week target
-    "ret_21d",            # 1-month return — useful for mean-reversion context
-    "high_52w_pct",       # proximity to yearly high (breakout continuation)
-    "gap_overnight",      # overnight gap size — mean-reversion signal (new)
-    "rsi_divergence",     # RSI momentum acceleration (new)
-    "macd_cross_up",      # MACD histogram flipped positive (new)
+    "ret_5d",
+    "ret_21d",
+    "high_52w_pct",
+    "gap_overnight",
+    "rsi_divergence",
+    "macd_cross_up",
 ]
 
-# Activated 2026-06-30: short-term signals aligned with FORWARD_PERIODS=5 target.
-# Drops long-horizon features (ret_63d, ret_126d, mom_12_1) that noise the 1-week signal.
-FEATURE_COLS = list(FEATURE_COLS_V3)
+FEATURE_COLS_V4 = [
+    "rsi",
+    "mfi",
+    "volume_ratio",
+    "obv_chg_pct",
+    "vol_ratio_trend",
+    "bb_width",
+    "atr_pct",
+    "bb_position",
+    "returns",
+    "hl_ratio",
+    "vwap_dev",
+    "macd_diff_pct",
+    "ema_spread",
+    "ret_5d",
+    "ret_21d",
+    "ret_63d",           # 3-month momentum — Jegadeesh-Titman (1993)
+    "high_52w_pct",
+    "rs_vs_spy_21d",     # 21d relative strength vs SPY
+    "rs_vs_spy_63d",     # 63d relative strength vs SPY
+    "adx_14",            # trend strength: filter ranging-market entries
+    "hv_ratio",          # vol expansion vs compression (10d / 63d realized vol)
+    "up_day_ratio_20d",  # trend consistency: fraction of up days in 20d window
+]
+
+# Active feature set: V4 aligned with FORWARD_PERIODS=21 (1-month prediction target).
+# Removes 1-week noise (gap_overnight, rsi_divergence, macd_cross_up); adds RS vs SPY,
+# ADX, HV ratio, up-day ratio, and restores ret_63d.
+FEATURE_COLS = list(FEATURE_COLS_V4)

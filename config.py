@@ -84,7 +84,7 @@ MAX_SECTOR_POSITIONS = 2                                        # max open posit
 
 # --- ATR-based exit rules ---
 ATR_STOP_MULTIPLIER   = float(os.getenv("ATR_STOP_MULTIPLIER",   2.0))  # stop at entry - 2×ATR
-ATR_TRAIL_MULTIPLIER  = float(os.getenv("ATR_TRAIL_MULTIPLIER",  1.5))  # trail at hwm - 1.5×ATR
+ATR_TRAIL_MULTIPLIER  = float(os.getenv("ATR_TRAIL_MULTIPLIER",  2.5))  # trail at hwm - 2.5×ATR (wider for medium-term holds)
 ATR_MIN_STOP_PCT      = 0.015   # floor: never stop tighter than 1.5%
 ATR_MAX_STOP_PCT      = 0.10    # ceiling: never stop wider than 10%
 
@@ -139,7 +139,7 @@ INITIAL_CAPITAL      = float(os.getenv("INITIAL_CAPITAL", 10_000))
 EARNINGS_WINDOW_DAYS = int(os.getenv("EARNINGS_WINDOW_DAYS", 2))   # block buys ±N days from earnings
 
 # --- Advanced entry/exit parameters ---
-MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 14))          # force exit after N days with <1% gain (14 = 2-week max for medium-term swing trades)
+MAX_HOLD_DAYS         = int(os.getenv("MAX_HOLD_DAYS", 45))          # force exit after N days with <1% gain (45 = 9-week ceiling for medium-term holds)
 KELLY_LOOKBACK_TRADES = int(os.getenv("KELLY_LOOKBACK_TRADES", 30)) # trades used to estimate Kelly fraction
 KELLY_FRACTION_MAX    = float(os.getenv("KELLY_FRACTION_MAX", 0.20))# half-Kelly upper cap
 CORRELATION_THRESHOLD   = float(os.getenv("CORRELATION_THRESHOLD",   0.85))   # block buy if corr > this with held pos (relaxed from 0.80 to allow faster turnover)

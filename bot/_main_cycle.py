@@ -31,10 +31,10 @@ from bot._main_positions import (
     _upsert_position_state,
 )
 
-# TP ceiling is 12% so worst-case R:R at the stop ceiling (10%) stays at 1.2,
-# keeping a 20% buffer above MIN_RR_RATIO=1.0 to absorb transaction costs.
+# TP ceiling raised to 25%: aligned with MAX_HOLD_DAYS=45 medium-term holds.
+# ATR-based TP naturally scales larger as volatility and hold time increase.
 _TP_FLOOR = 0.06
-_TP_CEIL  = 0.12
+_TP_CEIL  = 0.25
 
 
 def _atr_tp_pct(atr: float, price: float) -> float:
@@ -82,7 +82,9 @@ def _fetch_symbol(symbol: str, client, yf_batch: dict) -> tuple[str, pd.DataFram
     raw_d = yf_batch.get(symbol)
     if raw_d is not None and not raw_d.empty:
         try:
-            bars_daily = compute_features(raw_d)
+            spy_raw   = yf_batch.get("SPY")
+            spy_close = spy_raw["close"] if (spy_raw is not None and not spy_raw.empty) else None
+            bars_daily = compute_features(raw_d, spy_close=spy_close)
         except Exception as e:
             logger.warning(f"Daily bar features failed for {symbol}: {e}")
 

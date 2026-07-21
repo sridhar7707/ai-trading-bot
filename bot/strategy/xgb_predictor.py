@@ -7,7 +7,7 @@ from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
 XGB_MODEL_PATH  = Path("models/saved/xgb_predictor.pkl")
-FORWARD_PERIODS = 10   # 2-week target — matches 14-day max hold; was 5 (misaligned with swing strategy)
+FORWARD_PERIODS = 21   # 1-month target — aligned with MAX_HOLD_DAYS=45 medium-term horizon
 MIN_MOVE_PCT    = 0.003  # require ≥0.3% move to label as "up" — filters 5-min microstructure noise
 
 
@@ -21,6 +21,17 @@ class XGBPredictor:
         if XGB_MODEL_PATH.exists():
             try:
                 self.model = joblib.load(XGB_MODEL_PATH)
+                # Detect feature set mismatch: model trained on a different FEATURE_COLS
+                if hasattr(self.model, "feature_names_in_"):
+                    trained = list(self.model.feature_names_in_)
+                    if trained != FEATURE_COLS:
+                        logger.warning(
+                            f"XGBoost model trained on {len(trained)} features but "
+                            f"FEATURE_COLS now has {len(FEATURE_COLS)} — model is stale. "
+                            "Run scripts/train_model.py to retrain."
+                        )
+                        self.model = None
+                        return
                 logger.info("XGBoost model loaded.")
             except Exception as e:
                 logger.warning(f"Failed to load XGBoost model: {e}")
