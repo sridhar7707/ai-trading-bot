@@ -350,14 +350,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
     model_view.change(fn=_on_model_view_change, inputs=[model_view], outputs=[investor_out, dev_col])
 
-    # Gradio 5.9 injects current output component values as extra inputs when
-    # ANY component (not just gr.State) appears in outputs — causing "Too many
-    # arguments" and silently dropping the entire event (zero network requests).
-    # Fix: accept the injected extras with *_ and discard them.
-    def _on_period_change(p, *_):
-        return render_portfolio_performance(p), render_equity_chart(p)
-
-    perf_tabs.change(fn=_on_period_change, inputs=[perf_tabs], outputs=[perf_out, eq_plot])
+    # Gradio 5.9 injects current values of every output component as extra
+    # positional inputs, and rejects the call with "Too many arguments" when
+    # the declared inputs list is shorter than what it sends. gr.Plot triggers
+    # this; gr.HTML does not. So eq_plot cannot be in .change() outputs — a
+    # dedicated 5 s timer in timers.py keeps it in sync with perf_tabs instead.
+    perf_tabs.change(fn=render_portfolio_performance, inputs=[perf_tabs], outputs=[perf_out])
     symbol_selector.change(fn=render_symbol_detail, inputs=[symbol_selector], outputs=[symbol_detail_out])
 
     def _run_sim(sym, amt):

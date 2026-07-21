@@ -212,3 +212,11 @@ def _register_data_tick(timer: gr.Timer, c: dict) -> None:
 
     timer.tick(fn=_refresh_perf, inputs=[c["perf_tabs"]], outputs=[c["perf_out"]])
     timer.tick(fn=_sym_detail,   inputs=[c["symbol_selector"]], outputs=[c["symbol_detail_out"]])
+
+    # Dedicated 5 s equity-chart refresh — Gradio 5.9 "Too many arguments" bug
+    # prevents gr.Plot from being in .change() outputs, so we poll instead.
+    # Timer callbacks do not have the injection problem that .change() has.
+    def _eq_refresh(period: str = "All Time"):
+        return render_equity_chart(period)
+
+    gr.Timer(value=5).tick(fn=_eq_refresh, inputs=[c["perf_tabs"]], outputs=[c["eq_plot"]])
