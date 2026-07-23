@@ -16,7 +16,7 @@ WEIGHTS = {
 }
 
 STRONG_BUY_THRESHOLD  = 0.65
-BUY_THRESHOLD         = 0.55
+BUY_THRESHOLD         = 0.52
 SELL_THRESHOLD        = 0.40
 STRONG_SELL_THRESHOLD = 0.30
 STRONG_BUY_FRACTION   = 0.10   # reduced from 0.20 — smaller positions enable more parallel trades
