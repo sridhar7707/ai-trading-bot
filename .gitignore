@@ -19,6 +19,7 @@ models/saved/*.zip
 models/saved/*.pkl
 models/saved/*.pt
 !models/saved/.gitkeep
+models/runtime_versions.json
 notebooks/.ipynb_checkpoints/
 
 # Auto-generated requirement snapshot backups (req_state.json is the source of truth)
