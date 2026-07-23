@@ -333,7 +333,7 @@ TAB_FIX_JS = """
     _initEquityPeriod();
   } else {
     var _ps = document.createElement('script');
-    _ps.src = 'https://cdn.plot.ly/plotly-latest.min.js';
+    _ps.src = 'https://cdn.plot.ly/plotly-2.35.2.min.js';
     _ps.onload  = _initEquityPeriod;
     _ps.onerror = function() {};
     document.head.appendChild(_ps);
