@@ -262,6 +262,7 @@ footer {{ display: none !important; }}
 # every tab-button click, acting as a reliable client-side override.
 TAB_FIX_JS = """
 () => {
+  console.log('EQ:start');
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('button[role="tab"]');
     if (!btn) return;
@@ -290,11 +291,7 @@ TAB_FIX_JS = """
   var _eqPKey  = 'All Time';
   var _eqSince = null;
   var _EQ_DAYS  = {'1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365};
-  var _EQ_LABEL = {
-    '1D': 'Today', '1W': 'Last 7 Days', '1M': 'Last 30 Days',
-    '3M': 'Last 3 Months', 'YTD': 'Year to Date',
-    '1Y': 'Last 12 Months', 'All Time': 'All Time'
-  };
+  var _EQ_LABEL = {'1D':'Today','1W':'Last 7 Days','1M':'Last 30 Days','3M':'Last 3 Months','YTD':'Year to Date','1Y':'Last 12 Months','All Time':'All Time'};
   function _localDateStr(d) {
     return d.getFullYear() + '-' +
            String(d.getMonth() + 1).padStart(2, '0') + '-' +
@@ -333,15 +330,16 @@ TAB_FIX_JS = """
       }).observe(eqEl, {childList: true, subtree: true});
     }
   }
-  // Gradio 5.x has no window.Plotly global — load from CDN so relayout() works.
+  console.log('EQ:before_plotly_check', typeof Plotly);
   if (typeof Plotly !== 'undefined') {
-    _initEquityPeriod();
+    console.log('EQ:plotly_found_directly'); _initEquityPeriod();
   } else {
     var _ps = document.createElement('script');
-    _ps.src = 'https://cdn.plot.ly/plotly-2.35.2.min.js';
-    _ps.onload  = _initEquityPeriod;
-    _ps.onerror = function() {};
+    _ps.src = 'https://cdn.plot.ly/plotly-latest.min.js';
+    _ps.onload  = function() { console.log('EQ:cdn_loaded'); _initEquityPeriod(); };
+    _ps.onerror = function(e) { console.error('EQ:cdn_error', String(e)); };
     document.head.appendChild(_ps);
+    console.log('EQ:cdn_injected');
   }
 }
 """
