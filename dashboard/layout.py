@@ -262,7 +262,6 @@ footer {{ display: none !important; }}
 # every tab-button click, acting as a reliable client-side override.
 TAB_FIX_JS = """
 () => {
-  console.log('EQ:start');
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('button[role="tab"]');
     if (!btn) return;
@@ -303,7 +302,7 @@ TAB_FIX_JS = """
     Plotly.relayout(pd, _eqSince
       ? {'xaxis.range': [_eqSince, _localDateStr(new Date())],
          'title.text':  'Portfolio Value — ' + (_EQ_LABEL[_eqPKey] || 'All Time') +
-                        '  <span style=\'font-size:11px;\'>(end-of-day snapshots, includes cash + open positions)</span>'}
+                        "  <span style='font-size:11px;'>(end-of-day snapshots, includes cash + open positions)</span>"}
       : {'xaxis.autorange': true});
   }
   function _initEquityPeriod() {
@@ -330,16 +329,14 @@ TAB_FIX_JS = """
       }).observe(eqEl, {childList: true, subtree: true});
     }
   }
-  console.log('EQ:before_plotly_check', typeof Plotly);
   if (typeof Plotly !== 'undefined') {
-    console.log('EQ:plotly_found_directly'); _initEquityPeriod();
+    _initEquityPeriod();
   } else {
     var _ps = document.createElement('script');
     _ps.src = 'https://cdn.plot.ly/plotly-latest.min.js';
-    _ps.onload  = function() { console.log('EQ:cdn_loaded'); _initEquityPeriod(); };
-    _ps.onerror = function(e) { console.error('EQ:cdn_error', String(e)); };
+    _ps.onload  = _initEquityPeriod;
+    _ps.onerror = function() {};
     document.head.appendChild(_ps);
-    console.log('EQ:cdn_injected');
   }
 }
 """
