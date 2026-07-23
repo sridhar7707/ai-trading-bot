@@ -303,7 +303,8 @@ TAB_FIX_JS = """
       ? {'xaxis.range': [_eqSince, _localDateStr(new Date())],
          'title.text':  'Portfolio Value — ' + (_EQ_LABEL[_eqPKey] || 'All Time') +
                         "  <span style='font-size:11px;'>(end-of-day snapshots, includes cash + open positions)</span>"}
-      : {'xaxis.autorange': true});
+      : {'xaxis.autorange': true,
+         'title.text': "Portfolio Value — All Time  <span style='font-size:11px;'>(end-of-day snapshots, includes cash + open positions)</span>"});
   }
   function _initEquityPeriod() {
     var c = document.querySelector('.perf-tabs');
