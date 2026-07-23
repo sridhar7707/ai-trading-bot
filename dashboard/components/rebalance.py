@@ -196,3 +196,7 @@ def render_rebalance() -> str:
 def render_rebalance_suggestions() -> str:
     """Kept for backwards compatibility — now inlined into render_rebalance."""
     return render_rebalance()
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("rebalance_out", RefreshGroup.SLOW, render_rebalance, priority=42))

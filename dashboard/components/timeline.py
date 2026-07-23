@@ -263,3 +263,7 @@ def render_all_timelines() -> str:
         f'{_wrap(items_html)}'
         f'</div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("timeline_brief_out",  RefreshGroup.FAST, render_all_timelines, priority=60))

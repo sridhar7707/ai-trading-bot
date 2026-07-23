@@ -450,3 +450,10 @@ def render_spy_banner() -> str:
         f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Goal: beat S&P 500 by 10 pts/year</span>'
         f'</div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("daily_headline_out", RefreshGroup.FAST, render_daily_headline,       priority=20))
+register(ComponentSpec("hero_out",           RefreshGroup.SLOW, render_portfolio_health_hero, priority=80))
+register(ComponentSpec("spy_banner_out",     RefreshGroup.SLOW, render_spy_banner,           priority=81))
+register(ComponentSpec("trade_freq_out",     RefreshGroup.SLOW, render_trade_frequency,      priority=35))

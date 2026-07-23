@@ -242,4 +242,9 @@ def render_risk_panel() -> str:
             f'{sector_rows}</div></div>')
 
 
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("risk_panel_out", RefreshGroup.FAST, render_risk_panel,         priority=50))
+register(ComponentSpec("mkt_intel_out",  RefreshGroup.FAST, render_market_intelligence, priority=51))
+
+
 # ── Render: institutional metrics ─────────────────────────────────────────────

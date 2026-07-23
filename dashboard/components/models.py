@@ -497,3 +497,10 @@ def render_investor_view() -> str:
             f'{cards}{signals_box}{results_box}{explain}</div>')
 
 
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("investor_out",  RefreshGroup.FAST, render_investor_view,           priority=90))
+register(ComponentSpec("scorecard_out", RefreshGroup.SLOW, render_paper_trading_scorecard, priority=60))
+register(ComponentSpec("metrics_out",   RefreshGroup.SLOW, render_institutional_metrics,   priority=61))
+register(ComponentSpec("val_out",       RefreshGroup.SLOW, render_validation_report,       priority=62))
+
+

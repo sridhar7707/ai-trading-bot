@@ -489,3 +489,9 @@ def render_top_picks() -> str:
         f'{items}{footer}'
         f'</div></div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("top_picks_out",      RefreshGroup.SLOW, render_top_picks,              priority=31))
+register(ComponentSpec("buy_candidates_out", RefreshGroup.SLOW, render_buy_candidates,          priority=32))
+register(ComponentSpec("rec_history_out",    RefreshGroup.SLOW, render_recommendation_history,  priority=33))

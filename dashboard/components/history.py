@@ -347,7 +347,7 @@ def _query_perf_stats() -> dict[str, tuple[float, float, str] | None]:
         return {k: None for k, _ in _PERF_PERIODS}
 
 
-def _perf_choices() -> list[str]:
+def perf_choices() -> list[str]:
     """Build Radio choices with inline % for display, e.g. '1M  +8.9%'."""
     stats = _query_perf_stats()
     choices = []
@@ -417,3 +417,7 @@ def render_portfolio_performance(period: str = "1M  —") -> str:
         )
 
     return f'<div class="nt nt-wrap">{detail}</div>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("whats_changed_out", RefreshGroup.FAST, render_whats_changed, priority=31))

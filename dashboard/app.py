@@ -64,7 +64,7 @@ from dashboard.components.models import (
     render_investor_view, render_paper_trading_scorecard,
 )
 from dashboard.components.signals import render_watchlist, render_timeline
-from dashboard.components.history import render_whats_changed, render_portfolio_performance, _perf_choices
+from dashboard.components.history import render_whats_changed, render_portfolio_performance, perf_choices
 from dashboard.components.recommendation_history import (
     render_recommendation_history, render_buy_candidates, render_top_picks,
 )
@@ -88,6 +88,7 @@ from dashboard.components.capital import (
     render_profit_breakdown, save_reinvestment_mode,
 )
 from dashboard.timers import register_all_timers
+import dashboard.registry as registry
 from database.user_settings import get_all_settings, save_setting, get_setting
 from bot.core.error_logger import safe_render, timed
 from bot.core.recommendation_engine import (
@@ -179,80 +180,80 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         with gr.TabItem("📋 Brief"):
             # Fast cards (DB-only): rendered immediately via value=callable.
             # Everything else starts empty and is populated by timers.
-            exec_summary_out     = gr.HTML(value=render_executive_summary, show_label=False)
-            three_q_out          = gr.HTML(value="", show_label=False, elem_id="three_q_out")
-            decision_bar_out     = gr.HTML(value=render_decision_bar, show_label=False)
-            scheduler_status_out = gr.HTML(value=render_scheduler_status, show_label=False)
-            morning_brief_out    = gr.HTML(value=render_morning_brief, show_label=False)
-            pos_brief_out        = gr.HTML(value=render_positions, show_label=False)
+            exec_summary_out     = registry.mount("exec_summary_out",     gr.HTML(value=render_executive_summary, show_label=False))
+            three_q_out          = registry.mount("three_q_out",          gr.HTML(value="", show_label=False, elem_id="three_q_out"))
+            decision_bar_out     = registry.mount("decision_bar_out",     gr.HTML(value=render_decision_bar, show_label=False))
+            scheduler_status_out = registry.mount("scheduler_status_out", gr.HTML(value=render_scheduler_status, show_label=False))
+            morning_brief_out    = registry.mount("morning_brief_out",    gr.HTML(value=render_morning_brief, show_label=False))
+            pos_brief_out        = registry.mount("pos_brief_out",        gr.HTML(value=render_positions, show_label=False))
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("What Changed Today", open=False):
-                        whats_changed_out = gr.HTML(value=render_whats_changed)
+                        whats_changed_out = registry.mount("whats_changed_out", gr.HTML(value=render_whats_changed))
                 with gr.Column():
                     with gr.Accordion("Market Mood", open=True):
-                        market_mood_out   = gr.HTML(value=_ci["market_mood"])
+                        market_mood_out   = registry.mount("market_mood_out",   gr.HTML(value=_ci["market_mood"]))
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("AI Committee", open=False):
-                        ai_rec_brief_out  = gr.HTML(value=render_ai_recommendation)
+                        ai_rec_brief_out  = registry.mount("ai_rec_brief_out",  gr.HTML(value=render_ai_recommendation))
                 with gr.Column():
                     with gr.Accordion("Risk Panel", open=False):
-                        risk_panel_out    = gr.HTML(value=render_risk_panel)
-                        mkt_intel_out     = gr.HTML(value=render_market_intelligence)
+                        risk_panel_out    = registry.mount("risk_panel_out",    gr.HTML(value=render_risk_panel))
+                        mkt_intel_out     = registry.mount("mkt_intel_out",     gr.HTML(value=render_market_intelligence))
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("News", open=True):
-                        news_out          = gr.HTML(value=_ci["news"])
+                        news_out          = registry.mount("news_out",          gr.HTML(value=_ci["news"]))
                 with gr.Column():
                     with gr.Accordion("Decision Timeline", open=False):
-                        timeline_brief_out = gr.HTML(value=render_all_timelines)
+                        timeline_brief_out = registry.mount("timeline_brief_out", gr.HTML(value=render_all_timelines))
 
         # ── Tab 2: Portfolio ──────────────────────────────────────────────────
         with gr.TabItem("💼 Portfolio"):
-            weekly_summary_out  = gr.HTML(value=render_weekly_summary)
-            daily_headline_out  = gr.HTML(value=render_daily_headline)
-            hero_out            = gr.HTML(value=render_portfolio_health_hero)
-            spy_banner_out      = gr.HTML(value="")
-            _init_choices = _perf_choices()
+            weekly_summary_out  = registry.mount("weekly_summary_out",  gr.HTML(value=render_weekly_summary))
+            daily_headline_out  = registry.mount("daily_headline_out",  gr.HTML(value=render_daily_headline))
+            hero_out            = registry.mount("hero_out",            gr.HTML(value=render_portfolio_health_hero))
+            spy_banner_out      = registry.mount("spy_banner_out",      gr.HTML(value=""))
+            _init_choices = perf_choices()
             # Pre-select the first period that has real data (not "—"); fall back to index 2
             _init_sel = next((c for c in _init_choices if "—" not in c), _init_choices[2] if len(_init_choices) > 2 else _init_choices[0])
-            perf_tabs      = gr.Radio(
+            perf_tabs      = registry.mount("perf_tabs", gr.Radio(
                 choices=_init_choices, value=_init_sel,
                 label="", container=False, elem_classes=["perf-tabs"],
-            )
-            perf_out       = gr.HTML(value=render_portfolio_performance(_init_sel))
+            ))
+            perf_out       = registry.mount("perf_out", gr.HTML(value=render_portfolio_performance(_init_sel)))
             with gr.Row():
                 with gr.Column(scale=65):
-                    eq_plot    = gr.Plot(value=_ci["equity"],  label="", show_label=False, elem_id="equity-chart")
+                    eq_plot    = registry.mount("eq_plot",    gr.Plot(value=_ci["equity"],  label="", show_label=False, elem_id="equity-chart"))
                 with gr.Column(scale=35):
-                    alloc_plot = gr.Plot(value=_ci["alloc"],   label="", show_label=False)
-            pnl_plot            = gr.Plot(value=_ci["pnl"],    label="", show_label=False)
-            committee_out       = gr.HTML(value="")
-            decision_center_out = gr.HTML(value="")
-            rebalance_out       = gr.HTML(value="")
-            watchlist_out       = gr.HTML(value=render_watchlist)
-            pos_out             = gr.HTML(value=render_positions)
-            trades_out          = gr.HTML(value=render_trades)
-            thesis_out          = gr.HTML(value="")
+                    alloc_plot = registry.mount("alloc_plot", gr.Plot(value=_ci["alloc"],   label="", show_label=False))
+            pnl_plot            = registry.mount("pnl_plot",            gr.Plot(value=_ci["pnl"],    label="", show_label=False))
+            committee_out       = registry.mount("committee_out",       gr.HTML(value=""))
+            decision_center_out = registry.mount("decision_center_out", gr.HTML(value=""))
+            rebalance_out       = registry.mount("rebalance_out",       gr.HTML(value=""))
+            watchlist_out       = registry.mount("watchlist_out",       gr.HTML(value=render_watchlist))
+            pos_out             = registry.mount("pos_out",             gr.HTML(value=render_positions))
+            trades_out          = registry.mount("trades_out",          gr.HTML(value=render_trades))
+            thesis_out          = registry.mount("thesis_out",          gr.HTML(value=""))
             _initial_choices = _get_symbol_choices()
             _initial_sym     = _initial_choices[0] if _initial_choices else None
-            symbol_selector  = gr.Dropdown(
+            symbol_selector  = registry.mount("symbol_selector", gr.Dropdown(
                 choices=_initial_choices, label="🔍 Symbol Detail",
                 value=_initial_sym, container=True, elem_classes=["sym-selector"],
-            )
-            symbol_detail_out = gr.HTML(value=render_symbol_detail(_initial_sym) if _initial_sym else "")
+            ))
+            symbol_detail_out = registry.mount("symbol_detail_out", gr.HTML(value=render_symbol_detail(_initial_sym) if _initial_sym else ""))
             _sim_syms  = sorted(get_data().get("prices", {}).keys()) or []
-            sim_sym_dd = gr.Dropdown(choices=_sim_syms, label="🔬 Simulate: Symbol", container=True)
+            sim_sym_dd = registry.mount("sim_sym_dd", gr.Dropdown(choices=_sim_syms, label="🔬 Simulate: Symbol", container=True))
             sim_amt_sl = gr.Slider(minimum=100, maximum=10000, value=500, step=100,
                                    label="Amount ($)", container=True)
             simulator_out = gr.HTML(value="")
 
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
-            capital_overview_out  = gr.HTML(value=render_capital_overview)
-            capital_chart_out     = gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False)
-            profit_breakdown_out  = gr.HTML(value=render_profit_breakdown)
+            capital_overview_out  = registry.mount("capital_overview_out", gr.HTML(value=render_capital_overview))
+            capital_chart_out     = registry.mount("capital_chart_out",    gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False))
+            profit_breakdown_out  = registry.mount("profit_breakdown_out", gr.HTML(value=render_profit_breakdown))
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
                 choices=[
@@ -278,31 +279,31 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
         # ── Tab 4: Trades ─────────────────────────────────────────────────────
         with gr.TabItem("📈 Trades"):
-            top_picks_out       = gr.HTML(value=render_top_picks)
-            trade_freq_out      = gr.HTML(value=render_trade_frequency)
-            buy_candidates_out  = gr.HTML(value=render_buy_candidates)
-            signal_history_out  = gr.HTML(value=render_signal_history)
-            rec_history_out     = gr.HTML(value=render_recommendation_history)
-            timeline_trades_out = gr.HTML(value=render_timeline)
+            top_picks_out       = registry.mount("top_picks_out",       gr.HTML(value=render_top_picks))
+            trade_freq_out      = registry.mount("trade_freq_out",      gr.HTML(value=render_trade_frequency))
+            buy_candidates_out  = registry.mount("buy_candidates_out",  gr.HTML(value=render_buy_candidates))
+            signal_history_out  = registry.mount("signal_history_out",  gr.HTML(value=render_signal_history))
+            rec_history_out     = registry.mount("rec_history_out",     gr.HTML(value=render_recommendation_history))
+            timeline_trades_out = registry.mount("timeline_trades_out", gr.HTML(value=render_timeline))
 
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
-            scorecard_out = gr.HTML(value="")          # yfinance — populated by 300 s timer
-            metrics_out   = gr.HTML(value=render_institutional_metrics)  # callable: spy path guarded by @safe_render; 300 s timer refreshes
+            scorecard_out = registry.mount("scorecard_out", gr.HTML(value=""))
+            metrics_out   = registry.mount("metrics_out",   gr.HTML(value=render_institutional_metrics))
             with gr.Row():
-                returns_hist_plot = gr.Plot(value=_ci["ret_hist"], label="", show_label=False)
-                winloss_plot      = gr.Plot(value=_ci["winloss"],  label="", show_label=False)
+                returns_hist_plot = registry.mount("returns_hist_plot", gr.Plot(value=_ci["ret_hist"], label="", show_label=False))
+                winloss_plot      = registry.mount("winloss_plot",      gr.Plot(value=_ci["winloss"],  label="", show_label=False))
             model_view = gr.Radio(
                 choices=["📊 Investor View", "🔬 Developer View"],
                 value="📊 Investor View", label="", container=False,
             )
-            investor_out = gr.HTML(value=render_investor_view, visible=True)
+            investor_out = registry.mount("investor_out", gr.HTML(value=render_investor_view, visible=True))
             with gr.Column(visible=False) as dev_col:
                 with gr.Row():
                     with gr.Column(scale=65):
-                        fi_plot = gr.Plot(value=_ci["fi"], label="", show_label=False)
+                        fi_plot = registry.mount("fi_plot", gr.Plot(value=_ci["fi"], label="", show_label=False))
                     with gr.Column(scale=35):
-                        val_out = gr.HTML(value="")
+                        val_out = registry.mount("val_out", gr.HTML(value=""))
 
         # ── Tab 6: Settings ───────────────────────────────────────────────────
         with gr.TabItem("⚙️ Settings"):
@@ -338,8 +339,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                     _save_btn    = gr.Button("💾 Save Settings", variant="primary")
                     _save_status = gr.HTML(value="")
                 with gr.Column(scale=1):
-                    settings_summary_out = gr.HTML(value=render_settings_summary)
-            investor_profile_out = gr.HTML(value=render_investor_profile)
+                    settings_summary_out = registry.mount("settings_summary_out", gr.HTML(value=render_settings_summary))
+            investor_profile_out = registry.mount("investor_profile_out", gr.HTML(value=render_investor_profile))
 
     gr.HTML(value=FOOTER_HTML)
 
@@ -397,64 +398,8 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     # ── Timer registration ────────────────────────────────────────────────────
     timer_ui   = gr.Timer(value=60)    # 1 min — DB reads only, no yfinance; fast on HF free tier
     timer_data = gr.Timer(value=300)   # 5 min — yfinance (15 s timeout), charts, AI, news
-    register_all_timers(timer_ui, timer_data, {
-        "exec_summary_out":    exec_summary_out,
-        # Brief tab
-        "three_q_out":         three_q_out,
-        "decision_bar_out":    decision_bar_out,
-        "scheduler_status_out": scheduler_status_out,
-        "morning_brief_out":   morning_brief_out,
-        "pos_brief_out":       pos_brief_out,
-        "whats_changed_out":   whats_changed_out,
-        "market_mood_out":     market_mood_out,
-        "ai_rec_brief_out":    ai_rec_brief_out,
-        "risk_panel_out":      risk_panel_out,
-        "mkt_intel_out":       mkt_intel_out,
-        "news_out":            news_out,
-        "timeline_brief_out":  timeline_brief_out,
-        # Portfolio tab
-        "weekly_summary_out":  weekly_summary_out,
-        "daily_headline_out":  daily_headline_out,
-        "hero_out":            hero_out,
-        "spy_banner_out":      spy_banner_out,
-        "perf_tabs":           perf_tabs,
-        "perf_out":            perf_out,
-        "eq_plot":             eq_plot,
-        "alloc_plot":          alloc_plot,
-        "pnl_plot":            pnl_plot,
-        "committee_out":       committee_out,
-        "decision_center_out": decision_center_out,
-        "rebalance_out":       rebalance_out,
-        "watchlist_out":       watchlist_out,
-        "pos_out":             pos_out,
-        "trades_out":          trades_out,
-        "thesis_out":          thesis_out,
-        "symbol_selector":     symbol_selector,
-        "symbol_detail_out":   symbol_detail_out,
-        "sim_sym_dd":          sim_sym_dd,
-        # Capital tab
-        "capital_overview_out":  capital_overview_out,
-        "capital_chart_out":     capital_chart_out,
-        "profit_breakdown_out":  profit_breakdown_out,
-        # Trades tab
-        "top_picks_out":       top_picks_out,
-        "trade_freq_out":      trade_freq_out,
-        "buy_candidates_out":  buy_candidates_out,
-        "signal_history_out":  signal_history_out,
-        "rec_history_out":     rec_history_out,
-        "timeline_trades_out": timeline_trades_out,
-        # Performance tab
-        "scorecard_out":       scorecard_out,
-        "metrics_out":         metrics_out,
-        "returns_hist_plot":   returns_hist_plot,
-        "winloss_plot":        winloss_plot,
-        "investor_out":        investor_out,
-        "fi_plot":             fi_plot,
-        "val_out":             val_out,
-        # Settings tab
-        "settings_summary_out":  settings_summary_out,
-        "investor_profile_out":  investor_profile_out,
-    })
+    registry.validate()                # catch any spec registered but never mounted
+    register_all_timers(timer_ui, timer_data)
 
 
 from dashboard.http_endpoints import build_app

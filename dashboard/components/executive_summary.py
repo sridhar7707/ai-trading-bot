@@ -122,3 +122,7 @@ def render_executive_summary() -> str:
         f'{line1}{line2}'
         f'</div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("exec_summary_out", RefreshGroup.FAST, render_executive_summary, priority=10))

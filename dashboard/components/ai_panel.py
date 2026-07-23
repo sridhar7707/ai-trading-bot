@@ -366,4 +366,9 @@ def render_ai_committee() -> str:
             f'{_wrap(rows_html)}</div>')
 
 
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("ai_rec_brief_out", RefreshGroup.FAST, render_ai_recommendation, priority=40))
+register(ComponentSpec("committee_out",    RefreshGroup.SLOW, render_ai_committee,      priority=40))
+
+
 # ── PANEL 3: Sell Analysis &mdash; called internally by render_decision_center ──────

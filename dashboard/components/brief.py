@@ -461,3 +461,9 @@ def render_scheduler_status() -> str:
         f'</div>'
     )
     return f'<div class="nt nt-wrap">{body}</div>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("morning_brief_out",    RefreshGroup.FAST, render_morning_brief,           priority=12))
+register(ComponentSpec("scheduler_status_out", RefreshGroup.FAST, render_scheduler_status,        priority=13))
+register(ComponentSpec("three_q_out",          RefreshGroup.SLOW, render_three_question_summary,  priority=10))

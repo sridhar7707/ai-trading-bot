@@ -189,3 +189,7 @@ def render_signal_history() -> str:
         f'{_wrap(table_inner)}'
         f'</div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("signal_history_out", RefreshGroup.SLOW, render_signal_history, priority=34))

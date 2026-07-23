@@ -30,15 +30,36 @@ def _trail_price(high_water_mark: float, atr: float) -> float:
     return high_water_mark - ATR_TRAIL_MULTIPLIER * atr
 
 
-def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> dict:
-    """
-    Run a full backtest using the same XGBoost + LSTM + ensemble signal as the live bot.
+def run_backtest(
+    df: pd.DataFrame,
+    initial_balance: float = INITIAL_CAPITAL,
+    xgb=None,
+    lstm=None,
+    min_xgb_conf: float = 0.0,
+    min_vol_ratio: float = 0.0,
+    spy_close: "pd.Series | None" = None,
+    precomputed: bool = False,
+    regime_clf=None,
+) -> dict:
+    """Run a full backtest using the same XGBoost + LSTM + ensemble signal as the live bot.
+
     Sentiment is held at 0.0 (neutral) and macro at 0.5 (neutral) — no historical data.
+    Pass pre-trained `xgb`/`lstm` to avoid loading from disk (walk-forward use case).
+    `min_xgb_conf` and `min_vol_ratio` mirror the live bot's entry gates 3 and 2.
+    `spy_close` is required for V4 features (rs_vs_spy_*); without it those features are NaN
+    and every row is skipped.
+    Set `precomputed=True` when df already has features computed (skips compute_features).
     """
-    df = compute_features(df.copy())
-    regime_clf = RegimeClassifier()
-    xgb        = XGBPredictor()
-    lstm       = LSTMPredictor()
+    if precomputed:
+        df = df.copy()
+    else:
+        df = compute_features(df.copy(), spy_close=spy_close)
+    if regime_clf is None:
+        regime_clf = RegimeClassifier()
+    if xgb is None:
+        xgb = XGBPredictor()
+    if lstm is None:
+        lstm = LSTMPredictor()
 
     balance          = initial_balance
     shares           = 0.0
@@ -113,6 +134,12 @@ def run_backtest(df: pd.DataFrame, initial_balance: float = INITIAL_CAPITAL) -> 
         action = action_to_int(action_str)
 
         if action == 1 and balance > 1:
+            if xgb_prob < min_xgb_conf:
+                portfolio_values.append(balance + shares * price)
+                continue
+            if min_vol_ratio > 0 and float(row.get("volume_ratio", 1.0)) < min_vol_ratio:
+                portfolio_values.append(balance + shares * price)
+                continue
             spend = balance * MAX_POSITION_PCT
             fill_price = price * (1 + SLIPPAGE_BPS / 10_000)
             shares += spend / fill_price

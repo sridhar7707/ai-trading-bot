@@ -259,3 +259,7 @@ def render_thesis_tracker() -> str:
         f'</tr></thead><tbody>{rows_html}</tbody></table>'
     )
     return f'<div class="nt nt-wrap">{_section("📋", "Investment Thesis", note)}{table}</div>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("thesis_out", RefreshGroup.SLOW, render_thesis_tracker, priority=45))

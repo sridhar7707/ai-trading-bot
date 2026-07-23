@@ -38,7 +38,7 @@ class XGBPredictor:
         else:
             logger.warning("No XGBoost model found — will need training.")
 
-    def train(self, df: pd.DataFrame) -> None:
+    def train(self, df: pd.DataFrame, save: bool = True) -> None:
         try:
             from xgboost import XGBClassifier
         except ImportError:
@@ -94,9 +94,10 @@ class XGBPredictor:
             else:
                 logger.info(f"XGBoost val AUC-ROC (holdout 20%): {val_auc:.3f}")
 
-        XGB_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self.model, XGB_MODEL_PATH)
-        logger.info(f"XGBoost trained and saved to {XGB_MODEL_PATH}")
+        if save:
+            XGB_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            joblib.dump(self.model, XGB_MODEL_PATH)
+            logger.info(f"XGBoost trained and saved to {XGB_MODEL_PATH}")
 
     def predict_proba(self, row: pd.Series) -> float:
         """Return probability (0-1) that price will be higher in {FORWARD_PERIODS} candles."""

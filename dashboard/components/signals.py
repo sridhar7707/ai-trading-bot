@@ -207,4 +207,9 @@ def render_timeline() -> str:
             f'{items}</div></div>')
 
 
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("watchlist_out",       RefreshGroup.SLOW, render_watchlist, priority=43))
+register(ComponentSpec("timeline_trades_out", RefreshGroup.SLOW, render_timeline,  priority=44))
+
+
 # ── Render: investor view (plain-language Models tab) ────────────────────────

@@ -150,3 +150,7 @@ def render_decision_bar() -> str:
         f'{header}{chips_row}{footer}'
         f'</div></div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("decision_bar_out", RefreshGroup.FAST, render_decision_bar, priority=11))

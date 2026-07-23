@@ -232,3 +232,7 @@ def render_news_feed_initial() -> str:
     """DB-only render for page-load events — instant, no yfinance calls.
     The 5-minute timer calls render_news_feed() to refresh with live data."""
     return _build_news_html(db_only=True)
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("news_out", RefreshGroup.SLOW, render_news_feed, priority=21))

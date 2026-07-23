@@ -506,3 +506,12 @@ def render_feature_importance_chart() -> Any:
         fig.add_annotation(text=f"Chart error: {e}", xref="paper", yref="paper",
                            x=0.5, y=0.5, showarrow=False, font=dict(color=LOSS))
         return fig
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("eq_plot",           RefreshGroup.SLOW, render_equity_chart,             priority=70))
+register(ComponentSpec("alloc_plot",        RefreshGroup.SLOW, render_allocation_chart,         priority=71))
+register(ComponentSpec("pnl_plot",          RefreshGroup.SLOW, render_pnl_chart,                priority=72))
+register(ComponentSpec("returns_hist_plot", RefreshGroup.SLOW, render_returns_histogram,        priority=73))
+register(ComponentSpec("winloss_plot",      RefreshGroup.SLOW, render_winloss_chart,            priority=74))
+register(ComponentSpec("fi_plot",           RefreshGroup.SLOW, render_feature_importance_chart, priority=75))

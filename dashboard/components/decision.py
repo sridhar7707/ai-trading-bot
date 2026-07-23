@@ -110,3 +110,7 @@ def render_decision_center() -> str:
         f'</tr>{help_row}</thead><tbody>{rows}</tbody></table>'
     )
     return f'<div class="nt nt-wrap">{_section("🎯","Decision Center",note)}{table}</div>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("decision_center_out", RefreshGroup.SLOW, render_decision_center, priority=41))

@@ -218,3 +218,8 @@ def render_investor_profile() -> str:
         f'border-radius:8px;padding:18px;">{body}</div>'
     )
     return f'<div class="nt nt-wrap">{section_html}{card}</div>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("settings_summary_out", RefreshGroup.FAST, render_settings_summary, priority=80))
+register(ComponentSpec("investor_profile_out", RefreshGroup.FAST, render_investor_profile, priority=81))

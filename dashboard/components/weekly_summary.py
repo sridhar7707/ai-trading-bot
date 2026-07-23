@@ -306,3 +306,7 @@ def _stat(label: str, value: str, color: str) -> str:
         f'<div style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{color};">{value}</div>'
         f'</div>'
     )
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("weekly_summary_out", RefreshGroup.FAST, render_weekly_summary, priority=30))

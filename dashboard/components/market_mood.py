@@ -440,3 +440,6 @@ def render_market_mood() -> str:
 # has either succeeded (cache populated) or timed out (cache set to {}).
 import threading as _threading
 _threading.Thread(target=_fetch_mood_data, daemon=True, name="mood_prewarm").start()
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("market_mood_out", RefreshGroup.SLOW, render_market_mood, priority=20))

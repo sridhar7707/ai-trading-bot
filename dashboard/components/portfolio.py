@@ -177,3 +177,9 @@ def render_trades() -> str:
     )
     return (f'<div class="nt nt-wrap">'
             f'{_section("⚡","Recent Trades", note)}{table}</div>')
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("pos_brief_out", RefreshGroup.FAST, render_positions, priority=21))
+register(ComponentSpec("pos_out",       RefreshGroup.FAST, render_positions, priority=22))
+register(ComponentSpec("trades_out",    RefreshGroup.SLOW, render_trades,    priority=30))

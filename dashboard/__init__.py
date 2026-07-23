@@ -27,7 +27,7 @@ from dashboard.components.signals import (
 from dashboard.components.history import (
     render_whats_changed,
     render_portfolio_performance,
-    _perf_choices,
+    perf_choices,
 )
 from dashboard.components.actions import (
     render_todays_actions,

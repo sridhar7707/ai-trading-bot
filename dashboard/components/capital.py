@@ -256,3 +256,9 @@ def save_reinvestment_mode(mode: str) -> str:
             f'&#10003; Active: {desc}</span>'
         )
     return f'<span style="color:{LOSS};font-size:12px;">⚠ Save failed</span>'
+
+
+from dashboard.registry import ComponentSpec, RefreshGroup, register
+register(ComponentSpec("capital_overview_out", RefreshGroup.FAST, render_capital_overview, priority=70))
+register(ComponentSpec("profit_breakdown_out", RefreshGroup.FAST, render_profit_breakdown, priority=71))
+register(ComponentSpec("capital_chart_out",    RefreshGroup.SLOW, render_capital_chart,    priority=50))

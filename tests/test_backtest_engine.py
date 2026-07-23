@@ -27,7 +27,7 @@ def _make_df_with_nan(prices: list[float]) -> pd.DataFrame:
 @pytest.fixture(autouse=True)
 def mock_heavy_deps():
     """Patch ML deps that need model files so tests run cold."""
-    with patch("backtest.engine.compute_features", side_effect=lambda df: df), \
+    with patch("backtest.engine.compute_features", side_effect=lambda df, spy_close=None: df), \
          patch("backtest.engine.RegimeClassifier") as mock_rc_class:
         mock_rc = MagicMock()
         mock_rc.predict.return_value = 0
