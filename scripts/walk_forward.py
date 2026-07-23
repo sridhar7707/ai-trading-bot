@@ -75,6 +75,10 @@ def run_simple(symbol: str):
     if df_test.empty:
         logger.error(f"No test data for {symbol} after {TRAIN_CUTOFF}.")
         return
+    try:
+        spy_close = _load_symbol("SPY")["close"]
+    except FileNotFoundError:
+        spy_close = None
 
     print(f"\n{'═'*55}")
     print(f"  Walk-Forward Validation — {symbol}")
@@ -82,11 +86,11 @@ def run_simple(symbol: str):
     print(f"{'═'*55}")
 
     logger.info("Running in-sample backtest...")
-    m_train = run_backtest(df_train, initial_balance=INITIAL_CAPITAL)
+    m_train = run_backtest(df_train, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
     _print_metrics(f"IN-SAMPLE  (train period)", m_train)
 
     logger.info("Running out-of-sample backtest...")
-    m_test = run_backtest(df_test, initial_balance=INITIAL_CAPITAL)
+    m_test = run_backtest(df_test, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
     _print_metrics(f"OUT-OF-SAMPLE  (test period, {TRAIN_CUTOFF}+)", m_test)
 
     # Degradation check
@@ -105,6 +109,10 @@ def run_rolling(symbol: str, train_months: int = 12, test_months: int = 3):
     df_all = _load_symbol(symbol)
     if df_all.empty:
         return
+    try:
+        spy_close = _load_symbol("SPY")["close"]
+    except FileNotFoundError:
+        spy_close = None
 
     df_all.index = pd.to_datetime(df_all.index)
     start = df_all.index.min()
@@ -126,7 +134,7 @@ def run_rolling(symbol: str, train_months: int = 12, test_months: int = 3):
             cur += pd.DateOffset(months=test_months)
             continue
         try:
-            m = run_backtest(df_te, initial_balance=INITIAL_CAPITAL)
+            m = run_backtest(df_te, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
             results.append({
                 "period": f"{cur.strftime('%Y-%m')} → {test_end.strftime('%Y-%m')}",
                 **m
@@ -167,6 +175,10 @@ def run_stress(symbol: str):
         print(f"  No data for {symbol}. Run: python scripts/download_data.py")
         return
     df_all.index = pd.to_datetime(df_all.index)
+    try:
+        spy_close = _load_symbol("SPY")["close"]
+    except FileNotFoundError:
+        spy_close = None
 
     print(f"\n{'═'*60}")
     print(f"  Stress Test — {symbol}  (each window run independently)")
@@ -180,7 +192,7 @@ def run_stress(symbol: str):
             failed += 1
             continue
         try:
-            m = run_backtest(df_win, initial_balance=INITIAL_CAPITAL)
+            m = run_backtest(df_win, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
             # Pass = survived with ≤25% drawdown and ≤30% total loss
             ok = m["max_drawdown"] <= 0.25 and m["total_return"] > -0.30
             icon = "✓" if ok else "⚠"

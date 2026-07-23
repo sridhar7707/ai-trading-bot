@@ -33,6 +33,12 @@ MIN_VALID_ROWS = 200  # 200 trading days ≈ 10 months; floor for meaningful bac
 
 def main():
     logger.info("=== Backtest quality gate (holdout: 2023-present) ===")
+    spy_df = yf.download("SPY", period="3y", interval="1d", progress=False, auto_adjust=True)
+    if isinstance(spy_df.columns, pd.MultiIndex):
+        spy_df.columns = [col[0].lower() for col in spy_df.columns]
+    else:
+        spy_df.columns = [c.lower() for c in spy_df.columns]
+    spy_close = spy_df["close"] if not spy_df.empty else None
     results = []
 
     for symbol in SYMBOLS:
@@ -49,7 +55,7 @@ def main():
                 df.columns = [c.lower() for c in df.columns]
             df = df[["open", "high", "low", "close", "volume"]].dropna()
 
-            metrics = run_backtest(df, initial_balance=INITIAL_CAPITAL)
+            metrics = run_backtest(df, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
             sharpe = metrics.get("sharpe", 0.0)
             total_return = metrics.get("total_return", 0.0)
             max_dd = metrics.get("max_drawdown", 1.0)
@@ -123,6 +129,12 @@ def run_stress_check():
     }
     stress_sym = SYMBOLS[0] if SYMBOLS else "SPY"
     logger.info(f"--- Informational stress check ({stress_sym}, daily bars) ---")
+    spy_hist = yf.download("SPY", start="2007-01-01", interval="1d", progress=False, auto_adjust=True)
+    if isinstance(spy_hist.columns, pd.MultiIndex):
+        spy_hist.columns = [col[0].lower() for col in spy_hist.columns]
+    else:
+        spy_hist.columns = [c.lower() for c in spy_hist.columns]
+    spy_close = spy_hist["close"] if not spy_hist.empty else None
 
     for name, (start, end) in STRESS_WINDOWS.items():
         try:
@@ -136,7 +148,7 @@ def run_stress_check():
             else:
                 df.columns = [c.lower() for c in df.columns]
             df = df[["open", "high", "low", "close", "volume"]].dropna()
-            m = run_backtest(df, initial_balance=INITIAL_CAPITAL)
+            m = run_backtest(df, initial_balance=INITIAL_CAPITAL, spy_close=spy_close)
             ok = m["max_drawdown"] <= 0.25 and m["total_return"] > -0.30
             msg = (
                 f"Stress [{name}]: return={m['total_return']:+.1%}  "

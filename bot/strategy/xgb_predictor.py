@@ -46,8 +46,9 @@ class XGBPredictor:
             return
 
         df = df.copy()
-        future_return = (df["close"].shift(-FORWARD_PERIODS) - df["close"]) / df["close"]
-        df["target"] = (future_return > MIN_MOVE_PCT).astype(int)
+        if "target" not in df.columns:
+            future_return = (df["close"].shift(-FORWARD_PERIODS) - df["close"]) / df["close"]
+            df["target"] = (future_return > MIN_MOVE_PCT).astype(int)
         df.dropna(inplace=True)
 
         # Temporal split — train only on the first 80% so the model never sees

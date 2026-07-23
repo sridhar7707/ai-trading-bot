@@ -227,6 +227,8 @@ def render_whats_changed() -> str:
 
 
 # â”€â”€ Portfolio performance period helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+PERF_SEP = "  "   # two-space separator between period key and stat in Radio choices
+
 _PERF_PERIODS = [
     ("1D",       1),
     ("1W",       7),
@@ -355,9 +357,9 @@ def perf_choices() -> list[str]:
         s = stats.get(key)
         if s and s[0] > 0:
             pct = (s[1] - s[0]) / s[0] * 100
-            choices.append(f"{key}  {pct:+.1f}%")
+            choices.append(f"{key}{PERF_SEP}{pct:+.1f}%")
         else:
-            choices.append(f"{key}  —")
+            choices.append(f"{key}{PERF_SEP}—")
     return choices
 
 
@@ -365,7 +367,7 @@ def perf_choices() -> list[str]:
 @safe_render("Portfolio Performance")
 def render_portfolio_performance(period: str = "1M  —") -> str:
     # Choices are "{key}  {stat}" (double space); split()[0] breaks "All Time" → use split("  ")
-    key = period.split("  ")[0].strip() if period else "1M"
+    key = period.split(PERF_SEP)[0].strip() if period else "1M"
 
     stats = _query_perf_stats()
     cur_row_val = None

@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import gradio as gr
 
-from dashboard.registry import RefreshGroup, by_group, widget
-from dashboard.components.history import render_portfolio_performance, perf_choices
+from dashboard.registry import RefreshGroup, by_group, widget, require_widgets
+from dashboard.components.history import render_portfolio_performance, perf_choices, PERF_SEP
 from dashboard.components.symbol_detail import render_symbol_detail
+
+require_widgets("sim_sym_dd", "perf_tabs", "perf_out", "symbol_selector", "symbol_detail_out")
 
 
 def register_all_timers(timer_ui: gr.Timer, timer_data: gr.Timer) -> None:
@@ -42,13 +44,12 @@ def _batch_tick(timer: gr.Timer, group: RefreshGroup) -> None:
     outputs = [s.output    for s in specs]
 
     def _tick():
-        cache: dict[int, object] = {}
+        cache: dict = {}
         results = []
         for fn in fns:
-            fid = id(fn)
-            if fid not in cache:
-                cache[fid] = fn()
-            results.append(cache[fid])
+            if fn not in cache:
+                cache[fn] = fn()
+            results.append(cache[fn])
         return tuple(results)
 
     timer.tick(fn=_tick, outputs=outputs)
@@ -82,9 +83,9 @@ def _register_data_tick(timer: gr.Timer) -> None:
     # that handler (Radio.svelte:39 → handle_change), which then sends both a
     # trigger value and an input value to a 1-param endpoint → "Too many arguments".
     def _refresh_perf(current_label: str):
-        current_key = current_label.split("  ")[0].strip() if isinstance(current_label, str) and current_label else "1M"
+        current_key = current_label.split(PERF_SEP)[0].strip() if isinstance(current_label, str) and current_label else "1M"
         choices = perf_choices()
-        matched = next((ch for ch in choices if ch.split("  ")[0].strip() == current_key), None)
+        matched = next((ch for ch in choices if ch.split(PERF_SEP)[0].strip() == current_key), None)
         val = matched or (choices[2] if len(choices) > 2 else choices[0] if choices else None)
         return render_portfolio_performance(val or "1M")
 

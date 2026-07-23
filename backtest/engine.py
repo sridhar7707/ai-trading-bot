@@ -33,13 +33,13 @@ def _trail_price(high_water_mark: float, atr: float) -> float:
 def run_backtest(
     df: pd.DataFrame,
     initial_balance: float = INITIAL_CAPITAL,
-    xgb=None,
-    lstm=None,
+    xgb: "XGBPredictor | None" = None,
+    lstm: "LSTMPredictor | None" = None,
     min_xgb_conf: float = 0.0,
     min_vol_ratio: float = 0.0,
     spy_close: "pd.Series | None" = None,
     precomputed: bool = False,
-    regime_clf=None,
+    regime_clf: "RegimeClassifier | None" = None,
 ) -> dict:
     """Run a full backtest using the same XGBoost + LSTM + ensemble signal as the live bot.
 

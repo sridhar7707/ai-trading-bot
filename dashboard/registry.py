@@ -31,10 +31,13 @@ class ComponentSpec:
     def __post_init__(self) -> None:
         if not self.key or not self.key.strip():
             raise ValueError("ComponentSpec key must be a non-empty string")
+        if not callable(self.render_fn):
+            raise ValueError(f"ComponentSpec render_fn must be callable, got {type(self.render_fn)!r}")
 
 
 _specs: dict[str, ComponentSpec] = {}
-_widgets: dict[str, Any] = {}     # all mounted Gradio widgets, including inputs
+_widgets: dict[str, Any] = {}           # all mounted Gradio widgets, including inputs
+_required_widgets: set[str] = set()     # non-spec keys that must be mounted before validate()
 
 
 def register(spec: ComponentSpec) -> ComponentSpec:
@@ -62,6 +65,11 @@ def widget(key: str) -> Any:
     return _widgets[key]
 
 
+def require_widgets(*keys: str) -> None:
+    """Declare that these non-spec widget keys must be mounted before validate()."""
+    _required_widgets.update(keys)
+
+
 def by_group(group: RefreshGroup) -> list[ComponentSpec]:
     """Return specs for the group, sorted by priority, that have been mounted."""
     return sorted(
@@ -71,7 +79,10 @@ def by_group(group: RefreshGroup) -> list[ComponentSpec]:
 
 
 def validate() -> None:
-    """Raise RuntimeError if any enabled spec was never mounted (startup guard)."""
+    """Raise RuntimeError if any enabled spec or required widget was never mounted."""
     unbound = [k for k, s in _specs.items() if s.enabled and s.output is None]
     if unbound:
         raise RuntimeError(f"ComponentSpecs registered but never mounted: {unbound}")
+    missing = [k for k in _required_widgets if k not in _widgets]
+    if missing:
+        raise RuntimeError(f"Required widgets never mounted: {missing}")

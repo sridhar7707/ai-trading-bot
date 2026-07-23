@@ -1,9 +1,7 @@
 """Unit tests for dashboard.registry — independent of Gradio and the full dashboard."""
 from __future__ import annotations
 
-import importlib
 import sys
-import types
 import pytest
 
 
@@ -136,3 +134,23 @@ def test_render_fn_called_in_batch():
     result = tuple(s.render_fn() for s in specs)
     assert result == ("html",)
     assert len(calls) == 1
+
+
+def test_non_callable_render_fn_raises():
+    reg = _fresh_registry()
+    with pytest.raises(ValueError, match="callable"):
+        reg.ComponentSpec("bad", reg.RefreshGroup.FAST, "not_a_function")
+
+
+def test_require_widgets_caught_by_validate():
+    reg = _fresh_registry()
+    reg.require_widgets("must_exist")
+    with pytest.raises(RuntimeError, match="must_exist"):
+        reg.validate()
+
+
+def test_require_widgets_passes_when_mounted():
+    reg = _fresh_registry()
+    reg.require_widgets("will_be_mounted")
+    reg.mount("will_be_mounted", object())
+    reg.validate()  # should not raise

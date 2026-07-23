@@ -170,6 +170,7 @@ def _backtest_symbol(raw: pd.DataFrame, spy_raw: pd.DataFrame,
             precomputed=True,           # features already computed with warm-up context
             regime_clf=regime_clf,      # pre-loaded once per window; avoids 98MB reload per call
         )
+        result["num_feat_rows"] = len(feat_test)
         return result
     except Exception as e:
         logger.debug(f"Backtest error: {e}")
@@ -221,25 +222,25 @@ def _aggregate(results: list[dict]) -> dict:
 _W = 74
 
 def _header() -> None:
-    print("\n" + "═" * _W)
-    print(f"  Walk-Forward Full-Engine Backtest  (V4 features · {len(FEATURE_COLS)} cols)")
-    print(f"  Gates: regime + XGB≥{XGB_MIN_CONFIDENCE} + vol≥{MIN_VOLUME_RATIO} · slippage 7 bps/side")
-    print(f"  LSTM held neutral (0.5) — matches live degraded-LSTM behavior")
-    print("═" * _W)
-    print(f"  {'Year':<6} {'WinRate':>7} {'Return':>8} {'Sharpe':>7} "
-          f"{'Trades':>7} {'Syms':>5} {'vsSPY':>8}")
-    print("  " + "─" * (_W - 2))
+    sys.stdout.write("\n" + "═" * _W + "\n")
+    sys.stdout.write(f"  Walk-Forward Full-Engine Backtest  (V4 features · {len(FEATURE_COLS)} cols)\n")
+    sys.stdout.write(f"  Gates: regime + XGB≥{XGB_MIN_CONFIDENCE} + vol≥{MIN_VOLUME_RATIO} · slippage 7 bps/side\n")
+    sys.stdout.write(f"  LSTM held neutral (0.5) — matches live degraded-LSTM behavior\n")
+    sys.stdout.write("═" * _W + "\n")
+    sys.stdout.write(f"  {'Year':<6} {'WinRate':>7} {'Return':>8} {'Sharpe':>7} "
+                     f"{'Trades':>7} {'Syms':>5} {'vsSPY':>8}\n")
+    sys.stdout.write("  " + "─" * (_W - 2) + "\n")
 
 
 def _row(label: str, m: dict, spy_ret: float) -> None:
     alpha = m["mean_return"] - spy_ret
-    print(f"  {label:<6} {m['win_rate']*100:>6.1f}% {m['mean_return']*100:>+7.1f}% "
-          f"{m['sharpe']:>7.2f} {m['total_trades']:>7} {m['symbols_traded']:>5} "
-          f"{alpha*100:>+7.1f}%")
+    sys.stdout.write(f"  {label:<6} {m['win_rate']*100:>6.1f}% {m['mean_return']*100:>+7.1f}% "
+                     f"{m['sharpe']:>7.2f} {m['total_trades']:>7} {m['symbols_traded']:>5} "
+                     f"{alpha*100:>+7.1f}%\n")
 
 
 def _footer(window_metrics: list[dict], spy_rets: list[float]) -> None:
-    print("  " + "─" * (_W - 2))
+    sys.stdout.write("  " + "─" * (_W - 2) + "\n")
     all_wr     = [m["win_rate"]    for m in window_metrics if m["total_trades"] > 0]
     all_ret    = [m["mean_return"] for m in window_metrics]
     all_sharpe = [m["sharpe"]      for m in window_metrics]
@@ -247,19 +248,19 @@ def _footer(window_metrics: list[dict], spy_rets: list[float]) -> None:
     all_alpha  = [m["mean_return"] - s for m, s in zip(window_metrics, spy_rets)]
 
     wr_mean = f"{np.mean(all_wr)*100:.1f}%" if all_wr else "  n/a"
-    print(f"  {'Mean':<6} {wr_mean:>7} {np.mean(all_ret)*100:>+7.1f}% "
-          f"{np.mean(all_sharpe):>7.2f} {all_trades:>7} {'':>5} "
-          f"{np.mean(all_alpha)*100:>+7.1f}%")
-    print(f"  {'StdDev':<6} {'':>7} {np.std(all_ret)*100:>7.1f}%  "
-          f"{np.std(all_sharpe):>6.2f}")
-    print("═" * _W)
+    sys.stdout.write(f"  {'Mean':<6} {wr_mean:>7} {np.mean(all_ret)*100:>+7.1f}% "
+                     f"{np.mean(all_sharpe):>7.2f} {all_trades:>7} {'':>5} "
+                     f"{np.mean(all_alpha)*100:>+7.1f}%\n")
+    sys.stdout.write(f"  {'StdDev':<6} {'':>7} {np.std(all_ret)*100:>7.1f}%  "
+                     f"{np.std(all_sharpe):>6.2f}\n")
+    sys.stdout.write("═" * _W + "\n")
 
     # Pass/fail verdict
     mean_wr  = np.mean(all_wr) if all_wr else 0.0
     mean_ret = np.mean(all_ret)
     pos_alpha = sum(1 for a in all_alpha if a > 0)
 
-    print()
+    sys.stdout.write("\n")
     if mean_wr >= 0.55 and mean_ret > 0 and pos_alpha >= 3:
         verdict = "✓ PASS — strategy shows consistent out-of-sample edge"
     elif mean_wr >= 0.50 and mean_ret > -0.05:
@@ -267,10 +268,10 @@ def _footer(window_metrics: list[dict], spy_rets: list[float]) -> None:
     else:
         verdict = "✗ FAIL — no consistent out-of-sample edge; investigate features / gates"
 
-    print(f"  {verdict}")
-    print(f"  Win rate: {mean_wr*100:.1f}%  Mean return: {mean_ret*100:+.1f}%"
-          f"  Positive-alpha windows: {pos_alpha}/{len(window_metrics)}")
-    print()
+    sys.stdout.write(f"  {verdict}\n")
+    sys.stdout.write(f"  Win rate: {mean_wr*100:.1f}%  Mean return: {mean_ret*100:+.1f}%"
+                     f"  Positive-alpha windows: {pos_alpha}/{len(window_metrics)}\n")
+    sys.stdout.write("\n")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ def main() -> None:
     symbols = list(TRAINING_SYMBOLS)
     if args.symbols > 0:
         symbols = symbols[: args.symbols]
-    windows = ALL_WINDOWS[-args.windows:]
+    windows = ALL_WINDOWS if args.windows == 0 else ALL_WINDOWS[-args.windows:]
 
     logger.info(f"Walk-forward: {len(windows)} windows, {len(symbols)} symbols")
 
@@ -322,8 +323,10 @@ def main() -> None:
             res = _backtest_symbol(raw, spy_raw, xgb, regime_clf, test_start, test_end)
             if res is None:
                 continue
-            # Add corrected Sharpe (daily bars, not intraday)
-            trading_days = len(raw[(raw.index >= test_start) & (raw.index <= test_end)])
+            # Add corrected Sharpe (daily bars, not intraday); use feat_test row count
+            # so the denominator matches the rows the engine actually saw.
+            trading_days = res.get("num_feat_rows",
+                                   len(raw[(raw.index >= test_start) & (raw.index <= test_end)]))
             res["wf_sharpe"] = _daily_sharpe(res["total_return"], trading_days)
             sym_results.append(res)
 
@@ -337,7 +340,7 @@ def main() -> None:
     if window_metrics:
         _footer(window_metrics, spy_rets)
     else:
-        print("  No results — check that data/raw/ has symbol CSVs.")
+        sys.stdout.write("  No results — check that data/raw/ has symbol CSVs.\n")
 
 
 if __name__ == "__main__":
