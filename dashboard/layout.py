@@ -22,14 +22,8 @@ GRADIO_CSS = f"""
 .contain {{ padding: 8px 12px !important; }}
 /* Hide Gradio 5's StatusTracker "Error" badge — safe_render handles errors inline */
 span.error {{ display: none !important; }}
-/* ── Dim-text fix: remove StatusTracker opacity overlay (Gradio 5.9.0) ───────── */
-/* Gradio adds .translucent (opacity:0.5) when status="pending"|"minimal" —     */
-/* this halves contrast on all component content.  We render inline, don't need  */
-/* the pending UX.                                                               */
 .translucent {{ opacity: 1 !important; }}
 .pending     {{ opacity: 1 !important; }}
-/* NOTE: .generating is intentionally NOT overridden — it is the active-refresh
-   indicator on gr.Plot and gr.HTML components during the 300 s data timer.      */
 /* Override Gradio 5 CSS variables so inline var() references resolve to our colours.
    No !important on the variable values — only the consuming properties need it;
    !important inside var() is parsed as literal text in Safari < 15.4.            */
@@ -291,9 +285,8 @@ TAB_FIX_JS = """
     });
   }, true);
 
-  // Equity chart period selector — updates client-side via Plotly.relayout()
-  // (Gradio 5.9 injection bug prevents gr.Plot in handler outputs with inputs).
-  // MutationObserver re-applies the selection after each 300 s server push.
+  // Equity chart period selector — client-side Plotly.relayout() (Gradio 5.9
+  // injection bug prevents gr.Plot in handler outputs that also have inputs).
   var _eqPKey  = 'All Time';
   var _eqSince = null;
   var _EQ_DAYS  = {'1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365};
@@ -333,8 +326,6 @@ TAB_FIX_JS = """
       }
       _eqRelayout();
     });
-    // Re-apply period after the 300 s timer pushes a fresh "All Time" figure.
-    // 200 ms delay gives Plotly time to initialise the newly swapped DOM node.
     var eqEl = document.querySelector('#equity-chart');
     if (eqEl) {
       new MutationObserver(function() {
@@ -342,7 +333,16 @@ TAB_FIX_JS = """
       }).observe(eqEl, {childList: true, subtree: true});
     }
   }
-  _initEquityPeriod();
+  // Gradio 5.x has no window.Plotly global — load from CDN so relayout() works.
+  if (typeof Plotly !== 'undefined') {
+    _initEquityPeriod();
+  } else {
+    var _ps = document.createElement('script');
+    _ps.src = 'https://cdn.plot.ly/plotly-2.35.2.min.js';
+    _ps.onload  = _initEquityPeriod;
+    _ps.onerror = function() {};
+    document.head.appendChild(_ps);
+  }
 }
 """
 
