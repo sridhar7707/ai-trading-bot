@@ -1,6 +1,7 @@
 """DB infrastructure helpers extracted from bot/main.py to keep it under 500 lines."""
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import time
@@ -14,7 +15,7 @@ from bot.strategy.ensemble import WEIGHTS
 from bot.strategy.macro import _get_cached as _get_macro_cached
 import bot.monitor.telegram_bot as tg
 from config import TRADE_DB_PATH
-from database.query_metrics import init_schema as _init_qm_schema
+from database.query_metrics import _init_schema as _init_qm_schema
 
 _MACRO_DB_TTL = 4 * 3600
 
@@ -22,15 +23,14 @@ _MACRO_DB_TTL = 4 * 3600
 def _enable_wal_mode(db_path: str) -> None:
     """Enable WAL journal mode so dashboard readers don't block the bot writer."""
     try:
-        con = sqlite3.connect(db_path)
-        row = con.execute("PRAGMA journal_mode=WAL").fetchone()
-        actual = row[0] if row else "unknown"
-        if actual != "wal":
-            logger.warning(f"WAL mode not confirmed on {db_path}: got {actual!r} — concurrent reads may block writer")
-        else:
-            logger.info(f"WAL mode verified: {db_path}")
-        con.execute("PRAGMA synchronous=NORMAL")
-        con.close()
+        with contextlib.closing(sqlite3.connect(db_path)) as con:
+            row = con.execute("PRAGMA journal_mode=WAL").fetchone()
+            actual = row[0] if row else "unknown"
+            if actual != "wal":
+                logger.warning(f"WAL mode not confirmed on {db_path}: got {actual!r} — concurrent reads may block writer")
+            else:
+                logger.info(f"WAL mode verified: {db_path}")
+            con.execute("PRAGMA synchronous=NORMAL")
     except Exception as exc:
         log_exception(logger, "_enable_wal_mode", exc, {"db_path": db_path})
 

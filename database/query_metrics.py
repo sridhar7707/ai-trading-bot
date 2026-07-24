@@ -20,7 +20,15 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Any, Callable
+from typing import Callable, TypeVar
+
+try:
+    from typing import ParamSpec
+except ImportError:
+    from typing_extensions import ParamSpec  # type: ignore[assignment]
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 from loguru import logger
 
@@ -52,11 +60,11 @@ def record(query_name: str, elapsed_ms: float) -> None:
         logger.warning(f"Slow query [{query_name}]: {elapsed_ms:.0f} ms")
 
 
-def timed_query(query_name: str) -> Callable:
+def timed_query(query_name: str) -> Callable[[Callable[_P, _R]], Callable[_P, _R]]:
     """Decorator — wraps a function and records its wall-clock time."""
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: Callable[_P, _R]) -> Callable[_P, _R]:
         @wraps(fn)
-        def wrapper(*args, **kwargs) -> Any:
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
             t0 = time.perf_counter()
             try:
                 return fn(*args, **kwargs)
@@ -122,8 +130,12 @@ CREATE TABLE IF NOT EXISTS query_metrics (
 """
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
-    """Create query_metrics table and covering indexes. Called once from init_db()."""
+def _init_schema(conn: sqlite3.Connection) -> None:
+    """Create query_metrics table and covering indexes.
+
+    Precondition: conn must already have `signal_log` and `trades` tables.
+    Call only via bot._main_db.init_db() — not a standalone public API.
+    """
     conn.execute(_QM_DDL)
     for sql in _PERF_INDEXES:
         conn.execute(sql)
