@@ -369,7 +369,7 @@ def _handle_entry(
                       take_profit=round(fill_price * (1 + tp_target_pct), 4),
                       risk_reward_ratio=round(rr_ratio, 4))
             if pool:
-                _pool_buy(con, pool.id, notional)
+                _pool_buy(con, pool.id, notional, symbol=symbol)
             _rec_action(con, "buy", symbol, reasoning=_ai_rsn,
                         confidence=int(xgb_prob * 100), status="executed")
             _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)

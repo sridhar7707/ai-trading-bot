@@ -86,6 +86,8 @@ from dashboard.components.decision_bar import render_decision_bar
 from dashboard.components.capital import (
     render_capital_overview, render_capital_chart,
     render_profit_breakdown, render_managed_capital, save_reinvestment_mode,
+    render_capital_health, render_capital_ledger,
+    do_pool_deposit, do_pool_withdraw, do_set_reserve,
 )
 from dashboard.components.attribution import (
     render_attribution_by_symbol, render_attribution_by_sector,
@@ -263,31 +265,44 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
             capital_overview_out  = registry.mount("capital_overview_out",  gr.HTML(value=render_capital_overview))
-            managed_capital_out   = registry.mount("managed_capital_out",   gr.HTML(value=render_managed_capital))
+            with gr.Row():
+                with gr.Column(scale=1):
+                    managed_capital_out = registry.mount("managed_capital_out", gr.HTML(value=render_managed_capital))
+                with gr.Column(scale=1):
+                    capital_health_out  = registry.mount("capital_health_out",  gr.HTML(value=render_capital_health))
             capital_chart_out     = registry.mount("capital_chart_out",     gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False))
             profit_breakdown_out  = registry.mount("profit_breakdown_out",  gr.HTML(value=render_profit_breakdown))
+            capital_ledger_out    = registry.mount("capital_ledger_out",    gr.HTML(value=render_capital_ledger))
+            # ── Profit Handling ────────────────────────────────────────────
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
                 choices=[
-                    "Reinvest everything (profits + initial deposit)",
-                    "Reinvest profits only (protect initial deposit)",
+                    "Auto Reinvest ON — profits grow managed capital",
+                    "Auto Reinvest OFF — profits shown as withdrawable",
                 ],
                 value=(
-                    "Reinvest profits only (protect initial deposit)"
+                    "Auto Reinvest OFF — profits shown as withdrawable"
                     if _cur_reinvest == "true"
-                    else "Reinvest everything (profits + initial deposit)"
+                    else "Auto Reinvest ON — profits grow managed capital"
                 ),
-                label="Reinvestment Mode",
+                label="Profit Handling",
             )
-            _reinvest_desc = (
-                "Reinvest profits only &mdash; your initial deposit is always protected"
-                if _cur_reinvest == "true"
-                else "Reinvest everything &mdash; profits and initial deposit both grow the position"
-            )
-            reinvest_status = gr.HTML(value=(
-                f'<span style="color:{GAIN};font-size:12px;">'
-                f'&#10003; Active: {_reinvest_desc}</span>'
-            ))
+            reinvest_status = gr.HTML(value="")
+            # ── Capital Actions ────────────────────────────────────────────
+            with gr.Row():
+                with gr.Column(scale=1):
+                    _deposit_amt = gr.Number(label="Deposit Amount ($)", minimum=1, precision=2)
+                    _deposit_btn = gr.Button("Deposit", variant="primary")
+                    _deposit_status = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    _withdraw_amt = gr.Number(label="Withdraw Amount ($)", minimum=1, precision=2)
+                    _withdraw_btn = gr.Button("Withdraw", variant="secondary")
+                    _withdraw_status = gr.HTML(value="")
+                with gr.Column(scale=1):
+                    _reserve_amt = gr.Number(label="Set Reserve ($)", minimum=0, precision=2,
+                                             value=float(get_setting("pool_reserve", "100")))
+                    _reserve_btn = gr.Button("Set Reserve", variant="secondary")
+                    _reserve_status = gr.HTML(value="")
 
         # ── Tab 4: Trades ─────────────────────────────────────────────────────
         with gr.TabItem("📈 Trades"):
@@ -383,6 +398,19 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
     reinvest_radio.change(fn=save_reinvestment_mode, inputs=[reinvest_radio],
                           outputs=[reinvest_status])
+
+    _deposit_btn.click(
+        fn=lambda v: do_pool_deposit(str(v) if v else ""),
+        inputs=[_deposit_amt], outputs=[_deposit_status],
+    )
+    _withdraw_btn.click(
+        fn=lambda v: do_pool_withdraw(str(v) if v else ""),
+        inputs=[_withdraw_amt], outputs=[_withdraw_status],
+    )
+    _reserve_btn.click(
+        fn=lambda v: do_set_reserve(str(v) if v is not None else "0"),
+        inputs=[_reserve_amt], outputs=[_reserve_status],
+    )
 
     def _save_settings(risk_tol, benchmark, max_pos, max_dd, stop_loss, notif):
         max_pos   = max(5.0,  min(50.0, max_pos))

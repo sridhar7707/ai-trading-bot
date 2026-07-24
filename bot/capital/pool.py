@@ -103,7 +103,8 @@ def load_active_pool(
 
 
 def update_on_buy(
-    conn: sqlite3.Connection, pool_id: int, notional: float
+    conn: sqlite3.Connection, pool_id: int, notional: float,
+    symbol: str | None = None,
 ) -> None:
     """Move `notional` from available_cash to invested_amount on a BUY fill."""
     conn.execute(
@@ -116,12 +117,13 @@ def update_on_buy(
     row = conn.execute(
         "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
     ).fetchone()
-    append_ledger(conn, pool_id, "buy", -notional, row[0] if row else 0.0)
+    append_ledger(conn, pool_id, "buy", -notional, row[0] if row else 0.0, symbol=symbol)
     conn.commit()
 
 
 def update_on_sell(
-    conn: sqlite3.Connection, pool_id: int, cost_basis: float, fill_value: float
+    conn: sqlite3.Connection, pool_id: int, cost_basis: float, fill_value: float,
+    symbol: str | None = None,
 ) -> None:
     """Return fill proceeds to available_cash; book realized P&L."""
     pnl = fill_value - cost_basis
@@ -136,7 +138,54 @@ def update_on_sell(
     row = conn.execute(
         "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
     ).fetchone()
-    append_ledger(conn, pool_id, "sell", fill_value, row[0] if row else 0.0)
+    append_ledger(conn, pool_id, "sell", fill_value, row[0] if row else 0.0, symbol=symbol)
+    conn.commit()
+
+
+def deposit(
+    conn: sqlite3.Connection, pool_id: int, amount: float,
+    notes: str | None = None,
+) -> None:
+    """Add funds to the pool and record a ledger deposit event."""
+    conn.execute(
+        "UPDATE capital_pools SET "
+        "available_cash   = available_cash   + ?, "
+        "allocated_amount = allocated_amount + ?, "
+        "updated_at = datetime('now') WHERE id = ?",
+        (amount, amount, pool_id),
+    )
+    row = conn.execute(
+        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+    ).fetchone()
+    append_ledger(conn, pool_id, "deposit", amount, row[0] if row else 0.0, notes=notes)
+    conn.commit()
+
+
+def withdraw(
+    conn: sqlite3.Connection, pool_id: int, amount: float,
+    notes: str | None = None,
+) -> None:
+    """Remove funds from the pool and record a ledger withdrawal event."""
+    conn.execute(
+        "UPDATE capital_pools SET "
+        "available_cash   = MAX(0.0, available_cash   - ?), "
+        "allocated_amount = MAX(0.0, allocated_amount - ?), "
+        "updated_at = datetime('now') WHERE id = ?",
+        (amount, amount, pool_id),
+    )
+    row = conn.execute(
+        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+    ).fetchone()
+    append_ledger(conn, pool_id, "withdrawal", -amount, row[0] if row else 0.0, notes=notes)
+    conn.commit()
+
+
+def set_reserve(conn: sqlite3.Connection, pool_id: int, reserve: float) -> None:
+    """Update the cash reserve floor for the pool."""
+    conn.execute(
+        "UPDATE capital_pools SET reserve = ?, updated_at = datetime('now') WHERE id = ?",
+        (reserve, pool_id),
+    )
     conn.commit()
 
 

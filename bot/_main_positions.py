@@ -247,7 +247,7 @@ def _trim_position(con: sqlite3.Connection, client, symbol: str, trim_qty: float
                   order_id=result.get("order_id"))
         if pool:
             cost_basis = entry_price * trim_qty if entry_price > 0 else trim_notional
-            _pool_sell(con, pool.id, cost_basis, trim_notional)
+            _pool_sell(con, pool.id, cost_basis, trim_notional, symbol=symbol)
         _trim_freed_pct = trim_notional / portfolio_value * 100 if portfolio_value > 0 else 0.0
         tg.alert_sell(symbol, trim_qty, current_price, pnl_pct,
                       reason="drift-trim", notional=trim_notional,
@@ -292,7 +292,7 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
                       order_id=order_id, holding_days=holding_days)
         if pool:
             cost_basis = entry_price * pos_qty if entry_price > 0 else pos_qty * current_price
-            _pool_sell(con, pool.id, cost_basis, pos_qty * current_price)
+            _pool_sell(con, pool.id, cost_basis, pos_qty * current_price, symbol=symbol)
         _rec_action(con, "sell", symbol,
                     reasoning=f"Exit ({reason}): {pnl_pct:+.1%} P&L",
                     confidence=0, status="executed")
@@ -355,7 +355,7 @@ def _handle_exits(
                       holding_days=holding_days)
             if pool:
                 cost_basis = entry_price * pos_qty if entry_price > 0 else pos_qty * current_price
-                _pool_sell(con, pool.id, cost_basis, pos_qty * current_price)
+                _pool_sell(con, pool.id, cost_basis, pos_qty * current_price, symbol=symbol)
             _delete_position_state(con, symbol)
             _maybe_record_day_trade(con, risk, symbol, True, pdt_exempt=pdt_exempt)
         return True
