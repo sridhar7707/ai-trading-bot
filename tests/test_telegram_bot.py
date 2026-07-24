@@ -20,24 +20,21 @@ def test_send_skips_when_no_token(mock_post):
 
 
 @patch("bot.monitor.telegram_bot._send")
-def test_alert_bot_started_calls_send(mock_send):
+def test_alert_bot_started_suppressed(mock_send):
     tg.alert_bot_started("paper", 10_000.0)
-    mock_send.assert_called_once()
-    assert "paper" in mock_send.call_args[0][0].lower() or "PAPER" in mock_send.call_args[0][0]
+    mock_send.assert_not_called()
 
 
 @patch("bot.monitor.telegram_bot._send")
-def test_alert_buy_calls_send(mock_send):
+def test_alert_buy_suppressed(mock_send):
     tg.alert_buy("AAPL", 10.0, 150.0, "BULL_TREND", 20_000.0, 0.01)
-    mock_send.assert_called_once()
-    assert "AAPL" in mock_send.call_args[0][0]
+    mock_send.assert_not_called()
 
 
 @patch("bot.monitor.telegram_bot._send")
-def test_alert_sell_positive_pnl(mock_send):
+def test_alert_sell_suppressed(mock_send):
     tg.alert_sell("MSFT", 5.0, 300.0, 0.05, reason="signal", notional=1500.0)
-    text = mock_send.call_args[0][0]
-    assert "MSFT" in text
+    mock_send.assert_not_called()
 
 
 @patch("bot.monitor.telegram_bot._send")
