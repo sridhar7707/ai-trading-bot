@@ -125,8 +125,8 @@ def update_signal_outcomes(
                 age = (datetime.now(timezone.utc) - ts).days
                 if age >= 7:
                     outcome = "expired"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"signal outcome age parse: {exc}")
 
         if outcome:
             pct = (cur - entry) / entry if entry > 0 else 0.0

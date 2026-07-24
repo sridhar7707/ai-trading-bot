@@ -45,8 +45,8 @@ def _ai_generate_thesis(symbol: str, d: dict) -> str:
             if row:
                 ensemble = float(row[0] or 0.0)
                 regime   = row[1] or "Unknown"
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"get_current_thesis_text: signal_log read: {exc}")
 
     conf_pct = int(ensemble * 100)
     trend = "positive price momentum" if pnl_pct > 0 else "recovering position"
@@ -158,8 +158,8 @@ def _evaluate_thesis_validity(thesis: dict, d: dict) -> str:
                 ).fetchone()
             if row:
                 ensemble = float(row[0] or 0.0)
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"_check_thesis_validity: signal_log read: {exc}")
 
     if ensemble >= 0.65:
         return "valid"

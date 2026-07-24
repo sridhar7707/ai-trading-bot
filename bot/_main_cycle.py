@@ -99,8 +99,8 @@ def compute_tradeable_capital(con: sqlite3.Connection, portfolio_value: float) -
     if dep_str:
         try:
             initial = float(dep_str)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"_get_tradeable_capital: initial_deposit setting parse: {exc}")
 
     if initial is None:
         try:
@@ -110,8 +110,8 @@ def compute_tradeable_capital(con: sqlite3.Connection, portfolio_value: float) -
             ).fetchone()
             if row:
                 initial = float(row[0])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"_get_tradeable_capital: portfolio_snapshots read: {exc}")
 
     if initial is None:
         try:
@@ -121,8 +121,8 @@ def compute_tradeable_capital(con: sqlite3.Connection, portfolio_value: float) -
             ).fetchone()
             if row:
                 initial = float(row[0])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"_get_tradeable_capital: trades read: {exc}")
 
     if initial is None:
         logger.warning(

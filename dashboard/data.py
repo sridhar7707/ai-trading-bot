@@ -310,8 +310,8 @@ def _refresh_cache() -> dict:
                 ).fetchall()
             if sl_rows:
                 result["sentiment_avg"] = float(sum(r[0] for r in sl_rows) / len(sl_rows))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"_refresh_cache: sentiment_avg fallback from signal_log: {exc}")
 
     return result
 

@@ -451,8 +451,8 @@ def render_top_picks() -> str:
             pos = sorted([(f, float(v)) for f, v in (ds or []) if float(v) > 0], key=lambda x: -x[1])
             for feat, _ in pos[:2]:
                 driver_parts.append(_PLAIN_WHY.get(feat, feat.replace("_", " ").title()))
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug(f"render_top_picks: feature_drivers parse: {exc}")
         why = " · ".join(driver_parts) if driver_parts else "Signals aligning"
 
         border = f"border-bottom:1px solid {BORDER};" if rank < len(rows) else ""

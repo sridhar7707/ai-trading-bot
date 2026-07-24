@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
+from loguru import logger as _logger
 
 _MUTED = "#6b7280"
 _POS   = "#15803d"
@@ -108,15 +109,16 @@ def _prices_yfinance(symbols: list[str]) -> dict:
                 for s in symbols:
                     try:
                         out[s] = float(close[s].dropna().iloc[-1])
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _logger.debug(f"get_open_positions: price parse for {s}: {exc}")
             else:
                 try:
                     out[symbols[0]] = float(close.dropna().iloc[-1])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _logger.debug(f"get_open_positions: single-symbol price parse: {exc}")
         return out
-    except Exception:
+    except Exception as exc:
+        _logger.warning(f"get_open_positions: price fetch failed, returning empty: {exc}")
         return {}
 
 

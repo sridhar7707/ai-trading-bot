@@ -111,8 +111,8 @@ def render_paper_trading_scorecard() -> str:
                             else _bd["Close"]).dropna()
                     if len(_col) >= 2:
                         _BENCH_CACHE[key] = float(_col.iloc[-1] / _col.iloc[0] - 1)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _logger.debug(f"institutional_metrics: {sym} benchmark fetch: {exc}")
             _BENCH_CACHE_TS = _time.time()
             spy_ret = _BENCH_CACHE.get("spy")
             qqq_ret = _BENCH_CACHE.get("qqq")
@@ -291,8 +291,8 @@ def render_institutional_metrics() -> str:
             _spy60 = _spy_rs(_s60.isoformat())
             if _spy60 is not None:
                 alpha_60d = round(_r60 - _spy60, 4)
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"institutional_metrics: alpha_calc: {exc}")
 
     def _row(label, val_str, color, desc):
         return (

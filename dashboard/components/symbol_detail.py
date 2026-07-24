@@ -36,8 +36,8 @@ def _explain_every_dollar(symbol: str, d: dict, pos: dict | None,
     pv     = 0.0
     try:
         pv = float(d.get("portfolio", "0").replace("$", "").replace(",", ""))
-    except Exception:
-        pass
+    except (ValueError, TypeError) as exc:
+        _logger.debug(f"symbol_detail: portfolio value parse: {exc}")
 
     # Portfolio weight
     cur_val = pos["shares"] * cur if cur > 0 else pos["invested"]

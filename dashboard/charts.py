@@ -118,8 +118,8 @@ def render_equity_chart(period: str = "All Time") -> Any:
                         _snap_daily = pd.DataFrame(_rows, columns=["date", "value"])
                         _snap_daily["date"] = pd.to_datetime(_snap_daily["date"])
                         has_data = True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"render_equity_chart: snapshot read: {exc}")
 
         if not has_data:
             fig.add_annotation(

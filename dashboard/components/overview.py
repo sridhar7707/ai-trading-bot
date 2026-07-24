@@ -200,8 +200,8 @@ def render_portfolio_health_hero() -> str:
             _last_naive = _dt2.datetime.strptime(str(_last_ts_raw)[:19], "%Y-%m-%d %H:%M:%S")
             _age_mins   = (_dt2.datetime.utcnow() - _last_naive).total_seconds() / 60
             _has_recent = _age_mins <= 90
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug(f"render_daily_headline: signal age parse: {exc}")
     if "closed" in mkt_label.lower() or "pre" in mkt_label.lower() or "after" in mkt_label.lower():
         bot_status, bot_c = "Market Closed", TEXT3
     elif _last_ts_ct:
@@ -359,8 +359,8 @@ def render_trade_frequency() -> str:
                 delta = (d2 - d1).days
                 if delta >= 0:
                     hold_days.append(float(delta))
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug(f"render_trade_frequency: hold days parse: {exc}")
 
     avg_hold = sum(hold_days) / len(hold_days) if hold_days else None
 
@@ -415,8 +415,8 @@ def render_spy_banner() -> str:
                     first_val = float(first_row[0])
                     if first_val > 0:
                         port_return = (pv - first_val) / first_val * 100
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug(f"render_spy_banner: portfolio return calc: {exc}")
 
     bm = analytics_service.get_benchmark_comparison(
         portfolio_return_pct=port_return, period="YTD"

@@ -149,8 +149,8 @@ def render_weekly_summary() -> str:
                             "score":   row[1],
                             "regime":  row[2],
                         }
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        _logger.debug(f"weekly_summary: entry_map parse for {sym}: {exc}")
 
             # Sells this week
             week_sells = con.execute(

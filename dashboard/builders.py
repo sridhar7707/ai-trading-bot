@@ -12,6 +12,7 @@ from dashboard.design_system import (
     SURFACE2,
 )
 import datetime
+from loguru import logger as _logger
 from config import STOP_LOSS_PCT as _STOP_LOSS_PCT, ATR_TRAIL_MULTIPLIER as _ATR_TRAIL_MULT
 from dashboard.data import get_data, _to_ct, safe_query
 from dashboard.viewmodels import (
@@ -79,15 +80,15 @@ def build_positions_vm() -> list[PositionRow]:
             if ep:  _entry_price[sym] = float(ep)
             if hwm: _hwm[sym]         = float(hwm)
             if atr: _atr_entry[sym]   = float(atr)
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"build_positions_vm: position_state read: {exc}")
 
     _today = datetime.date.today()
     _pv = 0.0
     try:
         _pv = float(d["portfolio"].replace("$", "").replace(",", "")) if d.get("portfolio", "&mdash;") != "&mdash;" else 0.0
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"build_positions_vm: portfolio value parse: {exc}")
 
     rows: list[PositionRow] = []
     for sym, v in open_syms.items():
@@ -122,8 +123,8 @@ def build_positions_vm() -> list[PositionRow]:
             try:
                 opened_date = datetime.date.fromisoformat(str(opened_ts)[:10])
                 days_held = (_today - opened_date).days
-            except Exception:
-                pass
+            except Exception as exc:
+                _logger.debug(f"build_positions_vm: opened_date parse {sym}: {exc}")
 
         stop_price: Optional[float] = None
         ep  = _entry_price.get(sym)
@@ -435,8 +436,8 @@ def build_committees_vm() -> list[CommitteeViewModel]:
                         "lstm": float(lb.get("lstm_prob",       0.0) or 0.0),
                         "sent": float(lb.get("sentiment_score", 0.0) or 0.0),
                     }
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"build_committee_vm: last_buy lookup: {exc}")
 
     vms: list[CommitteeViewModel] = []
     for sym in list(open_pos.keys())[:8]:

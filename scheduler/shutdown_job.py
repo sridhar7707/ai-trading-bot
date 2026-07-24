@@ -113,8 +113,8 @@ def _write_daily_summary() -> None:
             logger.info(
                 f"shutdown_job: today={today} sells={row[0]} avg_pnl={row[1] or 0:.2f}%"
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"shutdown_job: EOD stats query failed: {exc}")
 
 
 def _log_session_summary(session: Session) -> None:

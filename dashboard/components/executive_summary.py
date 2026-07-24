@@ -34,8 +34,8 @@ def _today_pnl() -> tuple[float, float]:
         yv = float(y_rows[0][0]) if y_rows else None
         if tv and yv and yv > 0:
             return tv - yv, (tv - yv) / yv * 100
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"_today_pnl: {exc}")
     return 0.0, 0.0
 
 
@@ -48,7 +48,8 @@ def render_executive_summary() -> str:
 
     try:
         pv = float(d.get("portfolio", "0").replace("$", "").replace(",", ""))
-    except Exception:
+    except (ValueError, TypeError) as exc:
+        _logger.debug(f"render_executive_summary: portfolio parse: {exc}")
         pv = 0.0
 
     delta, delta_pct = _today_pnl()
@@ -65,8 +66,8 @@ def render_executive_summary() -> str:
         from dashboard.builders import build_health_vm
         vm = build_health_vm()
         health_score = int(vm.total)
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"render_executive_summary: health_vm: {exc}")
     health_color = GAIN if health_score >= 80 else (NEURAL if health_score >= 60 else LOSS)
 
     # Session state
@@ -75,8 +76,8 @@ def render_executive_summary() -> str:
         from scheduler.session_manager import get_today_session
         session = get_today_session()
         session_state = session.state if session else "UNKNOWN"
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.debug(f"render_executive_summary: session_state: {exc}")
 
     # Last cron cycle
     last_cycle = "&mdash;"

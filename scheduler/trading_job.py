@@ -90,5 +90,6 @@ def _count_trades_today() -> int:
                 "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?",
                 (today + "%",),
             ).fetchone()[0]
-    except Exception:
+    except Exception as exc:
+        logger.debug(f"_trades_today: DB read failed: {exc}")
         return 0

@@ -13,6 +13,8 @@ from typing import Any
 
 from bot.core.error_logger import log_exception
 
+_logger = logging.getLogger("tradegenie.recommendation_engine")
+
 _log = logging.getLogger("tradegenie.recommendation")
 
 from bot.core.recommendation_portfolio import (
@@ -370,8 +372,8 @@ def get_recommendation_explanation(symbol: str, d: dict, portfolio_action: dict 
                     bullish.append(name)
                 else:
                     bearish.append(name)
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug("get_portfolio_reasoning: feature_drivers parse: %s", exc)
 
         # Model-level factors
         if xgb >= 0.70:  bullish.append(f"XGBoost signal strong ({xgb*100:.0f}%)")
