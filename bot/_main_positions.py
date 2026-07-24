@@ -246,7 +246,8 @@ def _trim_position(con: sqlite3.Connection, client, symbol: str, trim_qty: float
                   regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                   order_id=result.get("order_id"))
         if pool:
-            _pool_sell(con, pool.id, entry_price * trim_qty, trim_notional)
+            cost_basis = entry_price * trim_qty if entry_price > 0 else trim_notional
+            _pool_sell(con, pool.id, cost_basis, trim_notional)
         _trim_freed_pct = trim_notional / portfolio_value * 100 if portfolio_value > 0 else 0.0
         tg.alert_sell(symbol, trim_qty, current_price, pnl_pct,
                       reason="drift-trim", notional=trim_notional,
@@ -301,3 +302,156 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
         tg.alert_sell_failed(symbol, reason=reason)
     logger.error(f"SELL ({reason}) failed for {symbol} — will retry next cycle")
     return False
+
+
+# ── Exit orchestration (moved from _main_cycle.py to keep exit logic co-located) ─
+
+_TP_FLOOR = 0.06
+_TP_CEIL  = 0.25
+
+
+def _atr_tp_pct(atr: float, price: float) -> float:
+    return max(_TP_FLOOR, min(_TP_CEIL, (4.0 * atr) / price))
+
+
+def _handle_exits(
+    con: sqlite3.Connection, client, risk, symbol: str, positions: dict,
+    sell_order_syms: set, current_price: float, current_atr: float,
+    regime_name: str, portfolio_value: float, action: int, pdt_exempt: bool,
+    stop_fired_today: set, pool: CapitalPool | None = None,
+) -> bool:
+    """Handle exit / management for a held position. Returns True when symbol was processed."""
+    if symbol not in positions:
+        return False
+
+    if symbol in sell_order_syms:
+        logger.info(f"Exit management skipped for {symbol} — open sell order pending")
+        return True
+
+    pos_state   = _load_position_state(con, symbol)
+    entry_price = float(getattr(positions[symbol], "avg_entry_price", 0) or 0)
+    pos_qty     = float(positions[symbol].qty)
+    pnl_pct     = float(positions[symbol].unrealized_plpc or 0)
+
+    holding_days = 0
+    if pos_state and pos_state.get("opened_at"):
+        try:
+            opened_dt = datetime.fromisoformat(pos_state["opened_at"]).replace(tzinfo=timezone.utc)
+            holding_days = (datetime.now(timezone.utc) - opened_dt).days
+        except (ValueError, TypeError):
+            pass
+
+    # ⓪ Gap-down hard floor — bypass limit/ATR logic, market-sell immediately
+    if pnl_pct < -0.10:
+        logger.warning(f"Gap-down floor: {symbol} pnl={pnl_pct:.1%} — immediate market sell")
+        sell_result = client.sell_market(symbol, pos_qty)
+        if sell_result:
+            client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
+            tg.alert_stop_loss(symbol, pnl_pct, notional=pos_qty * current_price)
+            log_trade(con, symbol, "SELL_GAP_DOWN", pos_qty, current_price,
+                      pos_qty * current_price, regime_name, portfolio_value, pnl_pct,
+                      entry_price=entry_price,
+                      order_id=sell_result.get("order_id"),
+                      holding_days=holding_days)
+            if pool:
+                cost_basis = entry_price * pos_qty if entry_price > 0 else pos_qty * current_price
+                _pool_sell(con, pool.id, cost_basis, pos_qty * current_price)
+            _delete_position_state(con, symbol)
+            _maybe_record_day_trade(con, risk, symbol, True, pdt_exempt=pdt_exempt)
+        return True
+
+    if pos_state:
+        new_hwm = max(pos_state["high_water_mark"], current_price)
+        if new_hwm > pos_state["high_water_mark"]:
+            _upsert_position_state(con, symbol, entry_price, new_hwm, current_atr)
+        hwm = new_hwm
+    else:
+        _upsert_position_state(con, symbol, entry_price, current_price, current_atr)
+        hwm = current_price
+
+    # ① Take-profit: 4×ATR clamped to [6%, 25%]
+    if entry_price > 0 and current_atr > 0:
+        tp_pct = _atr_tp_pct(current_atr, entry_price)
+        if pnl_pct >= tp_pct:
+            success = _signal_sell(
+                con, client, symbol, pos_qty, current_price,
+                regime_name, portfolio_value,
+                reason="take-profit", pnl_pct=pnl_pct, entry_price=entry_price,
+                holding_days=holding_days, pool=pool,
+            )
+            _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
+            return True
+
+    # ② ATR stop-loss
+    _stop_triggered = risk.check_stop_loss(symbol, current_price, entry_price,
+                                           atr=current_atr, pnl_pct=pnl_pct)
+    logger.debug(f"Stop-loss check {symbol}: pnl={pnl_pct:.1%} triggered={_stop_triggered}")
+    if _stop_triggered:
+        success = _signal_sell(
+            con, client, symbol, pos_qty, current_price,
+            regime_name, portfolio_value,
+            is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct,
+            entry_price=entry_price, holding_days=holding_days, pool=pool,
+        )
+        if success:
+            stop_fired_today.add(symbol)
+        _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
+        return True
+
+    # ③ Trailing stop (armed after 3% gain)
+    if hwm > entry_price * 1.03 and risk.check_trailing_stop(
+            symbol, current_price, hwm, current_atr):
+        success = _signal_sell(
+            con, client, symbol, pos_qty, current_price,
+            regime_name, portfolio_value,
+            is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct,
+            entry_price=entry_price, holding_days=holding_days, pool=pool,
+        )
+        if success:
+            stop_fired_today.add(symbol)
+        _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
+        return True
+
+    # ④ Drift trim — partial sell if position has grown above MAX_POSITION_DRIFT_PCT
+    if portfolio_value > 0:
+        position_pct = (pos_qty * current_price) / portfolio_value
+        if position_pct > MAX_POSITION_DRIFT_PCT:
+            target_notional = portfolio_value * MAX_POSITION_PCT
+            trim_qty = (pos_qty * current_price - target_notional) / current_price
+            if trim_qty >= 0.001:
+                logger.info(
+                    f"{symbol} at {position_pct:.1%} of portfolio "
+                    f"(max {MAX_POSITION_DRIFT_PCT:.0%}) — trimming ${trim_qty * current_price:.0f}"
+                )
+                _trim_position(con, client, symbol, round(trim_qty, 3),
+                               current_price, regime_name, portfolio_value,
+                               pnl_pct, entry_price, pool=pool)
+                return True
+
+    # ⑤ Time-based forced exit
+    if _check_time_exit(pos_state, pnl_pct):
+        success = _signal_sell(
+            con, client, symbol, pos_qty, current_price,
+            regime_name, portfolio_value,
+            reason="time-exit", pnl_pct=pnl_pct, entry_price=entry_price,
+            holding_days=holding_days, pool=pool,
+        )
+        _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
+        return True
+
+    # ⑥ Ensemble sell signal
+    if action == 2:
+        is_day_trade = _opened_today(con, symbol)
+        if is_day_trade and not pdt_exempt and not risk.check_pdt(is_day_trade=True):
+            logger.warning(f"PDT limit — skipping signal sell of {symbol}")
+        else:
+            success = _signal_sell(
+                con, client, symbol, pos_qty, current_price,
+                regime_name, portfolio_value,
+                reason="signal", pnl_pct=pnl_pct, entry_price=entry_price,
+                holding_days=holding_days, pool=pool,
+            )
+            if success and is_day_trade and not pdt_exempt:
+                risk.record_day_trade()
+                _save_risk_state(con, risk)
+    return True

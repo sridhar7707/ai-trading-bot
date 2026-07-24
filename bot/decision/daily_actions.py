@@ -75,7 +75,7 @@ def record(
     conn.commit()
 
 
-def mark_executed(conn: sqlite3.Connection, action_id: int) -> None:
+def mark_executed(conn: sqlite3.Connection, action_id: int) -> bool:
     try:
         _ensure_table(conn)
         conn.execute(
@@ -83,20 +83,25 @@ def mark_executed(conn: sqlite3.Connection, action_id: int) -> None:
             (action_id,),
         )
         conn.commit()
+        return True
     except Exception as exc:
         _logger.error(f"daily_actions.mark_executed({action_id}): {exc}")
+        return False
 
 
 def get_pending(conn: sqlite3.Connection) -> list[dict]:
     """Return today's pending actions ordered by confidence desc."""
     today = str(date.today())
-    rows = conn.execute(
-        "SELECT id, symbol, action_type, reasoning, confidence, "
-        "expected_impact, recommended_time, estimated_minutes "
-        "FROM daily_actions WHERE session_date = ? AND status = 'pending' "
-        "ORDER BY confidence DESC",
-        (today,),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            "SELECT id, symbol, action_type, reasoning, confidence, "
+            "expected_impact, recommended_time, estimated_minutes "
+            "FROM daily_actions WHERE session_date = ? AND status = 'pending' "
+            "ORDER BY confidence DESC",
+            (today,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
     return [
         {
             "id": r[0], "symbol": r[1] or "", "action_type": r[2],
