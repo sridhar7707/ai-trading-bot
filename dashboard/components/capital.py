@@ -240,6 +240,56 @@ def render_profit_breakdown() -> str:
     )
 
 
+@timed(_logger)
+@safe_render("Managed Capital Pool")
+def render_managed_capital() -> str:
+    """Show the active CapitalPool breakdown — what the AI can actually trade."""
+    try:
+        from dashboard.data import get_db_conn
+        from bot.capital.pool import load_active_pool
+        with get_db_conn() as con:
+            pool = load_active_pool(con)
+    except Exception:
+        return ""  # pool table not yet created or bot not initialized
+
+    def _row(label: str, val: float, color: str = TEXT2, border: bool = True) -> str:
+        sign = "+" if val > 0 else ""
+        sep = f"border-bottom:1px solid {BORDER};" if border else ""
+        return (
+            f'<div style="display:flex;justify-content:space-between;padding:7px 0;{sep}">'
+            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">{label}</span>'
+            f'<span style="font-size:{FONT_VALUE};font-weight:700;color:{color};">'
+            f'{sign}${abs(val):,.2f}</span></div>'
+        )
+
+    invested_color = TEXT1 if pool.invested_amount > 0 else TEXT3
+    pnl_color = GAIN if pool.realized_profit >= 0 else LOSS
+    avail_color = GAIN if pool.tradeable_cash > 0 else TEXT3
+    rows = (
+        _row("Allocated (total managed)", pool.allocated_amount, TEXT2)
+        + _row("Available Cash", pool.available_cash, TEXT1)
+        + _row("Reserve (held back)", pool.reserve, TEXT3)
+        + _row("Tradeable Cash", pool.tradeable_cash, avail_color)
+        + _row("Invested (open positions)", pool.invested_amount, invested_color)
+        + _row("Realized Profit", pool.realized_profit, pnl_color, border=False)
+    )
+    total_color = GAIN if pool.total_value >= pool.allocated_amount else LOSS
+    footer = (
+        f'<div style="display:flex;justify-content:space-between;'
+        f'padding:9px 0;border-top:2px solid {BORDER};margin-top:4px;">'
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};">'
+        f'Total Pool Value</span>'
+        f'<span style="font-size:{FONT_VALUE};font-weight:800;color:{total_color};">'
+        f'${pool.total_value:,.2f}</span></div>'
+    )
+    return (
+        f'<div class="nt nt-wrap">'
+        f'{_section("🏦", "Managed Capital Pool", f"Pool: {pool.name}")}'
+        f'<div class="nt-card" style="padding:14px 18px;">{rows}{footer}</div>'
+        f'</div>'
+    )
+
+
 def save_reinvestment_mode(mode: str) -> str:
     """Persist reinvestment toggle selection; returns status HTML snippet."""
     profits_only = "profits only" in mode.lower()
@@ -259,6 +309,7 @@ def save_reinvestment_mode(mode: str) -> str:
 
 
 from dashboard.registry import ComponentSpec, RefreshGroup, register
-register(ComponentSpec("capital_overview_out", RefreshGroup.FAST, render_capital_overview, priority=70))
-register(ComponentSpec("profit_breakdown_out", RefreshGroup.FAST, render_profit_breakdown, priority=71))
-register(ComponentSpec("capital_chart_out",    RefreshGroup.SLOW, render_capital_chart,    priority=50))
+register(ComponentSpec("capital_overview_out",  RefreshGroup.FAST, render_capital_overview,  priority=70))
+register(ComponentSpec("profit_breakdown_out",  RefreshGroup.FAST, render_profit_breakdown,  priority=71))
+register(ComponentSpec("managed_capital_out",   RefreshGroup.FAST, render_managed_capital,   priority=72))
+register(ComponentSpec("capital_chart_out",     RefreshGroup.SLOW, render_capital_chart,     priority=50))

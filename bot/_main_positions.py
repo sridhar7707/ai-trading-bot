@@ -15,6 +15,8 @@ from config import (
     MAX_POSITION_DRIFT_PCT, MAX_POSITION_PCT,
 )
 from bot._main_db import log_trade, _save_risk_state
+from bot.decision.daily_actions import record as _rec_action
+from bot.capital.pool import CapitalPool, update_on_sell as _pool_sell
 from bot.strategy.ensemble import BUY_FRACTION
 
 
@@ -257,7 +259,8 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
                  current_price: float, regime_name: str, portfolio_value: float,
                  is_from_stop: bool = False, reason: str = "stop-loss",
                  pnl_pct: float = 0.0, entry_price: float = 0.0,
-                 holding_days: int = 0) -> bool:
+                 holding_days: int = 0,
+                 pool: CapitalPool | None = None) -> bool:
     sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
     if sell_result:
         filled = client.wait_for_fill(sell_result["order_id"], timeout_secs=12)
@@ -283,6 +286,11 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
             log_trade(con, symbol, action_tag, pos_qty, current_price, sell_notional,
                       regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                       order_id=order_id, holding_days=holding_days)
+        if pool:
+            _pool_sell(con, pool.id, entry_price * pos_qty, pos_qty * current_price)
+        _rec_action(con, "sell", symbol,
+                    reasoning=f"Exit ({reason}): {pnl_pct:+.1%} P&L",
+                    confidence=0, status="executed")
         _delete_position_state(con, symbol)
         return True
     if is_from_stop:

@@ -22,13 +22,15 @@ _TYPE_COLOR = {
 
 
 def _get_daily_actions() -> list[dict]:
-    """Fetch pending actions from daily_actions, fall back to sell-analysis."""
+    """Fetch today's actions (pending first, then executed), fall back to sell-analysis."""
     today = str(datetime.date.today())
     try:
         rows = safe_query(
-            "SELECT action_type, symbol, reasoning, confidence, estimated_minutes "
-            "FROM daily_actions WHERE session_date = ? AND status = 'pending' "
-            "ORDER BY confidence DESC LIMIT 5",
+            "SELECT action_type, symbol, reasoning, confidence, estimated_minutes, "
+            "expected_impact, recommended_time, status "
+            "FROM daily_actions WHERE session_date = ? "
+            "ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, confidence DESC, "
+            "created_at DESC LIMIT 5",
             (today,), default=None,
         )
         if rows:
@@ -37,6 +39,9 @@ def _get_daily_actions() -> list[dict]:
                     "action_type": r[0], "symbol": r[1] or "",
                     "reasoning": r[2] or "", "confidence": int(r[3] or 0),
                     "minutes": int(r[4] or 2),
+                    "expected_impact": r[5] or "",
+                    "recommended_time": r[6] or "Today",
+                    "status": r[7] or "pending",
                 }
                 for r in rows
             ]
@@ -53,6 +58,8 @@ def _get_daily_actions() -> list[dict]:
         result.append({
             "action_type": atype, "symbol": sym,
             "reasoning": item, "confidence": 0, "minutes": 2,
+            "expected_impact": "", "recommended_time": "Today",
+            "status": "pending",
         })
     return result
 
@@ -91,63 +98,74 @@ def render_decision_bar() -> str:
             f'</div></div>'
         )
 
-    visible = actions[:3]
-    overflow = len(actions) - 3
+    primary = actions[0]
+    rest    = actions[1:]
+    p_color = _TYPE_COLOR.get(primary["action_type"].lower(), NEURAL)
+    p_label = f"{primary['action_type'].upper()} {primary['symbol']}".strip()
+    executed = primary.get("status") == "executed"
 
+    # Spotlight card for the #1 action
+    impact_html = (
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT3};margin-top:4px;">'
+        f'Expected impact: <strong style="color:{TEXT1};">{primary["expected_impact"]}</strong></div>'
+        if primary.get("expected_impact") else ""
+    )
+    time_html = (
+        f'<span style="font-size:{FONT_LABEL};color:{TEXT3};">Recommended: '
+        f'<strong style="color:{TEXT1};">{primary["recommended_time"]}</strong></span>'
+    )
+    conf_html = (
+        f'<span style="font-size:{FONT_LABEL};color:{p_color};font-weight:{WEIGHT_BOLD};">'
+        f'Confidence: {primary["confidence"]}%</span>'
+        if primary["confidence"] else ""
+    )
+    exec_badge = (
+        f'<span style="font-size:{FONT_LABEL};color:{NEURAL};background:{NEURAL}22;'
+        f'border:1px solid {NEURAL};border-radius:10px;padding:1px 8px;">✓ Executed</span>'
+        if executed else ""
+    )
+    spotlight = (
+        f'<div style="border-left:3px solid {p_color};padding:10px 14px;'
+        f'background:{p_color}11;border-radius:0 8px 8px 0;margin-bottom:10px;">'
+        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">'
+        f'<span style="font-size:{FONT_SECTION};font-weight:800;color:{p_color};">{p_label}</span>'
+        f'{conf_html}{exec_badge}</div>'
+        f'<div style="font-size:{FONT_LABEL};color:{TEXT2};">{primary["reasoning"]}</div>'
+        f'{impact_html}'
+        f'<div style="display:flex;gap:16px;margin-top:6px;">{time_html}</div>'
+        f'</div>'
+    )
+
+    # Remaining actions as chips
     chips_html = ""
-    for a in visible:
+    for a in rest[:4]:
         color = _TYPE_COLOR.get(a["action_type"].lower(), NEURAL)
         label = f"{a['action_type'].capitalize()} {a['symbol']}".strip()
         chips_html += (
             f'<span style="display:inline-flex;align-items:center;'
-            f'padding:6px 16px;background:{color}22;border:1px solid {color};'
+            f'padding:5px 14px;background:{color}22;border:1px solid {color};'
             f'border-radius:20px;font-size:{FONT_LABEL};font-weight:700;color:{color};'
-            f'cursor:pointer;white-space:nowrap;">{label}</span>'
-        )
-    if overflow > 0:
-        chips_html += (
-            f'<span style="display:inline-flex;align-items:center;'
-            f'padding:6px 14px;background:{SURFACE2};border:1px solid {BORDER};'
-            f'border-radius:20px;font-size:{FONT_LABEL};color:{TEXT3};'
-            f'white-space:nowrap;">+ {overflow} more</span>'
+            f'white-space:nowrap;">{label}</span>'
         )
 
-    conf_actions = [a for a in actions if a["confidence"]]
-    avg_conf = (
-        sum(a["confidence"] for a in conf_actions) // len(conf_actions)
-        if conf_actions else 0
+    chips_row = (
+        f'<div style="display:flex;flex-wrap:wrap;gap:8px;">{chips_html}</div>'
+        if chips_html else ""
     )
-    total_mins = sum(a["minutes"] for a in actions)
-
     header = (
         f'<div style="display:flex;justify-content:space-between;'
         f'align-items:center;margin-bottom:10px;">'
         f'<span style="font-size:{FONT_SECTION};font-weight:800;color:{TEXT1};">'
-        f"Today's Decisions</span>"
+        f"Today's Decision</span>"
         f'<span style="font-size:{FONT_LABEL};color:{TEXT3};">'
-        f'{len(actions)} action{"s" if len(actions) != 1 else ""} ›</span>'
-        f'</div>'
-    )
-    chips_row = (
-        f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">'
-        f'{chips_html}</div>'
-    )
-    footer = (
-        f'<div style="display:flex;gap:20px;flex-wrap:wrap;'
-        f'border-top:1px solid {BORDER};padding-top:8px;">'
-        + (f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Confidence: '
-           f'<strong style="color:{TEXT1};">{avg_conf}%</strong></span>'
-           if avg_conf else "")
-        + f'<span style="font-size:{FONT_LABEL};color:{TEXT2};">Est. time: '
-        f'<strong style="color:{TEXT1};">{total_mins} min</strong></span>'
-        f'<span style="font-size:{FONT_LABEL};color:{TEXT3};">All AI-generated ⓘ</span>'
+        f'{len(actions)} action{"s" if len(actions) != 1 else ""} today</span>'
         f'</div>'
     )
 
     return (
         f'<div class="nt nt-wrap">'
         f'<div class="nt-card" style="padding:16px 18px;">'
-        f'{header}{chips_row}{footer}'
+        f'{header}{spotlight}{chips_row}'
         f'</div></div>'
     )
 

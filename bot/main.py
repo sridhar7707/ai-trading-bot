@@ -77,6 +77,7 @@ from bot._main_market import (
     _prefetch_earnings_parallel, _wsb,
 )
 from bot._main_cycle import _fetch_symbol, _handle_exits, _handle_entry, compute_tradeable_capital
+from bot.capital.pool import load_active_pool as _load_pool
 from bot._main_runner import (
     _do_clean_db, _do_reset_daily_start, end_of_day_summary, run_loop,
 )
@@ -397,6 +398,7 @@ def run(
     _tradeable_capital = compute_tradeable_capital(con, portfolio_value)
     # Track remaining profits pool across symbols so aggregate buys can't exceed it.
     _remaining_tradeable = _tradeable_capital
+    _capital_pool = _load_pool(con, initial_amount=_tradeable_capital)
 
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
@@ -471,7 +473,7 @@ def run(
 
             if _handle_exits(con, client, risk, symbol, positions, sell_order_syms,
                              current_price, current_atr, regime_name, portfolio_value,
-                             action, pdt_exempt, _stop_fired_today):
+                             action, pdt_exempt, _stop_fired_today, pool=_capital_pool):
                 continue
 
             # ── Entry gates (applied in order of cheapness) ───────────────────
@@ -487,6 +489,7 @@ def run(
                 macro_halt, spy_5bar_return, vs_spy_today, sentiments,
                 action, action_str, ensemble_size, pdt_exempt, xgb,
                 _stop_fired_today, volume_ratio, _remaining_tradeable,
+                pool=_capital_pool,
             )
             _deployed = _cash_before - available_cash
             if _deployed > 0.0:

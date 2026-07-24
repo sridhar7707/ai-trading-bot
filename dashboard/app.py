@@ -85,7 +85,11 @@ from dashboard.components.executive_summary import render_executive_summary
 from dashboard.components.decision_bar import render_decision_bar
 from dashboard.components.capital import (
     render_capital_overview, render_capital_chart,
-    render_profit_breakdown, save_reinvestment_mode,
+    render_profit_breakdown, render_managed_capital, save_reinvestment_mode,
+)
+from dashboard.components.attribution import (
+    render_attribution_by_symbol, render_attribution_by_sector,
+    render_attribution_by_model, render_attribution_by_trade,
 )
 from dashboard.timers import register_all_timers
 import dashboard.registry as registry
@@ -251,9 +255,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
 
         # ── Tab 3: Capital ────────────────────────────────────────────────────
         with gr.TabItem("💰 Capital"):
-            capital_overview_out  = registry.mount("capital_overview_out", gr.HTML(value=render_capital_overview))
-            capital_chart_out     = registry.mount("capital_chart_out",    gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False))
-            profit_breakdown_out  = registry.mount("profit_breakdown_out", gr.HTML(value=render_profit_breakdown))
+            capital_overview_out  = registry.mount("capital_overview_out",  gr.HTML(value=render_capital_overview))
+            managed_capital_out   = registry.mount("managed_capital_out",   gr.HTML(value=render_managed_capital))
+            capital_chart_out     = registry.mount("capital_chart_out",     gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False))
+            profit_breakdown_out  = registry.mount("profit_breakdown_out",  gr.HTML(value=render_profit_breakdown))
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
                 choices=[
@@ -290,6 +295,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         with gr.TabItem("📊 Performance"):
             scorecard_out = registry.mount("scorecard_out", gr.HTML(value=""))
             metrics_out   = registry.mount("metrics_out",   gr.HTML(value=render_institutional_metrics))
+            with gr.Row():
+                attribution_symbol_out = registry.mount("attribution_symbol_out", gr.HTML(value=render_attribution_by_symbol))
+                attribution_sector_out = registry.mount("attribution_sector_out", gr.HTML(value=render_attribution_by_sector))
+            with gr.Row():
+                attribution_model_out = registry.mount("attribution_model_out", gr.HTML(value=render_attribution_by_model))
+                attribution_trade_out = registry.mount("attribution_trade_out", gr.HTML(value=render_attribution_by_trade))
             with gr.Row():
                 returns_hist_plot = registry.mount("returns_hist_plot", gr.Plot(value=_ci["ret_hist"], label="", show_label=False))
                 winloss_plot      = registry.mount("winloss_plot",      gr.Plot(value=_ci["winloss"],  label="", show_label=False))

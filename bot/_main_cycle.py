@@ -23,6 +23,8 @@ from config import (
 )
 from database.user_settings import get_setting as _get_setting
 from bot._main_db import log_trade, _save_risk_state
+from bot.capital.pool import CapitalPool, update_on_buy as _pool_buy
+from bot.decision.daily_actions import record as _rec_action
 from bot._main_market import _log_buy_skip
 from bot._main_positions import (
     _check_time_exit, _delete_position_state, _is_wash_sale_risk,
@@ -95,7 +97,7 @@ def _handle_exits(
     con: sqlite3.Connection, client, risk, symbol: str, positions: dict,
     sell_order_syms: set, current_price: float, current_atr: float,
     regime_name: str, portfolio_value: float, action: int, pdt_exempt: bool,
-    stop_fired_today: set,
+    stop_fired_today: set, pool: CapitalPool | None = None,
 ) -> bool:
     """Handle exit / management for a held position. Returns True when symbol was processed."""
     if symbol not in positions:
@@ -163,7 +165,7 @@ def _handle_exits(
                 con, client, symbol, pos_qty, current_price,
                 regime_name, portfolio_value,
                 reason="take-profit", pnl_pct=pnl_pct, entry_price=entry_price,
-                holding_days=holding_days
+                holding_days=holding_days, pool=pool,
             )
             _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
             return True
@@ -177,7 +179,7 @@ def _handle_exits(
             con, client, symbol, pos_qty, current_price,
             regime_name, portfolio_value,
             is_from_stop=True, reason="stop-loss", pnl_pct=pnl_pct,
-            entry_price=entry_price, holding_days=holding_days
+            entry_price=entry_price, holding_days=holding_days, pool=pool,
         )
         if success:
             stop_fired_today.add(symbol)
@@ -191,7 +193,7 @@ def _handle_exits(
             con, client, symbol, pos_qty, current_price,
             regime_name, portfolio_value,
             is_from_stop=True, reason="trailing-stop", pnl_pct=pnl_pct,
-            entry_price=entry_price, holding_days=holding_days
+            entry_price=entry_price, holding_days=holding_days, pool=pool,
         )
         if success:
             stop_fired_today.add(symbol)
@@ -220,7 +222,7 @@ def _handle_exits(
             con, client, symbol, pos_qty, current_price,
             regime_name, portfolio_value,
             reason="time-exit", pnl_pct=pnl_pct, entry_price=entry_price,
-            holding_days=holding_days
+            holding_days=holding_days, pool=pool,
         )
         _maybe_record_day_trade(con, risk, symbol, success, pdt_exempt=pdt_exempt)
         return True
@@ -235,7 +237,7 @@ def _handle_exits(
                 con, client, symbol, pos_qty, current_price,
                 regime_name, portfolio_value,
                 reason="signal", pnl_pct=pnl_pct, entry_price=entry_price,
-                holding_days=holding_days
+                holding_days=holding_days, pool=pool,
             )
             if success and is_day_trade and not pdt_exempt:
                 risk.record_day_trade()
@@ -307,6 +309,7 @@ def _handle_entry(
     vs_spy_today: float, sentiments: dict, action: int, action_str: str,
     ensemble_size: float, pdt_exempt: bool, xgb, stop_fired_today: set,
     volume_ratio: float, tradeable_capital: float,
+    pool: CapitalPool | None = None,
 ) -> float:
     """Process entry gates and buy execution. Returns updated available_cash."""
     # Gate 0 — VIX emergency halt: no new positions when VIX >= 40
@@ -455,8 +458,9 @@ def _handle_entry(
             f"(need ${notional:.0f}, reserve=${_min_reserve:.0f}, cash=${available_cash:.0f})"
         )
         return available_cash
+    _managed = pool.tradeable_cash if pool else None
     if not risk.approve_buy(symbol, notional, portfolio_value,
-                            portfolio_value, positions):
+                            portfolio_value, positions, managed_capital=_managed):
         return available_cash
 
     result = client.buy(symbol, notional, limit_price=current_price)
@@ -524,6 +528,10 @@ def _handle_entry(
                       stop_loss=round(fill_price * (1 - stop_pct), 4),
                       take_profit=round(fill_price * (1 + tp_target_pct), 4),
                       risk_reward_ratio=round(rr_ratio, 4))
+            if pool:
+                _pool_buy(con, pool.id, notional)
+            _rec_action(con, "buy", symbol, reasoning=_ai_rsn,
+                        confidence=int(xgb_prob * 100), status="executed")
             _upsert_position_state(con, symbol, fill_price, fill_price, current_atr)
             available_cash -= notional
             buy_order_syms.discard(symbol)  # order is now filled, not pending

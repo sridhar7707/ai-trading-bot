@@ -245,6 +245,7 @@ class RiskManager:
         portfolio_value: float,
         current_value: float,
         open_positions: dict,        # full dict {symbol: position_obj} for sector check
+        managed_capital: float | None = None,
     ) -> bool:
         if self.halted:
             logger.warning("Trading halted — buy blocked.")
@@ -255,7 +256,8 @@ class RiskManager:
             return False
         if not self.check_portfolio_drawdown(current_value):
             return False
-        max_notional = portfolio_value * _live(MAX_POSITION_PCT, "max_position_pct")
+        sizing_base = managed_capital if managed_capital is not None else portfolio_value
+        max_notional = sizing_base * _live(MAX_POSITION_PCT, "max_position_pct")
         if notional > max_notional:
             logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
             return False
