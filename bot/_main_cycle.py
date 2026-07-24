@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import pandas as pd
+import yfinance as yf
 from loguru import logger
 
 import bot.monitor.telegram_bot as tg
@@ -46,7 +48,7 @@ def _fetch_symbol(symbol: str, client, yf_batch: dict) -> tuple[str, pd.DataFram
     bars_5m    = pd.DataFrame()
 
     try:
-        raw = compute_features(client.get_bars(symbol, timeframe="5Min", limit=200))
+        raw = client.get_bars(symbol, timeframe="5Min", limit=10)
         if not raw.empty:
             last_ts  = raw.index[-1]
             now_utc  = pd.Timestamp.now(tz="UTC")
@@ -211,7 +213,7 @@ def _handle_entry(
     if not math.isinf(MACD_CONFIRMATION_MIN):
         _, _daily_bars = bars_map.get(symbol, (pd.DataFrame(), pd.DataFrame()))
         if not _daily_bars.empty:
-            _macd_diff = float(latest.get("macd_diff", 0.0))
+            _macd_diff = float(_daily_bars.iloc[-1].get("macd_diff", 0.0))
             if _macd_diff <= MACD_CONFIRMATION_MIN:
                 _log_buy_skip(
                     symbol,
@@ -379,3 +381,60 @@ def _handle_entry(
             logger.warning(f"BUY {symbol} order did not fill — position state NOT recorded")
 
     return available_cash
+
+
+def prefetch_bars(active_symbols: list[str], client) -> dict[str, tuple]:
+    """Batch-fetch daily bars (yfinance) + 5-min bars (Alpaca) for all symbols.
+
+    Returns bars_map: {symbol: (bars_5m_df, bars_daily_df)}.
+    yfinance download is one batched call to avoid per-symbol rate limits and
+    thread-safety issues; 5-min bars are fetched in parallel via _fetch_symbol.
+    """
+    import bot.monitor.telegram_bot as _tg
+    _yf_batch: dict[str, pd.DataFrame] = {}
+    try:
+        _batch_syms = list(active_symbols)
+        if "SPY" not in _batch_syms:
+            _batch_syms.append("SPY")
+        _raw = yf.download(_batch_syms, period="2y", interval="1d",
+                           progress=False, auto_adjust=True, group_by="ticker")
+        for _sym in _batch_syms:
+            try:
+                _df = _raw[_sym].copy()
+                _df.columns = [c.lower() for c in _df.columns]
+                _df = _df[["open", "high", "low", "close", "volume"]].dropna()
+                if not _df.empty:
+                    _yf_batch[_sym] = _df
+            except Exception as _e:
+                logger.debug(f"yfinance batch skip {_sym}: {_e}")
+        loaded, total = len(_yf_batch), len(_batch_syms)
+        logger.info(f"yfinance batch: {loaded}/{total} symbols loaded")
+        if "SPY" not in _yf_batch:
+            logger.warning("SPY missing from yfinance batch — relative strength gate disabled")
+            _tg.send("⚠️ <b>SPY data missing</b> — relative strength gate disabled.")
+        if loaded < total * 0.5:
+            _tg.send(
+                f"⚠️ <b>yfinance data degraded</b> — only {loaded}/{total} symbols loaded.\n"
+                "Yahoo Finance may have changed their API format. "
+                "XGB/LSTM signals falling back to 5-min bars (out-of-distribution).\n"
+                "Check: <code>pip install --upgrade yfinance</code>"
+            )
+    except Exception as _e:
+        logger.warning(f"yfinance batch prefetch failed: {_e}")
+        _tg.send(
+            f"⚠️ <b>yfinance batch fetch failed</b> — {_e}\n"
+            "Daily bars unavailable this cycle. Check if Yahoo Finance format changed."
+        )
+
+    with ThreadPoolExecutor(max_workers=min(len(active_symbols), 8)) as pool:
+        futures = [pool.submit(_fetch_symbol, sym, client, _yf_batch) for sym in active_symbols]
+        fetched = [f.result() for f in futures]
+
+    bars_map = {sym: (b5, bd) for sym, b5, bd in fetched}
+    _n_5m = sum(1 for _, b5, _ in fetched if not b5.empty)
+    if _n_5m < len(active_symbols) * 0.5:
+        _tg.send(
+            f"⚠️ <b>Alpaca feed degraded</b> — only {_n_5m}/{len(active_symbols)} symbols "
+            "have live 5-min bars. Most symbols will be skipped this cycle."
+        )
+    return bars_map

@@ -123,93 +123,132 @@ def update_on_buy(
     conn: sqlite3.Connection, pool_id: int, notional: float,
     symbol: str | None = None,
 ) -> None:
-    """Move `notional` from available_cash to invested_amount on a BUY fill."""
-    conn.execute(
-        "UPDATE capital_pools SET "
-        "available_cash  = available_cash  - ?, "
-        "invested_amount = invested_amount + ?, "
-        "updated_at = datetime('now') WHERE id = ?",
-        (notional, notional, pool_id),
-    )
-    row = conn.execute(
-        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
-    ).fetchone()
-    append_ledger(conn, pool_id, "buy", -notional, row[0] if row else 0.0, symbol=symbol)
-    conn.commit()
+    """Move `notional` from available_cash to invested_amount on a BUY fill (atomic)."""
+    in_tx = conn.in_transaction
+    if not in_tx:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "UPDATE capital_pools SET "
+            "available_cash  = available_cash  - ?, "
+            "invested_amount = invested_amount + ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (notional, notional, pool_id),
+        )
+        row = conn.execute(
+            "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+        ).fetchone()
+        append_ledger(conn, pool_id, "buy", -notional, row[0] if row else 0.0, symbol=symbol)
+        if not in_tx:
+            conn.commit()
+    except Exception:
+        if not in_tx:
+            conn.rollback()
+        raise
 
 
 def update_on_sell(
     conn: sqlite3.Connection, pool_id: int, cost_basis: float, fill_value: float,
     symbol: str | None = None,
 ) -> None:
-    """Return fill proceeds to available_cash; book realized P&L."""
+    """Return fill proceeds to available_cash; book realized P&L (atomic)."""
     pnl = fill_value - cost_basis
-    conn.execute(
-        "UPDATE capital_pools SET "
-        "available_cash  = available_cash  + ?, "
-        "invested_amount = MAX(0.0, invested_amount - ?), "
-        "realized_profit = realized_profit + ?, "
-        "updated_at = datetime('now') WHERE id = ?",
-        (fill_value, cost_basis, pnl, pool_id),
-    )
-    row = conn.execute(
-        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
-    ).fetchone()
-    append_ledger(conn, pool_id, "sell", fill_value, row[0] if row else 0.0, symbol=symbol)
-    conn.commit()
+    in_tx = conn.in_transaction
+    if not in_tx:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "UPDATE capital_pools SET "
+            "available_cash  = available_cash  + ?, "
+            "invested_amount = MAX(0.0, invested_amount - ?), "
+            "realized_profit = realized_profit + ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (fill_value, cost_basis, pnl, pool_id),
+        )
+        row = conn.execute(
+            "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+        ).fetchone()
+        append_ledger(conn, pool_id, "sell", fill_value, row[0] if row else 0.0, symbol=symbol)
+        if not in_tx:
+            conn.commit()
+    except Exception:
+        if not in_tx:
+            conn.rollback()
+        raise
 
 
 def deposit(
     conn: sqlite3.Connection, pool_id: int, amount: float,
     notes: str | None = None,
 ) -> None:
-    """Add funds to the pool and record a ledger deposit event."""
-    conn.execute(
-        "UPDATE capital_pools SET "
-        "available_cash   = available_cash   + ?, "
-        "allocated_amount = allocated_amount + ?, "
-        "updated_at = datetime('now') WHERE id = ?",
-        (amount, amount, pool_id),
-    )
-    row = conn.execute(
-        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
-    ).fetchone()
-    append_ledger(conn, pool_id, "deposit", amount, row[0] if row else 0.0, notes=notes)
-    conn.commit()
+    """Add funds to the pool and record a ledger deposit event (atomic)."""
+    in_tx = conn.in_transaction
+    if not in_tx:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            "UPDATE capital_pools SET "
+            "available_cash   = available_cash   + ?, "
+            "allocated_amount = allocated_amount + ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (amount, amount, pool_id),
+        )
+        row = conn.execute(
+            "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+        ).fetchone()
+        append_ledger(conn, pool_id, "deposit", amount, row[0] if row else 0.0, notes=notes)
+        if not in_tx:
+            conn.commit()
+    except Exception:
+        if not in_tx:
+            conn.rollback()
+        raise
 
 
 def withdraw(
     conn: sqlite3.Connection, pool_id: int, amount: float,
     notes: str | None = None,
 ) -> None:
-    """Remove funds from the pool.
+    """Remove funds from the pool (atomic).
 
     Attributes the withdrawal against realized profit first so that
     `withdrawable_profit` stays accurate after the user takes money out.
     """
-    row = conn.execute(
-        "SELECT available_cash, realized_profit, profit_withdrawn FROM capital_pools WHERE id = ?",
-        (pool_id,),
-    ).fetchone()
-    if not row:
-        return
-    avail, realized, already_withdrawn = float(row[0]), float(row[1]), float(row[2])
-    amount = min(amount, avail)  # can't withdraw more than is there
-    profit_remaining = max(0.0, realized - already_withdrawn)
-    profit_part = min(amount, profit_remaining)
-    conn.execute(
-        "UPDATE capital_pools SET "
-        "available_cash   = MAX(0.0, available_cash   - ?), "
-        "allocated_amount = MAX(0.0, allocated_amount - ?), "
-        "profit_withdrawn = profit_withdrawn + ?, "
-        "updated_at = datetime('now') WHERE id = ?",
-        (amount, amount, profit_part, pool_id),
-    )
-    row2 = conn.execute(
-        "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
-    ).fetchone()
-    append_ledger(conn, pool_id, "withdrawal", -amount, row2[0] if row2 else 0.0, notes=notes)
-    conn.commit()
+    in_tx = conn.in_transaction
+    if not in_tx:
+        conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute(
+            "SELECT available_cash, realized_profit, profit_withdrawn "
+            "FROM capital_pools WHERE id = ?",
+            (pool_id,),
+        ).fetchone()
+        if not row:
+            if not in_tx:
+                conn.rollback()
+            return
+        avail, realized, already_withdrawn = float(row[0]), float(row[1]), float(row[2])
+        amount = min(amount, avail)  # can't withdraw more than is there
+        profit_remaining = max(0.0, realized - already_withdrawn)
+        profit_part = min(amount, profit_remaining)
+        conn.execute(
+            "UPDATE capital_pools SET "
+            "available_cash   = MAX(0.0, available_cash   - ?), "
+            "allocated_amount = MAX(0.0, allocated_amount - ?), "
+            "profit_withdrawn = profit_withdrawn + ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (amount, amount, profit_part, pool_id),
+        )
+        row2 = conn.execute(
+            "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
+        ).fetchone()
+        append_ledger(conn, pool_id, "withdrawal", -amount, row2[0] if row2 else 0.0, notes=notes)
+        if not in_tx:
+            conn.commit()
+    except Exception:
+        if not in_tx:
+            conn.rollback()
+        raise
 
 
 def set_reserve(conn: sqlite3.Connection, pool_id: int, reserve: float) -> None:

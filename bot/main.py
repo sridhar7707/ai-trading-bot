@@ -8,12 +8,10 @@ import sqlite3
 import sys
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datetime import date, datetime, timedelta, timezone
 import pandas as pd
-import yfinance as yf
 from loguru import logger
 from bot.core.error_logger import log_exception
 
@@ -75,8 +73,11 @@ from bot._main_market import (
     _import_screener_picks, _is_market_hours, _is_near_earnings,
     _load_premarket_sentiment, _load_today_universe, _log_buy_skip,
     _prefetch_earnings_parallel, _wsb,
+    _compute_sentiments, _log_cycle_summary, _maybe_push_db,
 )
-from bot._main_cycle import _fetch_symbol, _handle_exits, _handle_entry, compute_tradeable_capital
+from bot._main_cycle import (
+    _fetch_symbol, _handle_exits, _handle_entry, compute_tradeable_capital, prefetch_bars,
+)
 from bot.capital.pool import load_active_pool as _load_pool
 from bot._main_runner import (
     _do_clean_db, _do_reset_daily_start, end_of_day_summary, run_loop,
@@ -92,6 +93,7 @@ _last_hf_sync: float = 0.0
 _HF_SYNC_INTERVAL: float = 900
 _stop_fired_today: set[str] = set()
 _stop_fired_date: str = ""
+_sym_errors: dict[str, int] = {}
 
 
 def run(
@@ -303,77 +305,8 @@ def run(
             "NewsAPI quota (100 req/day) is not consumed in-cycle."
         )
 
-    # Batch-fetch all daily bars via yfinance before the thread pool.
-    # Per-symbol yf.download inside threads is not thread-safe and causes
-    # data corruption (wrong shapes). One batch call also reduces Yahoo Finance
-    # requests from N/cycle to 1/cycle (~78/day vs ~1560/day).
-    _yf_batch: dict[str, pd.DataFrame] = {}
-    try:
-        _batch_syms = list(active_symbols)
-        if "SPY" not in _batch_syms:
-            _batch_syms.append("SPY")
-        _raw_batch = yf.download(_batch_syms, period="2y", interval="1d",
-                                 progress=False, auto_adjust=True, group_by="ticker")
-        for _sym in _batch_syms:
-            try:
-                _sym_df = _raw_batch[_sym].copy()
-                _sym_df.columns = [c.lower() for c in _sym_df.columns]
-                _sym_df = _sym_df[["open", "high", "low", "close", "volume"]].dropna()
-                if not _sym_df.empty:
-                    _yf_batch[_sym] = _sym_df
-            except Exception as _yfe:
-                logger.debug(f"yfinance batch skip {_sym}: {_yfe}")
-        loaded, total = len(_yf_batch), len(_batch_syms)
-        logger.info(f"yfinance batch: {loaded}/{total} symbols loaded")
-        if "SPY" not in _yf_batch:
-            logger.warning("SPY missing from yfinance batch — relative strength gate disabled this cycle")
-            tg.send("⚠️ <b>SPY data missing</b> — relative strength gate disabled. Buys not filtered by SPY comparison.")
-        if loaded < total * 0.5:
-            tg.send(
-                f"⚠️ <b>yfinance data degraded</b> — only {loaded}/{total} symbols loaded.\n"
-                "Yahoo Finance may have changed their API format. "
-                "XGB/LSTM signals falling back to 5-min bars (out-of-distribution).\n"
-                "Check: <code>pip install --upgrade yfinance</code>"
-            )
-    except Exception as _e:
-        logger.warning(f"yfinance batch prefetch failed — daily bars unavailable: {_e}")
-        tg.send(
-            f"⚠️ <b>yfinance batch fetch failed</b> — {_e}\n"
-            "Daily bars unavailable this cycle. Check if Yahoo Finance format changed."
-        )
-
-    # _fetch_symbol now lives in bot._main_cycle; pass client and _yf_batch explicitly
-    with ThreadPoolExecutor(max_workers=min(len(active_symbols), 8)) as pool:
-        futures = [pool.submit(_fetch_symbol, sym, client, _yf_batch) for sym in active_symbols]
-        fetched = [f.result() for f in futures]
-
-    bars_map = {sym: (b5, bd) for sym, b5, bd in fetched}
-    _n_5m = sum(1 for _, b5, _ in fetched if not b5.empty)
-    if _n_5m < len(active_symbols) * 0.5:
-        tg.send(
-            f"⚠️ <b>Alpaca feed degraded</b> — only {_n_5m}/{len(active_symbols)} symbols "
-            "have live 5-min bars. Most symbols will be skipped this cycle. "
-            "Check Alpaca IEX status."
-        )
-
-    if premarket_sentiment:
-        finbert_scores = premarket_sentiment
-        logger.info("Using pre-market FinBERT sentiment — skipping in-cycle BERT pass")
-    else:
-        finbert_scores = {sym: 0.0 for sym in active_symbols}
-
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        wsb_map = dict(pool.map(_wsb, active_symbols))
-
-    sentiments: dict[str, float] = {}
-    for symbol in active_symbols:
-        wsb   = wsb_map[symbol]
-        score = finbert_scores.get(symbol, 0.0)
-        if wsb["mentions"] > 0:
-            wsb_weight = min(0.50, math.log1p(wsb["mentions"]) / 10)
-            sentiments[symbol] = score * (1 - wsb_weight) + wsb["sentiment"] * wsb_weight
-        else:
-            sentiments[symbol] = score
+    bars_map   = prefetch_bars(active_symbols, client)
+    sentiments = _compute_sentiments(active_symbols, premarket_sentiment)
 
     # Pre-compute SPY N-bar return for relative strength gate (daily bars so it matches sig_bars)
     _, spy_daily = bars_map.get("SPY", (pd.DataFrame(), pd.DataFrame()))
@@ -495,8 +428,16 @@ def run(
             if _deployed > 0.0:
                 _remaining_tradeable = max(0.0, _remaining_tradeable - _deployed)
 
+            _sym_errors.pop(symbol, None)   # reset failure streak on success
+
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}")
+            _sym_errors[symbol] = _sym_errors.get(symbol, 0) + 1
+            if _sym_errors[symbol] >= 3:
+                logger.warning(
+                    f"{symbol} has failed {_sym_errors[symbol]} consecutive cycles "
+                    f"— possible feed or feature bug"
+                )
 
     con.commit()  # flush all batched signal_log inserts in one fsync (was 25 individual commits)
 
@@ -509,56 +450,10 @@ def run(
     except Exception as _se:
         logger.debug(f"update_signal_outcomes: {_se}")
 
-    # End-of-cycle DB summary — makes "why is the dashboard empty?" obvious from the logs
-    try:
-        n_trades = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
-        n_today  = con.execute(
-            "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?", (date.today().isoformat() + "%",)
-        ).fetchone()[0]
-        n_pos    = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
-        last     = con.execute(
-            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
-        ).fetchone()
-        last_pv  = f"${last[0]:,.2f}" if last else "NONE"
-        logger.info(
-            f"DB summary — trades total={n_trades} (today={n_today}), open_positions={n_pos}, "
-            f"latest portfolio_value={last_pv}"
-        )
-        if n_trades == 0:
-            logger.warning(
-                "trades table is EMPTY — dashboard will show $0.00 because portfolio value is "
-                "derived from the latest trade row. No trade has executed yet (gates blocking, "
-                "no buy signal, or first run). This is expected until the first fill."
-            )
-    except Exception as _e:
-        logger.warning(f"End-of-cycle DB summary failed: {_e}")
-
-    # Prune old signal_log rows (keep last 7 days) to cap DB growth
-    try:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        deleted = con.execute(
-            "DELETE FROM signal_log WHERE timestamp < ?", (cutoff,)
-        ).rowcount
-        con.commit()
-        if deleted:
-            logger.debug(f"signal_log: pruned {deleted} rows older than 7 days")
-    except Exception as _e:
-        logger.warning(f"signal_log prune failed: {_e}")
-
+    _log_cycle_summary(con)
     logger.info("=== Trading cycle complete ===")
     con.close()
-
-    try:
-        from bot.monitor.sync_db import push_db
-        if time.time() - _last_hf_sync > _HF_SYNC_INTERVAL:
-            if push_db():
-                _last_hf_sync = time.time()
-            else:
-                logger.warning("trades.db sync to HuggingFace FAILED — dashboard will show stale data")
-        else:
-            logger.debug(f"HF sync skipped — last push {time.time() - _last_hf_sync:.0f}s ago (<{_HF_SYNC_INTERVAL:.0f}s threshold)")
-    except Exception as _e:
-        logger.warning(f"HF DB sync skipped: {_e}")
+    _last_hf_sync = _maybe_push_db(_last_hf_sync, _HF_SYNC_INTERVAL)
 
 
 if __name__ == "__main__":

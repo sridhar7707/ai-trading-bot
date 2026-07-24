@@ -50,6 +50,7 @@ class TradingEnv(_GymBase):
         self.balance = self.initial_balance
         self.shares_held = 0.0
         self.returns_history = []
+        self._prev_portfolio_value = self.initial_balance
 
     def reset(self, *, seed: int | None = None, options: dict | None = None) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
@@ -77,8 +78,10 @@ class TradingEnv(_GymBase):
             self.shares_held = 0.0
 
         portfolio_value = self.balance + self.shares_held * price
-        ret = (portfolio_value - self.initial_balance) / self.initial_balance
-        self.returns_history.append(ret)
+        prev_value = getattr(self, "_prev_portfolio_value", self.initial_balance)
+        step_ret = (portfolio_value - prev_value) / (prev_value + 1e-8)
+        self.returns_history.append(step_ret)
+        self._prev_portfolio_value = portfolio_value
 
         # Sharpe proxy reward
         if len(self.returns_history) > 1:

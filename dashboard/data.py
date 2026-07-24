@@ -37,6 +37,9 @@ _EMPTY_CACHE: dict = {
     "latest_buy_signal": {}, "today_buy_signals": [],
 }
 
+_last_hf_sync: float = 0.0
+_HF_SYNC_TTL: float  = 300.0   # re-download trades.db at most every 5 minutes
+
 # ── Thread-safe SQLite helpers ─────────────────────────────────────────────────
 _db_locks: dict[str, threading.Lock] = {}
 _db_locks_meta = threading.Lock()
@@ -91,31 +94,43 @@ def safe_execute(sql: str, params: tuple = (), db_path: str | None = None) -> bo
         return False
 
 
+def _migrate_db() -> None:
+    """Add columns introduced after initial schema — safe no-op if already present."""
+    if not os.path.exists(DB_PATH):
+        return
+    cols = (
+        "xgb_prob REAL DEFAULT 0.0",
+        "lstm_prob REAL DEFAULT 0.0",
+        "sentiment_score REAL DEFAULT 0.0",
+        "macro_score REAL DEFAULT 0.0",
+        "ensemble_score REAL DEFAULT 0.0",
+        "realized_pnl REAL DEFAULT 0.0",
+        "order_id TEXT DEFAULT NULL",
+        "holding_days INTEGER DEFAULT 0",
+        "feature_drivers TEXT DEFAULT NULL",
+    )
+    try:
+        with get_db_conn() as con:
+            for col in cols:
+                try:
+                    con.execute(f"ALTER TABLE trades ADD COLUMN {col}")
+                except sqlite3.OperationalError:
+                    pass
+            con.commit()
+    except Exception as exc:
+        logger.debug(f"_migrate_db: {exc}")
+
+
 def _init_db() -> None:
-    """Enable WAL mode and create dashboard-managed tables."""
+    """Enable WAL mode; the bot owns table DDL — dashboard only sets pragmas."""
     if not os.path.exists(DB_PATH):
         return
     try:
         with get_db_conn() as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS daily_actions (
-                    action_id        INTEGER PRIMARY KEY,
-                    portfolio_id     INTEGER,
-                    session_date     DATE NOT NULL,
-                    action_type      TEXT NOT NULL,
-                    symbol           TEXT,
-                    reasoning        TEXT,
-                    confidence       INTEGER DEFAULT 0,
-                    estimated_minutes INTEGER DEFAULT 2,
-                    status           TEXT DEFAULT 'pending',
-                    created_at       DATETIME DEFAULT (datetime('now')),
-                    resolved_at      DATETIME,
-                    triggered_by     TEXT DEFAULT 'ai_scheduled'
-                )
-            """)
             conn.commit()
+        _migrate_db()
     except Exception as exc:
         logger.warning(f"_init_db: {exc}")
 
@@ -185,28 +200,16 @@ def _current_prices(symbols: list, prev_symbols: list | None = None) -> dict:
 
 def _refresh_cache() -> dict:
     """One DB read + one yfinance call; derives everything all render fns need."""
-    _sync_db()
+    global _last_hf_sync
+    now = time.time()
+    if now - _last_hf_sync >= _HF_SYNC_TTL:
+        _sync_db()
+        _last_hf_sync = now
     result = dict(_EMPTY_CACHE)
     if not os.path.exists(DB_PATH):
         return result
     try:
         with get_db_conn() as con:
-            for _col in (
-                "xgb_prob REAL DEFAULT 0.0",
-                "lstm_prob REAL DEFAULT 0.0",
-                "sentiment_score REAL DEFAULT 0.0",
-                "macro_score REAL DEFAULT 0.0",
-                "ensemble_score REAL DEFAULT 0.0",
-                "realized_pnl REAL DEFAULT 0.0",
-                "order_id TEXT DEFAULT NULL",
-                "holding_days INTEGER DEFAULT 0",
-                "feature_drivers TEXT DEFAULT NULL",
-            ):
-                try:
-                    con.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
-                    con.commit()
-                except sqlite3.OperationalError:
-                    pass
             try:
                 df = pd.read_sql(
                     "SELECT id,timestamp,symbol,action,shares,price,notional,"
@@ -249,21 +252,28 @@ def _refresh_cache() -> dict:
                             if pd.notna(last["portfolio_value"]) else "&mdash;")
     result["regime_raw"] = (str(last["regime"] or "Unknown")).replace("_", " ")
 
-    pos: dict = {}
-    for _, row in df.iterrows():
-        sym = row["symbol"]
-        shares   = row["shares"]   or 0.0
-        notional = row["notional"] or 0.0
-        if row["action"] == "BUY":
-            if sym not in pos:
-                pos[sym] = {"shares": 0.0, "invested": 0.0}
-            pos[sym]["shares"]   += shares
-            pos[sym]["invested"] += notional
-        elif row["action"].startswith("SELL") and sym in pos and pos[sym]["shares"] > 0:
-            avg = pos[sym]["invested"] / pos[sym]["shares"]
-            pos[sym]["shares"]   = max(0.0, pos[sym]["shares"] - shares)
-            pos[sym]["invested"] = max(0.0, pos[sym]["invested"] - avg * shares)
-    result["open_pos"] = {s: d for s, d in pos.items() if d["shares"] > 0.001}
+    try:
+        with get_db_conn() as con:
+            pos_rows = con.execute("""
+                SELECT symbol,
+                       SUM(CASE WHEN action='BUY' THEN shares  ELSE 0 END)   AS buy_shares,
+                       SUM(CASE WHEN action='BUY' THEN notional ELSE 0 END)  AS buy_notional,
+                       SUM(CASE WHEN action='BUY' THEN shares ELSE -shares END) AS net_shares
+                FROM trades
+                GROUP BY symbol
+                HAVING net_shares > 0.001
+            """).fetchall()
+        open_pos = {}
+        for sym, buy_shares, buy_notional, net_shares in pos_rows:
+            avg_cost = (buy_notional / buy_shares) if buy_shares > 0 else 0.0
+            open_pos[sym] = {
+                "shares":   float(net_shares),
+                "invested": float(avg_cost * net_shares),
+            }
+        result["open_pos"] = open_pos
+    except Exception as _pe:
+        logger.warning(f"open_pos SQL aggregation failed, falling back: {_pe}")
+        result["open_pos"] = {}
 
     recent = df.tail(15).iloc[::-1][
         ["timestamp", "symbol", "action", "shares", "price", "notional", "pnl_pct", "regime"]
@@ -279,7 +289,15 @@ def _refresh_cache() -> dict:
     spy_prev = all_prices.get("SPY_prev", 0.0)
     result["spy_pct"] = (spy_cur / spy_prev - 1) * 100 if spy_prev > 0 else 0.0
 
-    pv_raw = float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
+    try:
+        with get_db_conn() as con:
+            snap = con.execute(
+                "SELECT portfolio_value FROM portfolio_snapshots "
+                "ORDER BY timestamp DESC LIMIT 1"
+            ).fetchone()
+        pv_raw = float(snap[0]) if snap and snap[0] else float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
+    except Exception:
+        pv_raw = float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
     equity = sum(
         pos["shares"] * cur if cur > 0 else pos["invested"]
         for sym, pos in result["open_pos"].items()

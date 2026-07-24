@@ -8,8 +8,9 @@ from config import REGIME_MODEL_PATH
 
 REGIMES = {0: "TRENDING_UP", 1: "TRENDING_DOWN", 2: "RANGING", 3: "HIGH_VOLATILITY"}
 
-ATR_VOLATILITY_THRESHOLD = 0.03  # atr/close ratio above which market is HIGH_VOLATILITY
+ATR_VOLATILITY_THRESHOLD = 0.03  # atr/close ratio used by live rule-based fallback
 REGIME_LOOKAHEAD = 20            # bars to look FORWARD when generating training labels
+FWD_VOL_THRESHOLD = 0.18         # annualised forward realised vol above which label = HIGH_VOLATILITY
 
 
 def label_regime(df: pd.DataFrame) -> pd.Series:
@@ -18,29 +19,32 @@ def label_regime(df: pd.DataFrame) -> pd.Series:
     The model then learns to predict future regime from current features — not to
     replicate the current RSI/MACD rules, which was the old circular labeling approach.
 
+    All four labels are forward-looking:
+    - HIGH_VOLATILITY (3): forward realized vol (annualised) exceeds FWD_VOL_THRESHOLD
+    - TRENDING_UP (0):     forward Sharpe > 0.5 and forward return > 0.5%
+    - TRENDING_DOWN (1):   forward Sharpe < -0.5 and forward return < -0.5%
+    - RANGING (2):         everything else, or insufficient future data at tail
+
     Labels are training-only; live prediction uses the trained RandomForest on current features.
     """
     closes = df["close"].values
-    atrs   = df["atr"].values if "atr" in df.columns else np.zeros(len(df))
     labels = []
 
     for i in range(len(df)):
-        atr_ratio = atrs[i] / closes[i] if closes[i] > 0 else 0.0
-        if atr_ratio > ATR_VOLATILITY_THRESHOLD:
-            labels.append(3)  # HIGH_VOLATILITY — detected from current bar, not future
-            continue
-
         end = min(i + REGIME_LOOKAHEAD, len(df) - 1)
         if end <= i:
-            labels.append(2)  # RANGING — not enough future data at tail of series
+            labels.append(2)  # not enough future data at tail of series
             continue
 
-        window      = closes[i: end + 1]
-        fwd_return  = (window[-1] - window[0]) / (window[0] + 1e-8)
-        fwd_rets    = np.diff(window) / (window[:-1] + 1e-8)
-        fwd_sharpe  = float(np.mean(fwd_rets) / (np.std(fwd_rets) + 1e-8)) if len(fwd_rets) > 1 else 0.0
+        window     = closes[i: end + 1]
+        fwd_rets   = np.diff(window) / (window[:-1] + 1e-8)
+        fwd_vol    = float(np.std(fwd_rets) * np.sqrt(252)) if len(fwd_rets) > 1 else 0.0
+        fwd_return = (window[-1] - window[0]) / (window[0] + 1e-8)
+        fwd_sharpe = float(np.mean(fwd_rets) / (np.std(fwd_rets) + 1e-8)) if len(fwd_rets) > 1 else 0.0
 
-        if fwd_sharpe > 0.5 and fwd_return > 0.005:
+        if fwd_vol > FWD_VOL_THRESHOLD:
+            labels.append(3)  # HIGH_VOLATILITY — forward-looking realized vol
+        elif fwd_sharpe > 0.5 and fwd_return > 0.005:
             labels.append(0)  # TRENDING_UP — consistent positive move over next 20 bars
         elif fwd_sharpe < -0.5 and fwd_return < -0.005:
             labels.append(1)  # TRENDING_DOWN

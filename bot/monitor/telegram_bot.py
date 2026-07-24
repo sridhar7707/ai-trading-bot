@@ -10,17 +10,22 @@ All per-trade and operational alerts are intentionally suppressed here and
 logged locally at DEBUG level so callers need no changes.
 """
 import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Optional
 from loguru import logger
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
-_CDT = timezone(timedelta(hours=-5))
+try:
+    from zoneinfo import ZoneInfo
+    _TZ = ZoneInfo("America/Chicago")
+except ImportError:
+    from datetime import timezone, timedelta
+    _TZ = timezone(timedelta(hours=-5))
 
 
 def _now_cdt() -> str:
-    t = datetime.now(_CDT)
-    return t.strftime("%I:%M %p CDT").lstrip("0")
+    t = datetime.now(_TZ)
+    return t.strftime("%I:%M %p %Z").lstrip("0")
 
 
 def _send(text: str) -> None:
@@ -29,11 +34,12 @@ def _send(text: str) -> None:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(
+        resp = requests.post(
             url,
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
             timeout=5,
         )
+        resp.raise_for_status()
     except Exception as exc:
         logger.error(f"Telegram send failed: {exc}")
 
@@ -119,7 +125,7 @@ def alert_daily_summary(
     failed_steps: Optional[list] = None,
     errors_today: int = 0,
 ) -> None:
-    now    = datetime.now(_CDT)
+    now    = datetime.now(_TZ)
     today  = now.strftime(f"%b {now.day}")
     trophy = " 🏆" if day_return > vs_spy else ""
     pv_str = f"${portfolio_value:,.2f}  " if portfolio_value > 0 else ""

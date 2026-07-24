@@ -226,14 +226,14 @@ class AlpacaClient:
             logger.debug(f"Could not get fill price for {order_id}: {e}")
         return None
 
-    def get_position_value(self, symbol: str) -> float:
-        positions = self.get_positions()
-        if symbol not in positions:
+    def get_position_value(self, symbol: str, positions: dict | None = None) -> float:
+        pos = positions if positions is not None else self.get_positions()
+        if symbol not in pos:
             return 0.0
-        return float(positions[symbol].market_value)
+        return float(pos[symbol].market_value)
 
-    def get_position_pnl_pct(self, symbol: str) -> float:
-        positions = self.get_positions()
-        if symbol not in positions:
+    def get_position_pnl_pct(self, symbol: str, positions: dict | None = None) -> float:
+        pos = positions if positions is not None else self.get_positions()
+        if symbol not in pos:
             return 0.0
-        return float(positions[symbol].unrealized_plpc)
+        return float(pos[symbol].unrealized_plpc)

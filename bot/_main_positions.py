@@ -265,15 +265,25 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
                  pnl_pct: float = 0.0, entry_price: float = 0.0,
                  holding_days: int = 0,
                  pool: CapitalPool | None = None) -> bool:
-    sell_result = client.sell(symbol, qty=pos_qty, limit_price=current_price)
-    if sell_result:
-        filled = client.wait_for_fill(sell_result["order_id"], timeout_secs=12)
+    limit_order = client.sell(symbol, qty=pos_qty, limit_price=current_price)
+    sell_result = limit_order
+    if limit_order:
+        filled = client.wait_for_fill(limit_order["order_id"], timeout_secs=12)
         if not filled and is_from_stop:
-            # Stop-loss must execute — escalate to market order immediately
-            logger.warning(f"Stop limit timed out for {symbol} — escalating to market sell")
-            sell_result = client.sell_market(symbol, pos_qty)
-            if sell_result:
-                client.wait_for_fill(sell_result["order_id"], timeout_secs=10)
+            logger.warning(
+                f"Stop limit timed out for {symbol} (order {limit_order['order_id']}) "
+                f"— escalating to market sell"
+            )
+            market_order = client.sell_market(symbol, pos_qty)
+            if market_order:
+                client.wait_for_fill(market_order["order_id"], timeout_secs=10)
+                sell_result = market_order
+            else:
+                logger.error(
+                    f"Market-sell escalation also failed for {symbol} "
+                    f"— original limit order {limit_order['order_id']} was not filled"
+                )
+                sell_result = None
     if sell_result:
         sell_notional = pos_qty * current_price
         order_id = sell_result.get("order_id")

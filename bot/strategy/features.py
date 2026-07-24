@@ -13,6 +13,7 @@ def compute_features(df: pd.DataFrame, spy_close: pd.Series | None = None) -> pd
     """Add all technical indicators to an OHLCV DataFrame."""
     if len(df) < MIN_BARS:
         raise ValueError(f"compute_features requires at least {MIN_BARS} bars, got {len(df)}")
+    df = df.copy()
     close  = df["close"]
     high   = df["high"]
     low    = df["low"]

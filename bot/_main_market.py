@@ -263,3 +263,74 @@ def _load_premarket_sentiment() -> dict[str, float]:
     except Exception as e:
         logger.warning(f"Failed to load pre-market sentiment: {e}")
     return {}
+
+
+def _compute_sentiments(
+    active_symbols: list[str], premarket_sentiment: dict | None,
+) -> dict[str, float]:
+    """Blend FinBERT pre-market scores with WSB real-time scores per symbol."""
+    import math
+    from concurrent.futures import ThreadPoolExecutor
+    if premarket_sentiment:
+        finbert = premarket_sentiment
+        logger.info("Using pre-market FinBERT sentiment — skipping in-cycle BERT pass")
+    else:
+        finbert = {sym: 0.0 for sym in active_symbols}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        wsb_map = dict(pool.map(_wsb, active_symbols))
+    sentiments: dict[str, float] = {}
+    for sym in active_symbols:
+        wsb   = wsb_map[sym]
+        score = finbert.get(sym, 0.0)
+        if wsb["mentions"] > 0:
+            w = min(0.50, math.log1p(wsb["mentions"]) / 10)
+            sentiments[sym] = score * (1 - w) + wsb["sentiment"] * w
+        else:
+            sentiments[sym] = score
+    return sentiments
+
+
+def _log_cycle_summary(con) -> None:
+    """Log DB row counts and latest portfolio value at end of every cycle."""
+    import sqlite3
+    from datetime import date
+    try:
+        n_trades = con.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+        n_today  = con.execute(
+            "SELECT COUNT(*) FROM trades WHERE timestamp LIKE ?",
+            (date.today().isoformat() + "%",),
+        ).fetchone()[0]
+        n_pos  = con.execute("SELECT COUNT(*) FROM position_state").fetchone()[0]
+        last   = con.execute(
+            "SELECT portfolio_value FROM trades ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        last_pv = f"${last[0]:,.2f}" if last else "NONE"
+        logger.info(
+            f"DB summary — trades total={n_trades} (today={n_today}), "
+            f"open_positions={n_pos}, latest portfolio_value={last_pv}"
+        )
+        if n_trades == 0:
+            logger.warning(
+                "trades table is EMPTY — dashboard will show $0.00 because portfolio value is "
+                "derived from the latest trade row. No trade has executed yet (gates blocking, "
+                "no buy signal, or first run). This is expected until the first fill."
+            )
+    except Exception as _e:
+        logger.warning(f"End-of-cycle DB summary failed: {_e}")
+
+
+def _maybe_push_db(last_sync: float, interval: float) -> float:
+    """Push trades.db to HuggingFace if interval has elapsed. Returns updated timestamp."""
+    import time
+    try:
+        from bot.monitor.sync_db import push_db
+        now = time.time()
+        if now - last_sync > interval:
+            if push_db():
+                return now
+            logger.warning("trades.db sync to HuggingFace FAILED — dashboard will show stale data")
+        else:
+            logger.debug(f"HF sync skipped — last push {time.time() - last_sync:.0f}s ago")
+    except Exception as _e:
+        logger.warning(f"HF DB sync skipped: {_e}")
+    return last_sync

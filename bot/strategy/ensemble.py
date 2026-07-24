@@ -21,8 +21,6 @@ SELL_THRESHOLD        = 0.40
 STRONG_SELL_THRESHOLD = 0.30
 STRONG_BUY_FRACTION   = 0.10   # reduced from 0.20 — smaller positions enable more parallel trades
 BUY_FRACTION          = 0.08   # reduced from 0.12 — tighter sizing lowers per-trade drawdown at higher frequency
-SELL_FRACTION         = 0.00
-STRONG_SELL_FRACTION  = 0.00
 
 # LSTM outputs in this band carry no directional information — model is indeterminate.
 # When LSTM is indeterminate, we reweight the ensemble so XGB carries the signal alone
@@ -117,9 +115,9 @@ def ensemble_signal(
             return "HOLD", 0.00
         return "BUY",         BUY_FRACTION
     elif score < STRONG_SELL_THRESHOLD:
-        return "STRONG_SELL", STRONG_SELL_FRACTION
+        return "STRONG_SELL", 0.0
     elif score < SELL_THRESHOLD:
-        return "SELL",        SELL_FRACTION
+        return "SELL",        0.0
     else:
         return "HOLD",        0.00
 

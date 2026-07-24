@@ -252,7 +252,7 @@ def end_of_day_summary() -> None:
     except Exception as _se:
         log_exception(logger, "end_of_day.duckdb_sync", _se)
 
-    # ── Prune signal_log (keep 30 days — ~84K rows max vs unbounded growth) ───
+    # ── Prune signal_log (30 days = sole prune; per-cycle 7-day prune was removed) ───
     try:
         pruned = con.execute(
             "DELETE FROM signal_log WHERE timestamp < datetime('now', '-30 days')"
