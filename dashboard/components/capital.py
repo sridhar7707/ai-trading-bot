@@ -104,7 +104,8 @@ def _capital_stats() -> dict:
     }
 
 
-def _pnl_str(val: float) -> tuple[str, str]:
+def _pnl_colored(val: float) -> tuple[str, str]:
+    """Return (formatted_string, css_color) for P&L values."""
     color = GAIN if val >= 0 else LOSS
     sign = "+" if val >= 0 else ""
     return f"{sign}${abs(val):,.2f}", color
@@ -114,7 +115,7 @@ def _pnl_str(val: float) -> tuple[str, str]:
 @safe_render("Capital Overview")
 def render_capital_overview() -> str:
     s = _capital_stats()
-    profit_str, profit_color = _pnl_str(s["ai_profit"])
+    profit_str, profit_color = _pnl_colored(s["ai_profit"])
 
     def _big_card(label: str, val: str, sub: str, val_color: str = TEXT1) -> str:
         return (
@@ -194,7 +195,7 @@ def render_profit_breakdown() -> str:
     s = _capital_stats()
 
     def _row(label: str, val: float, border: bool = True) -> str:
-        val_str, color = _pnl_str(val)
+        val_str, color = _pnl_colored(val)
         sep = f"border-bottom:1px solid {BORDER};" if border else ""
         return (
             f'<div style="display:flex;justify-content:space-between;'
@@ -204,9 +205,9 @@ def render_profit_breakdown() -> str:
             f'{val_str}</span></div>'
         )
 
-    total_str, total_color = _pnl_str(s["ai_profit"])
-    best_str, best_color = _pnl_str(s["best_pnl"])
-    worst_str, worst_color = _pnl_str(s["worst_pnl"])
+    total_str, total_color = _pnl_colored(s["ai_profit"])
+    best_str, best_color = _pnl_colored(s["best_pnl"])
+    worst_str, worst_color = _pnl_colored(s["worst_pnl"])
 
     breakdown = (
         _row("Realized Profit (closed trades)", s["realized"])

@@ -73,7 +73,7 @@ def render_decision_bar() -> str:
 
     if not market_open:
         next_open = _next_market_open()
-        pending = len(actions)
+        pending = sum(1 for a in actions if a.get("status") == "pending")
         return (
             f'<div class="nt nt-wrap">'
             f'<div class="nt-card" style="padding:14px 18px;display:flex;'

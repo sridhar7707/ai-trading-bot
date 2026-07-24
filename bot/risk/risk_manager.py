@@ -259,7 +259,11 @@ class RiskManager:
         sizing_base = managed_capital if managed_capital is not None else portfolio_value
         max_notional = sizing_base * _live(MAX_POSITION_PCT, "max_position_pct")
         if notional > max_notional:
-            logger.warning(f"Position size ${notional:.2f} exceeds max ${max_notional:.2f}.")
+            src = "managed_capital" if managed_capital is not None else "portfolio_value"
+            logger.warning(
+                f"Position size ${notional:.2f} exceeds max ${max_notional:.2f} "
+                f"(sized from {src}=${sizing_base:.2f})."
+            )
             return False
         if len(open_positions) >= MAX_POSITIONS:
             logger.warning(f"Max {MAX_POSITIONS} open positions reached — buy blocked.")

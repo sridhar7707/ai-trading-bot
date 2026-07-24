@@ -83,12 +83,12 @@ def load_active_pool(
         "WHERE status = 'active' ORDER BY id ASC LIMIT 1"
     ).fetchone()
     if not row:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO capital_pools "
             "(name, status, allocated_amount, available_cash) VALUES (?, 'active', ?, ?)",
             ("default", initial_amount, initial_amount),
         )
-        append_ledger(conn, 0, "deposit", initial_amount, initial_amount,
+        append_ledger(conn, cur.lastrowid, "deposit", initial_amount, initial_amount,
                       notes="Initial allocation")
         conn.commit()
         row = conn.execute(
@@ -117,6 +117,7 @@ def update_on_buy(
         "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
     ).fetchone()
     append_ledger(conn, pool_id, "buy", -notional, row[0] if row else 0.0)
+    conn.commit()
 
 
 def update_on_sell(
@@ -136,6 +137,7 @@ def update_on_sell(
         "SELECT available_cash FROM capital_pools WHERE id = ?", (pool_id,)
     ).fetchone()
     append_ledger(conn, pool_id, "sell", fill_value, row[0] if row else 0.0)
+    conn.commit()
 
 
 def append_ledger(

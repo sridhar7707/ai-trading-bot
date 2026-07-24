@@ -23,7 +23,7 @@ from config import (
 )
 from database.user_settings import get_setting as _get_setting
 from bot._main_db import log_trade, _save_risk_state
-from bot.capital.pool import CapitalPool, update_on_buy as _pool_buy
+from bot.capital.pool import CapitalPool, update_on_buy as _pool_buy, update_on_sell as _pool_sell
 from bot.decision.daily_actions import record as _rec_action
 from bot._main_market import _log_buy_skip
 from bot._main_positions import (
@@ -144,6 +144,8 @@ def _handle_exits(
                       entry_price=entry_price,
                       order_id=sell_result.get("order_id"),
                       holding_days=holding_days)
+            if pool:
+                _pool_sell(con, pool.id, entry_price * pos_qty, pos_qty * current_price)
             _delete_position_state(con, symbol)
             _maybe_record_day_trade(con, risk, symbol, True, pdt_exempt=pdt_exempt)
         return True
@@ -213,7 +215,7 @@ def _handle_exits(
                 )
                 _trim_position(con, client, symbol, round(trim_qty, 3),
                                current_price, regime_name, portfolio_value,
-                               pnl_pct, entry_price)
+                               pnl_pct, entry_price, pool=pool)
                 return True  # re-evaluate next cycle with updated qty
 
     # ⑤ Time-based forced exit — free capital from stale positions

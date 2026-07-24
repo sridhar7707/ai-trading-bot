@@ -6,8 +6,8 @@ Records one row per pending AI recommendation per trading session.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timezone
-from loguru import logger
+from datetime import date
+from loguru import logger as _logger
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS daily_actions (
@@ -76,17 +76,19 @@ def record(
 
 
 def mark_executed(conn: sqlite3.Connection, action_id: int) -> None:
-    _ensure_table(conn)
-    conn.execute(
-        "UPDATE daily_actions SET status = 'executed' WHERE id = ?",
-        (action_id,),
-    )
-    conn.commit()
+    try:
+        _ensure_table(conn)
+        conn.execute(
+            "UPDATE daily_actions SET status = 'executed' WHERE id = ?",
+            (action_id,),
+        )
+        conn.commit()
+    except Exception as exc:
+        _logger.error(f"daily_actions.mark_executed({action_id}): {exc}")
 
 
 def get_pending(conn: sqlite3.Connection) -> list[dict]:
     """Return today's pending actions ordered by confidence desc."""
-    _ensure_table(conn)
     today = str(date.today())
     rows = conn.execute(
         "SELECT id, symbol, action_type, reasoning, confidence, "

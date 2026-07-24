@@ -233,7 +233,8 @@ def _reconcile_positions(con: sqlite3.Connection, alpaca_positions: dict,
 
 def _trim_position(con: sqlite3.Connection, client, symbol: str, trim_qty: float,
                    current_price: float, regime_name: str, portfolio_value: float,
-                   pnl_pct: float, entry_price: float) -> bool:
+                   pnl_pct: float, entry_price: float,
+                   pool: CapitalPool | None = None) -> bool:
     """Partial sell to reduce an oversized position back to MAX_POSITION_PCT.
     Unlike _signal_sell, does NOT delete position_state — the position still exists.
     """
@@ -244,6 +245,8 @@ def _trim_position(con: sqlite3.Connection, client, symbol: str, trim_qty: float
         log_trade(con, symbol, "SELL_TRIM", trim_qty, current_price, trim_notional,
                   regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                   order_id=result.get("order_id"))
+        if pool:
+            _pool_sell(con, pool.id, entry_price * trim_qty, trim_notional)
         _trim_freed_pct = trim_notional / portfolio_value * 100 if portfolio_value > 0 else 0.0
         tg.alert_sell(symbol, trim_qty, current_price, pnl_pct,
                       reason="drift-trim", notional=trim_notional,
@@ -287,7 +290,8 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
                       regime_name, portfolio_value, pnl_pct, entry_price=entry_price,
                       order_id=order_id, holding_days=holding_days)
         if pool:
-            _pool_sell(con, pool.id, entry_price * pos_qty, pos_qty * current_price)
+            cost_basis = entry_price * pos_qty if entry_price > 0 else pos_qty * current_price
+            _pool_sell(con, pool.id, cost_basis, pos_qty * current_price)
         _rec_action(con, "sell", symbol,
                     reasoning=f"Exit ({reason}): {pnl_pct:+.1%} P&L",
                     confidence=0, status="executed")
