@@ -106,8 +106,7 @@ def _capital_stats() -> dict:
 
 def _pnl_colored(val: float) -> tuple[str, str]:
     color = GAIN if val >= 0 else LOSS
-    sign = "+" if val >= 0 else ""
-    return f"{sign}${abs(val):,.2f}", color
+    return f'{"+" if val >= 0 else ""}${abs(val):,.2f}', color
 
 
 @timed(_logger)
@@ -226,7 +225,7 @@ def render_managed_capital() -> str:
         return ""
 
     reinvest_on = _reinvest_on()
-    withdrawable = 0.0 if reinvest_on else max(0.0, pool.realized_profit)
+    withdrawable = 0.0 if reinvest_on else pool.withdrawable_profit
     buying_power = pool.tradeable_cash if reinvest_on else max(0.0, pool.tradeable_cash - withdrawable)
 
     def _row(label: str, val: float, color: str = TEXT2, indent: bool = False,
@@ -459,10 +458,11 @@ def do_pool_withdraw(amount_str: str) -> str:
         with get_db_conn() as con:
             pool = load_active_pool(con, initial_amount=initial)
             if amount > pool.available_cash:
-                return (
-                    f'<span style="color:{LOSS};font-size:12px;">'
-                    f'⚠ Exceeds available cash (${pool.available_cash:,.2f})</span>'
-                )
+                return f'<span style="color:{LOSS};font-size:12px;">⚠ Exceeds available cash (${pool.available_cash:,.2f})</span>'
+            if not _reinvest_on() and amount > pool.withdrawable_profit:
+                return (f'<span style="color:{LOSS};font-size:12px;">'
+                        f'⚠ Exceeds withdrawable profit (${pool.withdrawable_profit:,.2f}) — '
+                        f'enable Auto Reinvest to withdraw principal.</span>')
             _withdraw(con, pool.id, amount, notes="Dashboard withdrawal")
         return f'<span style="color:{GAIN};font-size:12px;">&#10003; Withdrew ${amount:,.2f}</span>'
     except Exception as exc:
