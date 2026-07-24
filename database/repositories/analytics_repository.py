@@ -49,8 +49,9 @@ class AnalyticsRepository:
             if AnalyticsRepository._shared_conn is not None:
                 try:
                     AnalyticsRepository._shared_conn.close()
-                except Exception:
-                    pass
+                except Exception as _e:
+                    import logging as _log
+                    _log.warning(f"AnalyticsRepository: error closing shared connection: {_e}")
             AnalyticsRepository._shared_conn = duckdb.connect(path)
             AnalyticsRepository._shared_conn_path = path
         return AnalyticsRepository._shared_conn
@@ -61,8 +62,9 @@ class AnalyticsRepository:
         if cls._shared_conn is not None:
             try:
                 cls._shared_conn.close()
-            except Exception:
-                pass
+            except Exception as _e:
+                import logging as _log
+                _log.warning(f"AnalyticsRepository: error closing connection in reset: {_e}")
             cls._shared_conn = None
             cls._shared_conn_path = ""
 
