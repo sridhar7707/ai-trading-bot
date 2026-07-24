@@ -336,3 +336,32 @@ TD  = (f'style="font-size:{FONT_VALUE};color:{TEXT1};padding:12px 14px;'
        f'border-bottom:1px solid {BORDER};white-space:nowrap;"')
 TD0 = (f'style="font-size:{FONT_VALUE};color:{TEXT1};padding:12px 14px;'
        f'white-space:nowrap;"')
+
+# ── XGBoost feature-name → human-readable display labels ─────────────────────
+_FI_LABELS: dict[str, str] = {
+    "rsi":            "RSI",
+    "rsi_15m":        "RSI 15m",
+    "stoch_k":        "Stoch %K",
+    "macd_diff_pct":  "MACD Cross",
+    "mfi":            "Money Flow",
+    "volume_ratio":   "Volume Ratio",
+    "obv_chg_pct":    "OBV Flow",
+    "vol_ratio_trend":"Volume Trend",
+    "atr_pct":        "Volatility",
+    "bb_width":       "BB Width",
+    "bb_position":    "BB Position",
+    "hl_ratio":       "H/L Range",
+    "norm_close":     "Price Position",
+    "ema20_pct":      "EMA20 Dev",
+    "ema50_pct":      "EMA50 Dev",
+    "sma20_pct":      "SMA20 Dev",
+    "ema_spread":     "EMA Trend Spread",
+    "vwap_dev":       "VWAP Dev",
+    "ret_5d":         "1-Week Return",
+    "ret_21d":        "1-Month Return",
+    "ret_63d":        "3-Month Return",
+    "ret_126d":       "6-Month Return",
+    "mom_12_1":       "12-1 Month Momentum",
+    "high_52w_pct":   "vs 52-Week High",
+    "returns":        "1-Bar Return",
+}

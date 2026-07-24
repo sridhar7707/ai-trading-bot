@@ -157,30 +157,47 @@ class AlpacaClient:
             logger.error(f"SELL failed {symbol}: {e}")
             return None
 
-    def wait_for_fill(self, order_id: str, timeout_secs: int = 15) -> bool:
-        """Poll until filled, cancelled/rejected, or timeout.
-        If timeout: cancels the order and returns False.
-        Stop-loss callers should fall back to a market order when this returns False.
+    def wait_for_fill(self, order_id: str, timeout_secs: int = 15) -> float:
+        """Poll until filled or timeout; returns actual filled qty (may be partial).
+
+        Returns 0.0 when nothing was filled. On timeout: cancels the remaining
+        unfilled portion and returns however many shares filled before the deadline.
+        Callers must use the returned qty — not the original order qty — when
+        deciding how many shares remain to sell/buy, because a partial fill leaves
+        the difference in an indeterminate state until the next reconcile cycle.
         """
         deadline = time.monotonic() + timeout_secs
         while time.monotonic() < deadline:
             try:
                 order = self.api.get_order(order_id)
+                filled_qty = float(getattr(order, "filled_qty", 0) or 0)
                 if order.status == "filled":
-                    return True
+                    return filled_qty
                 if order.status in ("cancelled", "expired", "rejected", "done_for_day"):
-                    logger.warning(f"Order {order_id} ended as {order.status} — not filled")
-                    return False
+                    logger.warning(
+                        f"Order {order_id} ended as {order.status} — filled_qty={filled_qty}"
+                    )
+                    return filled_qty
+                # partially_filled: keep polling until deadline
             except Exception as e:
                 logger.warning(f"Order status poll failed ({order_id}): {e}")
             time.sleep(2)
-        # Timeout — cancel so it doesn't fill later at a stale price
+        # Timeout — read partial fill qty before cancelling remaining
+        filled_qty = 0.0
+        try:
+            order = self.api.get_order(order_id)
+            filled_qty = float(getattr(order, "filled_qty", 0) or 0)
+        except Exception:
+            pass
         try:
             self.api.cancel_order(order_id)
-            logger.warning(f"Order {order_id} timed out after {timeout_secs}s — cancelled")
+            logger.warning(
+                f"Order {order_id} timed out after {timeout_secs}s — cancelled "
+                f"(filled_qty={filled_qty})"
+            )
         except Exception as e:
             logger.warning(f"Could not cancel order {order_id}: {e}")
-        return False
+        return filled_qty
 
     def sell_market(self, symbol: str, qty: float) -> dict | None:
         """Market sell — used as stop-loss escalation when a limit sell times out."""

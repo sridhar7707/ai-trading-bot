@@ -18,6 +18,7 @@ def _con(db_path: str) -> sqlite3.Connection:
 def load_completed_trades(
     db_path: str = TRADE_DB_PATH,
     days: int = 365,
+    con: sqlite3.Connection | None = None,
 ) -> pd.DataFrame:
     """Load BUY→SELL round-trip pairs with component scores captured at entry.
 
@@ -31,7 +32,9 @@ def load_completed_trades(
       stop_loss, take_profit, risk_reward_ratio, notional, portfolio_value
     """
     cutoff = (pd.Timestamp.now() - pd.Timedelta(days=days)).isoformat()
-    con = _con(db_path)
+    _own_con = con is None
+    if _own_con:
+        con = _con(db_path)
     try:
         buys = pd.read_sql_query(
             """
@@ -70,7 +73,8 @@ def load_completed_trades(
             con, params=[cutoff],
         )
     finally:
-        con.close()
+        if _own_con:
+            con.close()
 
     if buys.empty or sells.empty:
         return pd.DataFrame()
@@ -90,6 +94,7 @@ def load_completed_trades(
 def load_equity_curve(
     db_path: str = TRADE_DB_PATH,
     days: int = 365,
+    con: sqlite3.Connection | None = None,
 ) -> pd.Series:
     """Daily equity curve from portfolio_snapshots.
 
@@ -97,7 +102,9 @@ def load_equity_curve(
     Empty Series when no data exists.
     """
     cutoff = (pd.Timestamp.now() - pd.Timedelta(days=days)).isoformat()
-    con = _con(db_path)
+    _own_con = con is None
+    if _own_con:
+        con = _con(db_path)
     try:
         df = pd.read_sql_query(
             """
@@ -108,7 +115,8 @@ def load_equity_curve(
             con, params=[cutoff],
         )
     finally:
-        con.close()
+        if _own_con:
+            con.close()
 
     if df.empty:
         return pd.Series(dtype=float)
@@ -121,6 +129,7 @@ def load_equity_curve(
 def load_signal_log(
     db_path: str = TRADE_DB_PATH,
     days: int = 90,
+    con: sqlite3.Connection | None = None,
 ) -> pd.DataFrame:
     """All per-cycle signal evaluations, including cycles where no trade fired.
 
@@ -128,7 +137,9 @@ def load_signal_log(
              macro_score, ensemble_score, ensemble_action, regime
     """
     cutoff = (pd.Timestamp.now() - pd.Timedelta(days=days)).isoformat()
-    con = _con(db_path)
+    _own_con = con is None
+    if _own_con:
+        con = _con(db_path)
     try:
         df = pd.read_sql_query(
             """
@@ -141,7 +152,8 @@ def load_signal_log(
             con, params=[cutoff],
         )
     finally:
-        con.close()
+        if _own_con:
+            con.close()
 
     if df.empty:
         return pd.DataFrame()

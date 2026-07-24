@@ -307,8 +307,8 @@ def _handle_entry(
 
     result = client.buy(symbol, notional, limit_price=current_price)
     if result:
-        filled = client.wait_for_fill(result["order_id"], timeout_secs=15)
-        if filled:
+        filled_qty = client.wait_for_fill(result["order_id"], timeout_secs=15)
+        if filled_qty > 0:
             # Use actual fill price for P&L accuracy; fall back to limit estimate
             _actual_fill = client.get_fill_price(result["order_id"])
             if _actual_fill is None:

@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -7,6 +9,8 @@ from loguru import logger
 from bot.strategy.features import FEATURE_COLS
 
 XGB_MODEL_PATH  = Path("models/saved/xgb_predictor.pkl")
+_XGB_META_PATH  = XGB_MODEL_PATH.with_suffix(".meta.json")
+MODEL_MAX_AGE_DAYS = 30
 FORWARD_PERIODS = 21   # 1-month target — aligned with MAX_HOLD_DAYS=45 medium-term horizon
 MIN_MOVE_PCT    = 0.003  # require ≥0.3% move to label as "up" — filters 5-min microstructure noise
 
@@ -33,10 +37,30 @@ class XGBPredictor:
                         self.model = None
                         return
                 logger.info("XGBoost model loaded.")
+                self._check_model_age()
             except Exception as e:
                 logger.warning(f"Failed to load XGBoost model: {e}")
         else:
             logger.warning("No XGBoost model found — will need training.")
+
+    def _check_model_age(self) -> None:
+        if not _XGB_META_PATH.exists():
+            return
+        try:
+            meta = json.loads(_XGB_META_PATH.read_text())
+            trained_at = meta.get("trained_at")
+            if not trained_at:
+                return
+            age_days = (datetime.now(timezone.utc) - datetime.fromisoformat(trained_at)).days
+            if age_days > MODEL_MAX_AGE_DAYS:
+                logger.warning(
+                    f"XGBoost model is {age_days} days old (trained {trained_at[:10]}) — "
+                    f"win rate may drift. Retrain with scripts/train_model.py."
+                )
+            else:
+                logger.info(f"XGBoost model age: {age_days}d (trained {trained_at[:10]})")
+        except Exception as e:
+            logger.debug(f"Could not read model metadata: {e}")
 
     def train(self, df: pd.DataFrame, save: bool = True) -> None:
         try:
@@ -98,6 +122,9 @@ class XGBPredictor:
         if save:
             XGB_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
             joblib.dump(self.model, XGB_MODEL_PATH)
+            _XGB_META_PATH.write_text(
+                json.dumps({"trained_at": datetime.now(timezone.utc).isoformat()})
+            )
             logger.info(f"XGBoost trained and saved to {XGB_MODEL_PATH}")
 
     def predict_proba(self, row: pd.Series) -> float:

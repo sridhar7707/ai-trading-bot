@@ -94,6 +94,7 @@ _HF_SYNC_INTERVAL: float = 900
 _stop_fired_today: set[str] = set()
 _stop_fired_date: str = ""
 _sym_errors: dict[str, int] = {}
+_SYM_ERROR_SKIP_THRESHOLD = 5   # skip a symbol after this many consecutive failures
 
 
 def run(
@@ -335,6 +336,12 @@ def run(
 
     # ── Per-symbol decision loop ──────────────────────────────────────────────
     for symbol in active_symbols:
+        if _sym_errors.get(symbol, 0) >= _SYM_ERROR_SKIP_THRESHOLD:
+            logger.warning(
+                f"{symbol}: skipping — {_sym_errors[symbol]} consecutive failures "
+                "(possible feed or API bug; reset by restarting the bot)"
+            )
+            continue
         try:
             bars_5m, bars_daily = bars_map.get(symbol, (pd.DataFrame(), pd.DataFrame()))
             # Use daily bars for XGB/LSTM/regime (matches training data; never < 60 rows).

@@ -268,22 +268,24 @@ def _signal_sell(con: sqlite3.Connection, client, symbol: str, pos_qty: float,
     limit_order = client.sell(symbol, qty=pos_qty, limit_price=current_price)
     sell_result = limit_order
     if limit_order:
-        filled = client.wait_for_fill(limit_order["order_id"], timeout_secs=12)
-        if not filled and is_from_stop:
+        filled_qty = client.wait_for_fill(limit_order["order_id"], timeout_secs=12)
+        remaining_qty = pos_qty - filled_qty
+        if remaining_qty > 0.001 and is_from_stop:
             logger.warning(
                 f"Stop limit timed out for {symbol} (order {limit_order['order_id']}) "
-                f"— escalating to market sell"
+                f"filled={filled_qty:.4f}/{pos_qty:.4f} — escalating {remaining_qty:.4f} to market"
             )
-            market_order = client.sell_market(symbol, pos_qty)
+            market_order = client.sell_market(symbol, remaining_qty)
             if market_order:
                 client.wait_for_fill(market_order["order_id"], timeout_secs=10)
                 sell_result = market_order
             else:
                 logger.error(
                     f"Market-sell escalation also failed for {symbol} "
-                    f"— original limit order {limit_order['order_id']} was not filled"
+                    f"— original limit order {limit_order['order_id']} partially filled "
+                    f"({filled_qty:.4f} of {pos_qty:.4f} shares)"
                 )
-                sell_result = None
+                sell_result = None if filled_qty == 0.0 else limit_order
     if sell_result:
         sell_notional = pos_qty * current_price
         order_id = sell_result.get("order_id")

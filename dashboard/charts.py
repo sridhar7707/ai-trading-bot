@@ -12,47 +12,12 @@ from loguru import logger
 from dashboard.design_system import (
     BG, SURFACE, BORDER, TEXT1, TEXT2,
     PRIMARY, GAIN, LOSS, GAIN_BG, GAIN_BD, NEURAL,
-    PLOTLY_LAYOUT, FONT_LABEL,
+    PLOTLY_LAYOUT, FONT_LABEL, _FI_LABELS,
 )
 from dashboard.data import (
     get_data,
     _price_cache, _price_cache_time, _PRICE_CACHE_TTL,
 )
-
-# ── Feature-name display labels (XGB feature_importances_ key → readable text) ─
-_FI_LABELS: dict = {
-    # Momentum oscillators
-    "rsi":            "RSI",
-    "rsi_15m":        "RSI 15m",
-    "stoch_k":        "Stoch %K",
-    "macd_diff_pct":  "MACD Cross",
-    "mfi":            "Money Flow",
-    # Volume
-    "volume_ratio":   "Volume Ratio",
-    "obv_chg_pct":    "OBV Flow",
-    "vol_ratio_trend":"Volume Trend",
-    # Volatility / range
-    "atr_pct":        "Volatility",
-    "bb_width":       "BB Width",
-    "bb_position":    "BB Position",
-    "hl_ratio":       "H/L Range",
-    # Price vs moving averages
-    "norm_close":     "Price Position",
-    "ema20_pct":      "EMA20 Dev",
-    "ema50_pct":      "EMA50 Dev",
-    "sma20_pct":      "SMA20 Dev",
-    "ema_spread":     "EMA Trend Spread",
-    "vwap_dev":       "VWAP Dev",
-    # Multi-period momentum (Jegadeesh-Titman / AQR)
-    "ret_5d":         "1-Week Return",
-    "ret_21d":        "1-Month Return",
-    "ret_63d":        "3-Month Return",
-    "ret_126d":       "6-Month Return",
-    "mom_12_1":       "12-1 Month Momentum",
-    "high_52w_pct":   "vs 52-Week High",
-    # Other
-    "returns":        "1-Bar Return",
-}
 
 
 _EQUITY_PERIOD_DAYS: dict[str, int | None] = {

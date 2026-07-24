@@ -208,49 +208,55 @@ def test_sell_market_returns_none_on_api_error(client):
 
 # --- wait_for_fill ---
 
-def test_wait_for_fill_returns_true_when_filled(client):
+def test_wait_for_fill_returns_filled_qty_when_filled(client):
     order = MagicMock()
     order.status = "filled"
+    order.filled_qty = "10.0"
     client.api.get_order.return_value = order
-    assert client.wait_for_fill("order-123", timeout_secs=5) is True
+    assert client.wait_for_fill("order-123", timeout_secs=5) == 10.0
     client.api.cancel_order.assert_not_called()
 
 
-def test_wait_for_fill_returns_false_on_cancelled(client):
+def test_wait_for_fill_returns_zero_on_cancelled(client):
     order = MagicMock()
     order.status = "cancelled"
+    order.filled_qty = "0"
     client.api.get_order.return_value = order
-    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+    assert client.wait_for_fill("order-123", timeout_secs=5) == 0.0
 
 
-def test_wait_for_fill_returns_false_on_rejected(client):
+def test_wait_for_fill_returns_zero_on_rejected(client):
     order = MagicMock()
     order.status = "rejected"
+    order.filled_qty = "0"
     client.api.get_order.return_value = order
-    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+    assert client.wait_for_fill("order-123", timeout_secs=5) == 0.0
 
 
-def test_wait_for_fill_returns_false_on_expired(client):
+def test_wait_for_fill_returns_zero_on_expired(client):
     order = MagicMock()
     order.status = "expired"
+    order.filled_qty = "0"
     client.api.get_order.return_value = order
-    assert client.wait_for_fill("order-123", timeout_secs=5) is False
+    assert client.wait_for_fill("order-123", timeout_secs=5) == 0.0
 
 
-def test_wait_for_fill_cancels_and_returns_false_on_timeout(client):
+def test_wait_for_fill_cancels_and_returns_partial_on_timeout(client):
+    # Order pending with 3 shares already filled when timeout fires
     order = MagicMock()
-    order.status = "pending_new"
+    order.status = "partially_filled"
+    order.filled_qty = "3.0"
     client.api.get_order.return_value = order
     result = client.wait_for_fill("order-abc", timeout_secs=0)
-    assert result is False
+    assert result == 3.0
     client.api.cancel_order.assert_called_once_with("order-abc")
 
 
-def test_wait_for_fill_returns_false_when_poll_raises(client):
-    # Poll throws — should not propagate, loop times out
+def test_wait_for_fill_returns_zero_when_poll_raises(client):
+    # Poll throws — should not propagate, loop times out, returns 0.0
     client.api.get_order.side_effect = Exception("network error")
     result = client.wait_for_fill("order-xyz", timeout_secs=0)
-    assert result is False
+    assert result == 0.0
 
 
 # --- get_account_summary ---

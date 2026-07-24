@@ -1,29 +1,21 @@
 """Model validation, investor view, and institutional metrics."""
 from __future__ import annotations
 import datetime
+import os
+import time as _time
 from loguru import logger
 from dashboard.design_system import (
-    BG, SURFACE, SURFACE2, BORDER, TEXT1, TEXT2, TEXT3,
-    PRIMARY,
-    ACTION_BUY, ACTION_SELL, ACTION_TRIM, ACTION_HOLD, ACTION_WATCH,
-    GAIN, LOSS, NEURAL,
-    FONT_HERO, FONT_SECTION, FONT_VALUE, FONT_LABEL,
-    WEIGHT_BOLD, WEIGHT_MEDIUM, WEIGHT_NORMAL,
-    CARD_PADDING, SECTION_GAP,
-    _card, _label, _section_title, _action_badge, _symbol,
-    _metric_row, _divider, _empty_state, _section, _wrap,
-    _sym, _badge, _num, _pnl, _stat_card, TH, TD, TD0,
+    BG, SURFACE, BORDER, TEXT1, TEXT2,
+    PRIMARY, GAIN, LOSS, NEURAL,
+    FONT_VALUE, FONT_LABEL,
+    _card, _empty_state, _section, _wrap, _stat_card,
+    _FI_LABELS,
 )
 import pandas as pd
-from dashboard.data import get_data, _to_ct
-from dashboard.charts import _FI_LABELS
+from dashboard.data import get_data, get_db_conn
 from dashboard.components.ai_panel import _WHY_MAP
 from bot.core.error_logger import safe_render
 from dashboard.components.portfolio import _SELL_REASON
-import os
-import time as _time
-from dashboard.data import get_db_conn
-_logger = logger
 
 # ── Paper Trading Scorecard ───────────────────────────────────────────────────
 _BENCH_CACHE: dict = {}
@@ -502,5 +494,3 @@ register(ComponentSpec("investor_out",  RefreshGroup.FAST, render_investor_view,
 register(ComponentSpec("scorecard_out", RefreshGroup.SLOW, render_paper_trading_scorecard, priority=60))
 register(ComponentSpec("metrics_out",   RefreshGroup.SLOW, render_institutional_metrics,   priority=61))
 register(ComponentSpec("val_out",       RefreshGroup.SLOW, render_validation_report,       priority=62))
-
-

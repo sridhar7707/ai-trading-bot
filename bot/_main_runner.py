@@ -1,6 +1,7 @@
 """End-of-day summary, run_loop, and CLI helpers extracted from bot/main.py."""
 from __future__ import annotations
 
+import signal
 import socket
 import sys
 import time
@@ -306,6 +307,19 @@ def run_loop(mode: str = "paper") -> None:
 
     _acquire_singleton()
     logger.info("Long-running mode — loading models once for full session.")
+
+    _shutdown = False
+
+    def _handle_shutdown(signum, frame):
+        nonlocal _shutdown
+        _shutdown = True
+        logger.info(f"Shutdown signal {signum} received — will exit after current cycle.")
+
+    try:
+        signal.signal(signal.SIGTERM, _handle_shutdown)
+        signal.signal(signal.SIGINT, _handle_shutdown)
+    except (OSError, ValueError):
+        pass  # SIGTERM/SIGINT not registerable on Windows sub-threads — safe to skip
     regime_clf = RegimeClassifier()
     xgb        = XGBPredictor()
     lstm       = LSTMPredictor()
@@ -363,7 +377,7 @@ def run_loop(mode: str = "paper") -> None:
 
     cycle = 0
     consecutive_failures = 0
-    while _is_market_hours(client.api):
+    while not _shutdown and _is_market_hours(client.api):
         cycle += 1
         logger.info(f"\n=== Loop cycle {cycle} ===")
         try:
@@ -379,6 +393,8 @@ def run_loop(mode: str = "paper") -> None:
                     f"Bot is retrying every 5 min. Check status.alpaca.markets"
                 )
         for _ in range(10):
+            if _shutdown:
+                break
             time.sleep(30)
             if not _is_market_hours(client.api):
                 break
