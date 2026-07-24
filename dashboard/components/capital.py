@@ -224,47 +224,43 @@ def render_managed_capital() -> str:
     if pool is None:
         return ""
 
-    reinvest_on = _reinvest_on()
+    d      = get_data()
+    prices = d.get("prices", {})
+    market_inv    = sum(pos["shares"] * prices.get(s, 0.0) or pos["invested"] for s, pos in d.get("open_pos", {}).items())
+    unrealized    = market_inv - pool.invested_amount
+    managed_value = pool.available_cash + market_inv
+
+    reinvest_on  = _reinvest_on()
     withdrawable = 0.0 if reinvest_on else pool.withdrawable_profit
     buying_power = pool.tradeable_cash if reinvest_on else max(0.0, pool.tradeable_cash - withdrawable)
 
-    def _row(label: str, val: float, color: str = TEXT2, indent: bool = False,
-             border: bool = True, bold: bool = False) -> str:
-        pad = "padding-left:16px;" if indent else ""
-        sep = f"border-bottom:1px solid {BORDER};" if border else ""
-        fw = f"font-weight:800;" if bold else f"font-weight:700;"
-        return (
-            f'<div style="display:flex;justify-content:space-between;padding:7px 0;{sep}{pad}">'
-            f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">{label}</span>'
-            f'<span style="font-size:{FONT_VALUE};{fw}color:{color};">'
-            f'${val:,.2f}</span></div>'
-        )
+    def _row(label, val, color=TEXT2, indent=False, border=True, bold=False):
+        s = "padding-left:16px;" if indent else ""
+        b = f"border-bottom:1px solid {BORDER};" if border else ""
+        w = "font-weight:800;" if bold else "font-weight:700;"
+        return (f'<div style="display:flex;justify-content:space-between;padding:7px 0;{b}{s}">'
+                f'<span style="font-size:{FONT_VALUE};color:{TEXT2};">{label}</span>'
+                f'<span style="font-size:{FONT_VALUE};{w}color:{color};">${val:,.2f}</span></div>')
 
-    managed_color = GAIN if pool.total_value >= pool.allocated_amount else LOSS
+    managed_color = GAIN if managed_value >= pool.allocated_amount else LOSS
     buying_color  = GAIN if buying_power > 0 else TEXT3
+    unreal_color  = GAIN if unrealized >= 0 else LOSS
 
     rows = (
-        _row("Managed Capital", pool.total_value, managed_color, bold=True)
+        _row("Managed Capital", managed_value, managed_color, bold=True)
         + _row("Cash", pool.available_cash, TEXT1, indent=True)
-        + _row("Invested", pool.invested_amount,
-               TEXT1 if pool.invested_amount > 0 else TEXT3, indent=True)
-        + _row("Reserve", pool.reserve, TEXT3, indent=True, border=not reinvest_on)
+        + _row("Invested", market_inv, TEXT1 if market_inv > 0 else TEXT3, indent=True)
     )
+    if abs(unrealized) > 0.01:
+        rows += _row("  Unrealized P&L", unrealized, unreal_color, indent=True)
+    rows += _row("Reserve", pool.reserve, TEXT3, indent=True, border=not reinvest_on)
     if not reinvest_on:
-        profit_color = GAIN if withdrawable > 0 else TEXT3
-        rows += (
-            _row("Profit (withdrawable)", withdrawable, profit_color, indent=True)
-        )
-
+        rows += _row("Profit (withdrawable)", withdrawable, GAIN if withdrawable > 0 else TEXT3, indent=True)
     rows += (
-        f'<div style="display:flex;justify-content:space-between;'
-        f'padding:9px 0;border-top:2px solid {BORDER};margin-top:4px;">'
-        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};">'
-        f'Buying Power</span>'
-        f'<span style="font-size:{FONT_VALUE};font-weight:800;color:{buying_color};">'
-        f'${buying_power:,.2f}</span></div>'
+        f'<div style="display:flex;justify-content:space-between;padding:9px 0;border-top:2px solid {BORDER};margin-top:4px;">'
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};">Buying Power</span>'
+        f'<span style="font-size:{FONT_VALUE};font-weight:800;color:{buying_color};">${buying_power:,.2f}</span></div>'
     )
-
     return (
         f'<div class="nt nt-wrap">'
         f'{_section("🏦", "Capital Pool", f"Pool: {pool.name}")}'

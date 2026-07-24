@@ -408,18 +408,12 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
     reinvest_radio.change(fn=save_reinvestment_mode, inputs=[reinvest_radio],
                           outputs=[reinvest_status])
 
-    _deposit_btn.click(
-        fn=lambda v: do_pool_deposit(str(v) if v else ""),
-        inputs=[_deposit_amt], outputs=[_deposit_status],
-    )
-    _withdraw_btn.click(
-        fn=lambda v: do_pool_withdraw(str(v) if v else ""),
-        inputs=[_withdraw_amt], outputs=[_withdraw_status],
-    )
-    _reserve_btn.click(
-        fn=lambda v: do_set_reserve(str(v) if v is not None else "0"),
-        inputs=[_reserve_amt], outputs=[_reserve_status],
-    )
+    def _cap_action(fn, v, default=""):
+        return fn(str(v) if v is not None else default), render_managed_capital()
+
+    _deposit_btn.click(fn=lambda v: _cap_action(do_pool_deposit, v), inputs=[_deposit_amt], outputs=[_deposit_status, managed_capital_out])
+    _withdraw_btn.click(fn=lambda v: _cap_action(do_pool_withdraw, v), inputs=[_withdraw_amt], outputs=[_withdraw_status, managed_capital_out])
+    _reserve_btn.click(fn=lambda v: _cap_action(do_set_reserve, v, "0"), inputs=[_reserve_amt], outputs=[_reserve_status, managed_capital_out])
 
     def _save_settings(risk_tol, benchmark, max_pos, max_dd, stop_loss, notif):
         max_pos   = max(5.0,  min(50.0, max_pos))
