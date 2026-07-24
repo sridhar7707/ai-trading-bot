@@ -170,6 +170,16 @@ def end_of_day_summary() -> None:
         logger.warning(f"health score calc failed: {_e}")
         cash_pct = 0.0
 
+    cycles_run = 0
+    try:
+        row = con.execute(
+            "SELECT cycles_today FROM trading_sessions WHERE session_date = ? ORDER BY id DESC LIMIT 1",
+            (today,),
+        ).fetchone()
+        cycles_run = int(row[0]) if row and row[0] else 0
+    except Exception as exc:
+        logger.debug(f"cycles_today fetch: {exc}")
+
     tg.alert_daily_summary(
         day_return=day_return,
         vs_spy=vs_spy,
@@ -182,6 +192,7 @@ def end_of_day_summary() -> None:
         worst_trade=worst_trade,
         cash_pct=cash_pct,
         health_score=health_score,
+        cycles_run=cycles_run,
     )
     logger.info(f"End-of-day summary sent: return={day_return:.2%}, trades={trades_count}, health={health_score}")
 
