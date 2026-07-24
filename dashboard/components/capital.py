@@ -248,6 +248,7 @@ def render_managed_capital() -> str:
 
     rows = (
         _row("Managed Capital", managed_value, managed_color, bold=True)
+        + _row("Allocated", pool.allocated_amount, TEXT3, indent=True)
         + _row("Cash", pool.available_cash, TEXT1, indent=True)
         + _row("Invested", market_inv, TEXT1 if market_inv > 0 else TEXT3, indent=True)
     )
@@ -258,7 +259,7 @@ def render_managed_capital() -> str:
         rows += _row("Profit (withdrawable)", withdrawable, GAIN if withdrawable > 0 else TEXT3, indent=True)
     rows += (
         f'<div style="display:flex;justify-content:space-between;padding:9px 0;border-top:2px solid {BORDER};margin-top:4px;">'
-        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};">Buying Power</span>'
+        f'<span style="font-size:{FONT_VALUE};font-weight:{WEIGHT_BOLD};color:{TEXT1};">Tradeable Cash</span>'
         f'<span style="font-size:{FONT_VALUE};font-weight:800;color:{buying_color};">${buying_power:,.2f}</span></div>'
     )
     return (
