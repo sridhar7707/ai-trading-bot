@@ -87,7 +87,7 @@ from dashboard.components.capital import (
     render_capital_overview, render_capital_chart,
     render_profit_breakdown, render_managed_capital, save_reinvestment_mode,
     render_capital_health, render_capital_ledger,
-    do_pool_deposit, do_pool_withdraw, do_set_reserve,
+    do_pool_deposit, do_pool_withdraw, do_set_reserve, _load_pool,
 )
 from dashboard.components.attribution import (
     render_attribution_by_symbol, render_attribution_by_sector,
@@ -144,7 +144,7 @@ def _safe_html(fn, fallback=""):
         return fallback
 
 logger.info("[startup] pre-rendering all components...")
-_executor = _cf.ThreadPoolExecutor(max_workers=11)
+_executor = _cf.ThreadPoolExecutor(max_workers=13)
 _chart_futs = {
     "equity":       _executor.submit(_safe_fig,  render_equity_chart),
     "alloc":        _executor.submit(_safe_fig,  render_allocation_chart),
@@ -158,8 +158,10 @@ _chart_futs = {
     # These call get_data() which triggers a yfinance fetch on first run;
     # running them in the pool means they run in parallel with charts
     # instead of blocking the main thread after chart pre-rendering completes.
-    "exec_summary": _executor.submit(_safe_html, render_executive_summary),
-    "metrics":      _executor.submit(_safe_html, render_institutional_metrics),
+    "exec_summary":   _executor.submit(_safe_html, render_executive_summary),
+    "metrics":        _executor.submit(_safe_html, render_institutional_metrics),
+    "cap_health":     _executor.submit(_safe_html, render_capital_health),
+    "cap_ledger":     _executor.submit(_safe_html, render_capital_ledger),
 }
 
 def _wait(key, timeout):
@@ -182,6 +184,8 @@ _ci = {
     "market_mood":  _wait("market_mood",  25),  # 20 s yfinance + buffer
     "exec_summary": _wait("exec_summary", 20),
     "metrics":      _wait("metrics",      20),
+    "cap_health":   _wait("cap_health",   15),
+    "cap_ledger":   _wait("cap_ledger",   15),
 }
 _executor.shutdown(wait=False)
 logger.info("[startup] pre-render complete")
@@ -269,10 +273,10 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                 with gr.Column(scale=1):
                     managed_capital_out = registry.mount("managed_capital_out", gr.HTML(value=render_managed_capital))
                 with gr.Column(scale=1):
-                    capital_health_out  = registry.mount("capital_health_out",  gr.HTML(value=render_capital_health))
+                    capital_health_out  = registry.mount("capital_health_out",  gr.HTML(value=_ci["cap_health"]))
             capital_chart_out     = registry.mount("capital_chart_out",     gr.Plot(value=_ci["capital"], label="Capital Growth", show_label=False))
             profit_breakdown_out  = registry.mount("profit_breakdown_out",  gr.HTML(value=render_profit_breakdown))
-            capital_ledger_out    = registry.mount("capital_ledger_out",    gr.HTML(value=render_capital_ledger))
+            capital_ledger_out    = registry.mount("capital_ledger_out",    gr.HTML(value=_ci["cap_ledger"]))
             # ── Profit Handling ────────────────────────────────────────────
             _cur_reinvest = get_setting("reinvest_profits_only", "false")
             reinvest_radio = gr.Radio(
@@ -299,8 +303,13 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
                     _withdraw_btn = gr.Button("Withdraw", variant="secondary")
                     _withdraw_status = gr.HTML(value="")
                 with gr.Column(scale=1):
+                    try:
+                        _pool_init = _load_pool()
+                        _reserve_default = _pool_init.reserve if _pool_init else 100.0
+                    except Exception:
+                        _reserve_default = 100.0
                     _reserve_amt = gr.Number(label="Set Reserve ($)", minimum=0, precision=2,
-                                             value=float(get_setting("pool_reserve", "100")))
+                                             value=_reserve_default)
                     _reserve_btn = gr.Button("Set Reserve", variant="secondary")
                     _reserve_status = gr.HTML(value="")
 

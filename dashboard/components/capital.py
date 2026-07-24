@@ -410,7 +410,7 @@ def render_capital_ledger() -> str:
 
 
 def save_reinvestment_mode(mode: str) -> str:
-    profits_only = "profits only" in mode.lower()
+    profits_only = "off" in mode.lower()   # "Auto Reinvest OFF" → protect profits
     value = "true" if profits_only else "false"
     ok = save_setting("reinvest_profits_only", value)
     if ok:
