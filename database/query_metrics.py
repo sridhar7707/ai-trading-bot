@@ -20,7 +20,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
-from typing import Callable
+from typing import Any, Callable
 
 from loguru import logger
 
@@ -56,7 +56,7 @@ def timed_query(query_name: str) -> Callable:
     """Decorator — wraps a function and records its wall-clock time."""
     def decorator(fn: Callable) -> Callable:
         @wraps(fn)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> Any:
             t0 = time.perf_counter()
             try:
                 return fn(*args, **kwargs)
@@ -102,3 +102,28 @@ def current_stats() -> dict[str, dict]:
             }
             for name, s in _stats.items()
         }
+
+
+_PERF_INDEXES = (
+    "CREATE INDEX IF NOT EXISTS idx_signal_log_sym_ts ON signal_log (symbol, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_trades_sym_ts ON trades (symbol, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_trades_action ON trades (action, timestamp DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_signal_log_action ON signal_log (ensemble_action, timestamp DESC)",
+)
+
+_QM_DDL = """
+CREATE TABLE IF NOT EXISTS query_metrics (
+    query_name TEXT PRIMARY KEY,
+    avg_ms     REAL    NOT NULL DEFAULT 0.0,
+    max_ms     REAL    NOT NULL DEFAULT 0.0,
+    calls      INTEGER NOT NULL DEFAULT 0,
+    last_run   TEXT
+)
+"""
+
+
+def init_schema(conn: sqlite3.Connection) -> None:
+    """Create query_metrics table and covering indexes. Called once from init_db()."""
+    conn.execute(_QM_DDL)
+    for sql in _PERF_INDEXES:
+        conn.execute(sql)

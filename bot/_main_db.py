@@ -14,6 +14,7 @@ from bot.strategy.ensemble import WEIGHTS
 from bot.strategy.macro import _get_cached as _get_macro_cached
 import bot.monitor.telegram_bot as tg
 from config import TRADE_DB_PATH
+from database.query_metrics import init_schema as _init_qm_schema
 
 _MACRO_DB_TTL = 4 * 3600
 
@@ -25,10 +26,7 @@ def _enable_wal_mode(db_path: str) -> None:
         row = con.execute("PRAGMA journal_mode=WAL").fetchone()
         actual = row[0] if row else "unknown"
         if actual != "wal":
-            logger.warning(
-                f"WAL mode not confirmed on {db_path}: got {actual!r} — "
-                "concurrent reads may block the bot writer"
-            )
+            logger.warning(f"WAL mode not confirmed on {db_path}: got {actual!r} — concurrent reads may block writer")
         else:
             logger.info(f"WAL mode verified: {db_path}")
         con.execute("PRAGMA synchronous=NORMAL")
@@ -189,37 +187,7 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
     """)
     _init_v2_tables(con)
 
-    # ── Performance indexes ────────────────────────────────────────────────────
-    # signal_log grows at ~2,808 rows/day (36 symbols × 78 cycles).
-    # Without these indexes the self-JOIN in get_latest_signals_df() and the
-    # ROW_NUMBER() join in recommendation_history.py degrade as O(n).
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_signal_log_sym_ts "
-        "ON signal_log (symbol, timestamp DESC)"
-    )
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_trades_sym_ts "
-        "ON trades (symbol, timestamp DESC)"
-    )
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_trades_action "
-        "ON trades (action, timestamp DESC)"
-    )
-    con.execute(
-        "CREATE INDEX IF NOT EXISTS idx_signal_log_action "
-        "ON signal_log (ensemble_action, timestamp DESC)"
-    )
-
-    # ── Query timing metrics ───────────────────────────────────────────────────
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS query_metrics (
-            query_name TEXT PRIMARY KEY,
-            avg_ms     REAL    NOT NULL DEFAULT 0.0,
-            max_ms     REAL    NOT NULL DEFAULT 0.0,
-            calls      INTEGER NOT NULL DEFAULT 0,
-            last_run   TEXT
-        )
-    """)
+    _init_qm_schema(con)
 
     con.commit()
     return con
