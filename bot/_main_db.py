@@ -22,10 +22,17 @@ def _enable_wal_mode(db_path: str) -> None:
     """Enable WAL journal mode so dashboard readers don't block the bot writer."""
     try:
         con = sqlite3.connect(db_path)
-        con.execute("PRAGMA journal_mode=WAL")
+        row = con.execute("PRAGMA journal_mode=WAL").fetchone()
+        actual = row[0] if row else "unknown"
+        if actual != "wal":
+            logger.warning(
+                f"WAL mode not confirmed on {db_path}: got {actual!r} — "
+                "concurrent reads may block the bot writer"
+            )
+        else:
+            logger.info(f"WAL mode verified: {db_path}")
         con.execute("PRAGMA synchronous=NORMAL")
         con.close()
-        logger.info(f"WAL mode enabled: {db_path}")
     except Exception as exc:
         log_exception(logger, "_enable_wal_mode", exc, {"db_path": db_path})
 
@@ -181,6 +188,39 @@ def init_db(db_path: str = TRADE_DB_PATH) -> sqlite3.Connection:
         )
     """)
     _init_v2_tables(con)
+
+    # ── Performance indexes ────────────────────────────────────────────────────
+    # signal_log grows at ~2,808 rows/day (36 symbols × 78 cycles).
+    # Without these indexes the self-JOIN in get_latest_signals_df() and the
+    # ROW_NUMBER() join in recommendation_history.py degrade as O(n).
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_log_sym_ts "
+        "ON signal_log (symbol, timestamp DESC)"
+    )
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trades_sym_ts "
+        "ON trades (symbol, timestamp DESC)"
+    )
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trades_action "
+        "ON trades (action, timestamp DESC)"
+    )
+    con.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signal_log_action "
+        "ON signal_log (ensemble_action, timestamp DESC)"
+    )
+
+    # ── Query timing metrics ───────────────────────────────────────────────────
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS query_metrics (
+            query_name TEXT PRIMARY KEY,
+            avg_ms     REAL    NOT NULL DEFAULT 0.0,
+            max_ms     REAL    NOT NULL DEFAULT 0.0,
+            calls      INTEGER NOT NULL DEFAULT 0,
+            last_run   TEXT
+        )
+    """)
+
     con.commit()
     return con
 

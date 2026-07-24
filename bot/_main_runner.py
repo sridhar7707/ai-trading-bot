@@ -233,6 +233,32 @@ def end_of_day_summary() -> None:
         except Exception as e:
             logger.warning(f"Weekly report failed: {e}")
 
+    # ── Sync signal_archive to DuckDB BEFORE pruning so history is preserved ──
+    try:
+        from database.sync.sync_jobs import run_nightly_sync
+        sync_results = run_nightly_sync()
+        logger.info(f"DuckDB sync: {sync_results}")
+    except Exception as _se:
+        log_exception(logger, "end_of_day.duckdb_sync", _se)
+
+    # ── Prune signal_log (keep 30 days — ~84K rows max vs unbounded growth) ───
+    try:
+        pruned = con.execute(
+            "DELETE FROM signal_log WHERE timestamp < datetime('now', '-30 days')"
+        ).rowcount
+        con.commit()
+        if pruned:
+            logger.info(f"Pruned {pruned} signal_log rows older than 30 days")
+    except Exception as _pe:
+        log_exception(logger, "end_of_day.prune_signal_log", _pe)
+
+    # ── Flush query timing metrics accumulated during the trading session ──────
+    try:
+        from database.query_metrics import flush_to_db as _flush_metrics
+        _flush_metrics(con)
+    except Exception as _me:
+        log_exception(logger, "end_of_day.flush_metrics", _me)
+
     con.close()
 
 
