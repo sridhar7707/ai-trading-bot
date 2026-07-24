@@ -28,9 +28,8 @@ from bot.decision.daily_actions import record as _rec_action
 from bot._main_market import _log_buy_skip
 from bot._main_positions import (
     _TP_FLOOR, _atr_tp_pct,
-    _check_time_exit, _delete_position_state, _handle_exits, _is_wash_sale_risk,
-    _kelly_fraction, _load_position_state, _maybe_record_day_trade,
-    _opened_today, _passes_correlation_gate, _signal_sell, _trim_position,
+    _handle_exits, _is_wash_sale_risk,
+    _kelly_fraction, _passes_correlation_gate,
     _upsert_position_state,
 )
 

@@ -78,12 +78,12 @@ def record(
 def mark_executed(conn: sqlite3.Connection, action_id: int) -> bool:
     try:
         _ensure_table(conn)
-        conn.execute(
+        cur = conn.execute(
             "UPDATE daily_actions SET status = 'executed' WHERE id = ?",
             (action_id,),
         )
         conn.commit()
-        return True
+        return cur.rowcount > 0
     except Exception as exc:
         _logger.error(f"daily_actions.mark_executed({action_id}): {exc}")
         return False
@@ -100,8 +100,10 @@ def get_pending(conn: sqlite3.Connection) -> list[dict]:
             "ORDER BY confidence DESC",
             (today,),
         ).fetchall()
-    except sqlite3.OperationalError:
-        return []
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc):
+            return []
+        raise
     return [
         {
             "id": r[0], "symbol": r[1] or "", "action_type": r[2],
