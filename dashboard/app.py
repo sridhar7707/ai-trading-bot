@@ -142,17 +142,22 @@ def _safe_html(fn, fallback=""):
         return fallback
 
 logger.info("[startup] pre-rendering all components...")
-_executor = _cf.ThreadPoolExecutor(max_workers=9)
+_executor = _cf.ThreadPoolExecutor(max_workers=11)
 _chart_futs = {
-    "equity":      _executor.submit(_safe_fig,  render_equity_chart),
-    "alloc":       _executor.submit(_safe_fig,  render_allocation_chart),
-    "pnl":         _executor.submit(_safe_fig,  render_pnl_chart),
-    "capital":     _executor.submit(_safe_fig,  render_capital_chart),
-    "ret_hist":    _executor.submit(_safe_fig,  render_returns_histogram),
-    "winloss":     _executor.submit(_safe_fig,  render_winloss_chart),
-    "fi":          _executor.submit(_safe_fig,  render_feature_importance_chart),
-    "news":        _executor.submit(_safe_html, render_news_feed_initial),
-    "market_mood": _executor.submit(_safe_html, render_market_mood),
+    "equity":       _executor.submit(_safe_fig,  render_equity_chart),
+    "alloc":        _executor.submit(_safe_fig,  render_allocation_chart),
+    "pnl":          _executor.submit(_safe_fig,  render_pnl_chart),
+    "capital":      _executor.submit(_safe_fig,  render_capital_chart),
+    "ret_hist":     _executor.submit(_safe_fig,  render_returns_histogram),
+    "winloss":      _executor.submit(_safe_fig,  render_winloss_chart),
+    "fi":           _executor.submit(_safe_fig,  render_feature_importance_chart),
+    "news":         _executor.submit(_safe_html, render_news_feed_initial),
+    "market_mood":  _executor.submit(_safe_html, render_market_mood),
+    # These call get_data() which triggers a yfinance fetch on first run;
+    # running them in the pool means they run in parallel with charts
+    # instead of blocking the main thread after chart pre-rendering completes.
+    "exec_summary": _executor.submit(_safe_html, render_executive_summary),
+    "metrics":      _executor.submit(_safe_html, render_institutional_metrics),
 }
 
 def _wait(key, timeout):
@@ -164,15 +169,17 @@ def _wait(key, timeout):
 
 import plotly.graph_objects as _go
 _ci = {
-    "equity":   _wait("equity",   15),
-    "alloc":    _wait("alloc",    15),
-    "pnl":      _wait("pnl",      15),
-    "capital":  _wait("capital",  15),
-    "ret_hist": _wait("ret_hist", 15),
-    "winloss":  _wait("winloss",  15),
-    "fi":       _wait("fi",       15),
-    "news":     _wait("news",     15),
-    "market_mood": _wait("market_mood", 25),  # 20 s yfinance + buffer
+    "equity":       _wait("equity",       15),
+    "alloc":        _wait("alloc",        15),
+    "pnl":          _wait("pnl",          15),
+    "capital":      _wait("capital",      15),
+    "ret_hist":     _wait("ret_hist",     15),
+    "winloss":      _wait("winloss",      15),
+    "fi":           _wait("fi",           15),
+    "news":         _wait("news",         15),
+    "market_mood":  _wait("market_mood",  25),  # 20 s yfinance + buffer
+    "exec_summary": _wait("exec_summary", 20),
+    "metrics":      _wait("metrics",      20),
 }
 _executor.shutdown(wait=False)
 logger.info("[startup] pre-render complete")
@@ -184,7 +191,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         with gr.TabItem("📋 Brief"):
             # Fast cards (DB-only): rendered immediately via value=callable.
             # Everything else starts empty and is populated by timers.
-            exec_summary_out     = registry.mount("exec_summary_out",     gr.HTML(value=render_executive_summary, show_label=False))
+            exec_summary_out     = registry.mount("exec_summary_out",     gr.HTML(value=_ci["exec_summary"], show_label=False))
             three_q_out          = registry.mount("three_q_out",          gr.HTML(value="", show_label=False, elem_id="three_q_out"))
             decision_bar_out     = registry.mount("decision_bar_out",     gr.HTML(value=render_decision_bar, show_label=False))
             scheduler_status_out = registry.mount("scheduler_status_out", gr.HTML(value=render_scheduler_status, show_label=False))
@@ -294,7 +301,7 @@ with gr.Blocks(title="TradeGenius AI", theme=_theme, css=GRADIO_CSS, js=TAB_FIX_
         # ── Tab 5: Performance ────────────────────────────────────────────────
         with gr.TabItem("📊 Performance"):
             scorecard_out = registry.mount("scorecard_out", gr.HTML(value=""))
-            metrics_out   = registry.mount("metrics_out",   gr.HTML(value=render_institutional_metrics))
+            metrics_out   = registry.mount("metrics_out",   gr.HTML(value=_ci["metrics"]))
             with gr.Row():
                 attribution_symbol_out = registry.mount("attribution_symbol_out", gr.HTML(value=render_attribution_by_symbol))
                 attribution_sector_out = registry.mount("attribution_sector_out", gr.HTML(value=render_attribution_by_sector))

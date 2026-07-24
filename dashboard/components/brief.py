@@ -27,6 +27,14 @@ def _spy_pct_today() -> float:
     now = time.time()
     if now - _spy_cache["ts"] < 300:
         return _spy_cache["pct"]
+    # Use the main data cache — _refresh_cache() already fetches SPY in the same
+    # yfinance batch as open positions, so this avoids a duplicate network call.
+    cached_pct = get_data().get("spy_pct", 0.0)
+    if cached_pct != 0.0:
+        _spy_cache["pct"] = float(cached_pct)
+        _spy_cache["ts"] = now
+        return _spy_cache["pct"]
+    # Fallback: direct yfinance (first load before cache populates, or truly flat day)
     try:
         import yfinance as yf
         df = yf.download("SPY", period="5d", progress=False, auto_adjust=True)

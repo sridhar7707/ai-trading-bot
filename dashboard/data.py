@@ -33,7 +33,7 @@ _EMPTY_CACHE: dict = {
     "portfolio": "&mdash;", "cash": 0.0, "regime_raw": "Unknown",
     "total_trades": 0, "buy_count": 0, "sell_count": 0, "win_count": 0,
     "recent_trades": [],
-    "vix": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
+    "vix": 0.0, "spy_pct": 0.0, "avg_confidence": 0.0, "sentiment_avg": 0.0,
     "latest_buy_signal": {}, "today_buy_signals": [],
 }
 
@@ -155,7 +155,10 @@ def _sync_db() -> None:
             logger.debug(f"hf_artifact_download: {exc}")
 
 
-def _current_prices(symbols: list) -> dict:
+def _current_prices(symbols: list, prev_symbols: list | None = None) -> dict:
+    """Fetch latest close for each symbol. When prev_symbols is given, also
+    returns the previous-day close keyed as ``{sym}_prev`` — used to compute
+    daily % change without a second yfinance call."""
     if not symbols:
         return {}
     try:
@@ -168,7 +171,10 @@ def _current_prices(symbols: list) -> dict:
         for sym in symbols:
             try:
                 col = close[sym] if isinstance(close, pd.DataFrame) else close
-                prices[sym] = float(col.dropna().iloc[-1])
+                clean = col.dropna()
+                prices[sym] = float(clean.iloc[-1])
+                if prev_symbols and sym in prev_symbols and len(clean) >= 2:
+                    prices[f"{sym}_prev"] = float(clean.iloc[-2])
             except Exception:
                 prices[sym] = 0.0
         return prices
@@ -264,10 +270,14 @@ def _refresh_cache() -> dict:
     ]
     result["recent_trades"] = list(recent.itertuples(index=False, name=None))
 
-    fetch_syms = list(result["open_pos"].keys()) + ["^VIX"]
-    all_prices = _current_prices(fetch_syms)
-    result["prices"] = {k: v for k, v in all_prices.items() if k != "^VIX"}
+    fetch_syms = list(result["open_pos"].keys()) + ["^VIX", "SPY"]
+    all_prices = _current_prices(fetch_syms, prev_symbols=["SPY"])
+    result["prices"] = {k: v for k, v in all_prices.items()
+                        if k not in ("^VIX", "SPY", "SPY_prev")}
     result["vix"]    = all_prices.get("^VIX", 0.0)
+    spy_cur  = all_prices.get("SPY",      0.0)
+    spy_prev = all_prices.get("SPY_prev", 0.0)
+    result["spy_pct"] = (spy_cur / spy_prev - 1) * 100 if spy_prev > 0 else 0.0
 
     pv_raw = float(last["portfolio_value"]) if pd.notna(last["portfolio_value"]) else 0.0
     equity = sum(
